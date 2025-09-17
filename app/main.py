@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, BackgroundTasks, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -12,6 +12,16 @@ import glob
 from .comfy_client import ComfyUIClient
 from .config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, get_default_prompts_for_html, get_api_examples
 
+# Gemma 프롬프트 번역기 모듈을 가져옵니다.
+from llm.prompt_translator import PromptTranslator
+
+# --- LLM 번역기 인스턴스 생성 ---
+try:
+    translator = PromptTranslator(model_path="./models/gemma-3-4b-it-Q6_K.gguf")
+except FileNotFoundError as e:
+    print(f"경고: {e}. 프롬프트 번역 기능이 비활성화됩니다.")
+    translator = None
+
 templates = Jinja2Templates(directory="templates")
 
 # --- FastAPI 앱 설정 ---
@@ -22,15 +32,13 @@ app = FastAPI(
 )
 
 # --- API 요청/응답 모델 정의 ---
-# API 예제값들을 가져옵니다
-api_examples = get_api_examples()
+api_examples = get_api_examples() # 함수를 호출하여 예제값을 가져옵니다.
 
 class GenerateRequest(BaseModel):
     """이미지 생성 요청 시 Body에 포함될 데이터 모델"""
-    prompt_a: str = Field(..., description="긍정 프롬프트 A (예: 캐릭터, 행동 서술)", example=api_examples["prompt_a"])
-    prompt_b: str = Field(..., description="긍정 프롬프트 B (예: 스타일, 화풍 서술)", example=api_examples["prompt_b"])
-    negative_prompt: str = Field("", description="부정 프롬프트 텍스트", example=api_examples["negative_prompt"])
-    seed: int = Field(None, description="랜덤 시드 값 (빈 값이면 자동 랜덤 생성)", example=12345)
+    prompt_a: str = Field(..., description="긍정 프롬프트 A (예: 캐릭터, 행동 서술)", example=api_examples.get("prompt_a"))
+    prompt_b: str = Field(..., description="긍정 프롬프트 B (예: 스타일, 화풍 서술)", example=api_examples.get("prompt_b"))
+    negative_prompt: str = Field("", description="부정 프롬프트 텍스트", example=api_examples.get("negative_prompt"))
     workflow_id: str = Field("basic_workflow", description="사용할 워크플로우 ID", example="basic_workflow")
 
 # --- 서버 설정 (config.py에서 가져옴) ---
@@ -79,36 +87,33 @@ async def get_default_prompts():
 @app.get("/api/v1/workflows", tags=["Workflows"])
 async def get_workflows():
     """
-    설정된 워크플로우 목록을 반환합니다.
+    사용 가능한 워크플로우 목록을 반환합니다.
     """
-    workflow_dir = "./workflows/"
     workflows = []
+    workflow_dir = "./workflows/"
 
-    if os.path.exists(workflow_dir):
-        # 설정된 워크플로우들만 처리
-        for workflow_name in WORKFLOW_CONFIGS.keys():
-            json_file = os.path.join(workflow_dir, f"{workflow_name}.json")
+    # config.py에 정의된 워크플로우 목록을 기준으로 정보를 조합합니다.
+    for workflow_id, config in WORKFLOW_CONFIGS.items():
+        json_file_path = os.path.join(workflow_dir, f"{workflow_id}.json")
+        node_count = 0
 
-            if os.path.exists(json_file):
-                try:
-                    with open(json_file, 'r', encoding='utf-8') as f:
-                        workflow_data = json.load(f)
+        try:
+            # 실제 파일이 있는지 확인하고 노드 수를 계산합니다.
+            if os.path.exists(json_file_path):
+                with open(json_file_path, 'r', encoding='utf-8') as f:
+                    workflow_data = json.load(f)
+                    node_count = len(workflow_data) if isinstance(workflow_data, dict) else 0
 
-                    # 워크플로우 메타데이터 추출
-                    workflow_info = {
-                        "id": workflow_name,
-                        "name": workflow_name.replace("_", " ").title(),
-                        "file_path": json_file,
-                        "description": f"{workflow_name} 워크플로우",
-                        "node_count": len(workflow_data) if isinstance(workflow_data, dict) else 0,
-                        "configured": True  # 설정된 워크플로우임을 표시
-                    }
-
-                    workflows.append(workflow_info)
-                except Exception as e:
-                    print(f"워크플로우 파일 로드 중 오류: {json_file} - {e}")
-            else:
-                print(f"⚠️ 설정된 워크플로우 파일이 존재하지 않습니다: {json_file}")
+            workflow_info = {
+                "id": workflow_id,
+                "name": workflow_id.replace("_", " ").title(),
+                "file_path": json_file_path,
+                "description": f"{workflow_id} 워크플로우",
+                "node_count": node_count
+            }
+            workflows.append(workflow_info)
+        except Exception as e:
+            print(f"워크플로우 파일 처리 중 오류: {json_file_path} - {e}")
 
     return {"workflows": workflows, "total": len(workflows)}
 
@@ -197,6 +202,23 @@ async def generate_image(request: GenerateRequest, background_tasks: BackgroundT
     # 사용자에게는 즉시 응답 반환
     return {"message": "이미지 생성 요청이 성공적으로 접수되었습니다. 잠시 후 결과가 표시됩니다."}
 
+# --- API 엔드포인트 정의 ---
+@app.post("/api/v1/translate-prompt", tags=["Prompt Translation"])
+async def translate_prompt_endpoint(text: str = Form(...)):
+    """
+    주어진 자연어 텍스트를 Danbooru 태그로 변환합니다.
+    """
+    if translator is None:
+        raise HTTPException(
+            status_code=503, 
+            detail="LLM 모델이 로드되지 않아 번역 기능을 사용할 수 없습니다."
+        )
+
+    try:
+        translated_tags = translator.translate_to_danbooru(text)
+        return {"translated_text": translated_tags}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --- 웹소켓 엔드포인트 정의 ---
 @app.websocket("/ws/status")

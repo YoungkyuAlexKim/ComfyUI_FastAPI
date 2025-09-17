@@ -79,6 +79,10 @@
                                         placeholder="예: 1girl, beautiful face, detailed eyes..."
                                         rows="4"
                                     >{{ default_prompt_a }}</textarea>
+                                    <button class="translate-btn" data-target="prompt_a">
+                                        <i class="fas fa-language"></i>
+                                        Danbooru 태그로 변환
+                                    </button>
                                 </div>
 
                                 <div class="form-group">
@@ -92,6 +96,10 @@
                                         placeholder="예: digital art, high resolution, masterpiece..."
                                         rows="4"
                                     >{{ default_prompt_b }}</textarea>
+                                    <button class="translate-btn" data-target="prompt_b">
+                                        <i class="fas fa-language"></i>
+                                        Danbooru 태그로 변환
+                                    </button>
                                 </div>
 
                                 <div class="form-group">
@@ -573,5 +581,6 @@
             document.head.appendChild(style);
         });
     </script>
+    <script src="/static/js/prompt_translate.js"></script>
 </body>
 </html>

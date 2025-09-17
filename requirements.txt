@@ -4,3 +4,4 @@ fastapi
 uvicorn[standard]
 jinja2
 llama-cpp-python
+python-multipart
