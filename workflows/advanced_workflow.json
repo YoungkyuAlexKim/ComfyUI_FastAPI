@@ -1,0 +1,499 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 316077805309557,
+      "steps": 30,
+      "cfg": [
+        "216",
+        0
+      ],
+      "sampler_name": "euler_ancestral",
+      "scheduler": "ddim_uniform",
+      "denoise": 1,
+      "model": [
+        "72",
+        0
+      ],
+      "positive": [
+        "137",
+        0
+      ],
+      "negative": [
+        "116",
+        0
+      ],
+      "latent_image": [
+        "206",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "364",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE 디코드"
+    }
+  },
+  "50": {
+    "inputs": {
+      "ckpt_name": "hdaRainbowIllusMixV1_v13\\hdaRainbowIllusMixV1_v13.safetensors",
+      "prompt": "HDA_MasterpieceClassic_v1.2\n\nHDA_NegativeXLclassic, censored, jpeg artifacts, chibi, screenshot, (bad anatomy:1.5)",
+      "example": "notes"
+    },
+    "class_type": "CheckpointLoader|pysssss",
+    "_meta": {
+      "title": "Checkpoint Loader 🐍"
+    }
+  },
+  "61": {
+    "inputs": {
+      "model_name": "RealESRGAN_x2plus.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "업스케일 모델 로드"
+    }
+  },
+  "62": {
+    "inputs": {
+      "upscale_model": [
+        "61",
+        0
+      ],
+      "image": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "모델을 사용한 이미지 확대"
+    }
+  },
+  "63": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 0.75,
+      "image": [
+        "62",
+        0
+      ]
+    },
+    "class_type": "ImageScaleBy",
+    "_meta": {
+      "title": "이미지 확대 비율"
+    }
+  },
+  "64": {
+    "inputs": {
+      "pixels": [
+        "63",
+        0
+      ],
+      "vae": [
+        "364",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE 인코드"
+    }
+  },
+  "66": {
+    "inputs": {
+      "seed": 648871342960327,
+      "steps": 30,
+      "cfg": [
+        "216",
+        0
+      ],
+      "sampler_name": "euler_ancestral",
+      "scheduler": "ddim_uniform",
+      "denoise": 0.4,
+      "model": [
+        "72",
+        0
+      ],
+      "positive": [
+        "137",
+        0
+      ],
+      "negative": [
+        "116",
+        0
+      ],
+      "latent_image": [
+        "64",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "68": {
+    "inputs": {
+      "samples": [
+        "66",
+        0
+      ],
+      "vae": [
+        "364",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE 디코드"
+    }
+  },
+  "72": {
+    "inputs": {
+      "lora_name": "Characters\\Illustrious\\MiraiYashimaIL_v1.0.safetensors",
+      "strength_model": 0,
+      "strength_clip": 0,
+      "prompt": "miraiyashima79, brown hair, pink military uniform, white pants, red boots",
+      "example": "notes",
+      "model": [
+        "144",
+        0
+      ],
+      "clip": [
+        "144",
+        1
+      ]
+    },
+    "class_type": "LoraLoader|pysssss",
+    "_meta": {
+      "title": "Lora Loader 🐍"
+    }
+  },
+  "103": {
+    "inputs": {
+      "lora_name": "styles\\Illustrious\\Yoshikazu Yasuhiko_illustriousXL.safetensors",
+      "strength_model": 0.9,
+      "strength_clip": 0.9,
+      "prompt": "Amuro Ray, char aznable, Sayla Mass, Lalah Sune, retro artstyle, 1980s (style), traditional media",
+      "example": "notes",
+      "model": [
+        "50",
+        0
+      ],
+      "clip": [
+        "212",
+        0
+      ]
+    },
+    "class_type": "LoraLoader|pysssss",
+    "_meta": {
+      "title": "Lora Loader 🐍"
+    }
+  },
+  "115": {
+    "inputs": {
+      "text": "1girl,\n\nLalah Sune,\n\ncompletely_nude, \n\nsweat,huge_nipples,(puffy_nipples:1.1),black_eyes,\n\nsaliva,heavy_breathing, open_mouth, drunk,tongue_out, \n\nfemale_orgasm, (erect_clitoris, spread_anus:1.15), butt_plug, \n\narmpits,hands_up,double_v,lactation, \n\npub1c5tubbl3, pubic stubble, female pubic hair, pussy stubble, uncensored,\n\nwet_bed_sheet, pov,foot_focus, cum_on_floor,\n",
+      "clip": [
+        "72",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP 텍스트 인코딩 (프롬프트)"
+    }
+  },
+  "116": {
+    "inputs": {
+      "text": "HDA_NegativeXLclassic, censored, jpeg artifacts, chibi, screenshot, (bad anatomy:1.5)\n",
+      "clip": [
+        "72",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP 텍스트 인코딩 (프롬프트)"
+    }
+  },
+  "131": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "seed": 875797827407554,
+      "steps": 30,
+      "cfg": [
+        "216",
+        0
+      ],
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.5,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 1,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "refiner_ratio": 0.2,
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "image": [
+        "68",
+        0
+      ],
+      "detailer_pipe": [
+        "134",
+        0
+      ]
+    },
+    "class_type": "FaceDetailerPipe",
+    "_meta": {
+      "title": "얼굴 디테일러 (파이프)"
+    }
+  },
+  "132": {
+    "inputs": {
+      "model_name": "bbox/face_yolov8m.pt"
+    },
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {
+      "title": "UltralyticsDetectorProvider"
+    }
+  },
+  "133": {
+    "inputs": {
+      "model": [
+        "72",
+        0
+      ],
+      "clip": [
+        "72",
+        1
+      ],
+      "vae": [
+        "364",
+        0
+      ],
+      "positive": [
+        "137",
+        0
+      ],
+      "negative": [
+        "116",
+        0
+      ]
+    },
+    "class_type": "ToBasicPipe",
+    "_meta": {
+      "title": "ToBasicPipe"
+    }
+  },
+  "134": {
+    "inputs": {
+      "wildcard": "",
+      "Select to add LoRA": "Select the LoRA to add to the text",
+      "Select to add Wildcard": "Select the Wildcard to add to the text",
+      "basic_pipe": [
+        "133",
+        0
+      ],
+      "bbox_detector": [
+        "132",
+        0
+      ],
+      "sam_model_opt": [
+        "135",
+        0
+      ],
+      "segm_detector_opt": [
+        "132",
+        1
+      ]
+    },
+    "class_type": "BasicPipeToDetailerPipe",
+    "_meta": {
+      "title": "BasicPipe -> DetailerPipe"
+    }
+  },
+  "135": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "AUTO"
+    },
+    "class_type": "SAMLoader",
+    "_meta": {
+      "title": "SAMLoader (Impact)"
+    }
+  },
+  "137": {
+    "inputs": {
+      "conditioning_to": [
+        "138",
+        0
+      ],
+      "conditioning_from": [
+        "115",
+        0
+      ]
+    },
+    "class_type": "ConditioningConcat",
+    "_meta": {
+      "title": "조건 (연결)"
+    }
+  },
+  "138": {
+    "inputs": {
+      "text": "HDA_MasterpieceClassic_v1.2,\n(traditional media, retro artstyle, 1980s (style):1.15),\n",
+      "clip": [
+        "72",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP 텍스트 인코딩 (프롬프트)"
+    }
+  },
+  "144": {
+    "inputs": {
+      "lora_name": "Act\\Illustrious\\pubic stubble ixl.safetensors",
+      "strength_model": 0.8,
+      "strength_clip": 0.8,
+      "prompt": "pub1c5tubbl3, pubic stubble, female pubic hair, pussy stubble, uncensored",
+      "example": "notes",
+      "model": [
+        "103",
+        0
+      ],
+      "clip": [
+        "103",
+        1
+      ]
+    },
+    "class_type": "LoraLoader|pysssss",
+    "_meta": {
+      "title": "Lora Loader 🐍"
+    }
+  },
+  "206": {
+    "inputs": {
+      "width": 1120,
+      "height": 832,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "빈 잠재 이미지"
+    }
+  },
+  "212": {
+    "inputs": {
+      "stop_at_clip_layer": -2,
+      "clip": [
+        "50",
+        1
+      ]
+    },
+    "class_type": "CLIPSetLastLayer",
+    "_meta": {
+      "title": "CLIP 마지막 레이어 설정"
+    }
+  },
+  "216": {
+    "inputs": {
+      "value": 3.5
+    },
+    "class_type": "FloatConstant",
+    "_meta": {
+      "title": "Float Constant"
+    }
+  },
+  "262": {
+    "inputs": {
+      "lora_name": "styles\\Animagine\\NemoStep4a.safetensors",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "prompt": "notes",
+      "example": "[none]",
+      "model": [
+        "144",
+        0
+      ],
+      "clip": [
+        "144",
+        1
+      ]
+    },
+    "class_type": "LoraLoader|pysssss",
+    "_meta": {
+      "title": "Lora Loader 🐍"
+    }
+  },
+  "357": {
+    "inputs": {
+      "filename_prefix": "2025-09-17/ComfyUI_2025-09-17",
+      "images": [
+        "68",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "이미지 저장"
+    }
+  },
+  "359": {
+    "inputs": {},
+    "class_type": "ImageInvert",
+    "_meta": {
+      "title": "이미지 반전"
+    }
+  },
+  "363": {
+    "inputs": {
+      "width": 832,
+      "height": 1120,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "빈 잠재 이미지"
+    }
+  },
+  "364": {
+    "inputs": {
+      "vae_name": "purecolorVAE_v10.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAE 로드"
+    }
+  }
+}

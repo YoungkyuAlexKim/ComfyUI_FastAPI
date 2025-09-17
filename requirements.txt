@@ -1,0 +1,6 @@
+websocket-client
+requests
+fastapi
+uvicorn[standard]
+jinja2
+llama-cpp-python
