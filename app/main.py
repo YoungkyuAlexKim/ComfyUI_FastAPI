@@ -11,7 +11,7 @@ import json
 
 from .comfy_client import ComfyUIClient
 from .config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, get_default_values
-from llm.prompt_translator import PromptTranslator # <-- 이 줄이 추가되었습니다!
+from llm.prompt_translator import PromptTranslator
 
 try:
     translator = PromptTranslator(model_path="./models/gemma-3-4b-it-Q6_K.gguf")
@@ -20,12 +20,11 @@ except FileNotFoundError as e:
     translator = None
 
 templates = Jinja2Templates(directory="templates")
-app = FastAPI(title="ComfyUI FastAPI Server", version="0.2.3 (Enhanced Validation)")
+app = FastAPI(title="ComfyUI FastAPI Server", version="0.3.1 (Prompt Suggestion)")
 
-# --- API 요청 모델 (width, height를 선택적으로 변경) ---
+# --- API 요청 모델 (v3.0 기준) ---
 class GenerateRequest(BaseModel):
-    prompt: str
-    negative_prompt: str = ""
+    user_prompt: str
     width: Optional[int] = None
     height: Optional[int] = None
     workflow_id: str
@@ -54,16 +53,18 @@ async def read_root(request: Request):
     default_values = get_default_values()
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "default_prompt": default_values["prompt"],
+        "default_user_prompt": default_values["user_prompt"],
+        "default_style_prompt": default_values["style_prompt"],
         "default_negative_prompt": default_values["negative_prompt"],
         "default_width": default_values["width"],
-        "default_height": default_values["height"]
+        "default_height": default_values["height"],
+        "default_recommended_prompt": default_values.get("recommended_prompt", "") # 추천 프롬프트 추가
     })
 
 @app.get("/api/v1/workflows", tags=["Workflows"])
 async def get_workflows():
     workflows = []
-    for workflow_id in WORKFLOW_CONFIGS:
+    for workflow_id, config in WORKFLOW_CONFIGS.items():
         json_path = os.path.join(WORKFLOW_DIR, f"{workflow_id}.json")
         node_count = 0
         if os.path.exists(json_path):
@@ -76,7 +77,10 @@ async def get_workflows():
             "id": workflow_id,
             "name": workflow_id.replace("_", " ").title(),
             "description": f"The main workflow for generating images.",
-            "node_count": node_count
+            "node_count": node_count,
+            "style_prompt": config.get("style_prompt", ""),
+            "negative_prompt": config.get("negative_prompt", ""),
+            "recommended_prompt": config.get("recommended_prompt", "") # 추천 프롬프트 추가
         })
     return {"workflows": workflows}
 
@@ -86,8 +90,7 @@ def _run_generation(request: GenerateRequest):
     try:
         workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
         prompt_overrides = get_prompt_overrides(
-            prompt=request.prompt,
-            negative_prompt=request.negative_prompt,
+            user_prompt=request.user_prompt,
             width=request.width,
             height=request.height,
             workflow_name=request.workflow_id,
@@ -116,7 +119,6 @@ def _run_generation(request: GenerateRequest):
 
 @app.post("/api/v1/generate", tags=["Image Generation"])
 async def generate_image(request: GenerateRequest, background_tasks: BackgroundTasks):
-    # --- 명시적인 서버 측 검증 로직 추가 ---
     if request.width is None or request.width <= 0:
         raise HTTPException(status_code=422, detail="A valid 'width' is required.")
     if request.height is None or request.height <= 0:
@@ -146,4 +148,3 @@ async def websocket_endpoint(websocket: WebSocket):
 
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 app.mount("/static", StaticFiles(directory="static"), name="static")
-

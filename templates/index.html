@@ -6,7 +6,7 @@
     <title>ComfyUI FastAPI - AI 이미지 생성</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="/static/css/styles.css?v=20240918_04" rel="stylesheet">
+    <link href="/static/css/styles.css?v=20240918_07" rel="stylesheet">
     <style>
         .size-input-group { display: flex; gap: 1rem; align-items: center; }
         .size-input-group .form-group { flex: 1; }
@@ -51,16 +51,23 @@
                         </div>
                         <div class="card-content">
                             <div class="form-grid">
-                                <!-- 긍정 프롬프트 -->
+                                <!-- 사용자 프롬프트 (내용) -->
                                 <div class="form-group">
-                                    <label class="form-label" for="prompt"><i class="fas fa-check-circle"></i> 긍정 프롬프트</label>
-                                    <textarea class="form-input" id="prompt" placeholder="예: 1girl, pixel art..." rows="6">{{ default_prompt }}</textarea>
-                                    <button class="translate-btn" data-target="prompt"><i class="fas fa-language"></i> Danbooru 태그로 변환</button>
+                                    <label class="form-label" for="user_prompt"><i class="fas fa-pencil-alt"></i> 프롬프트 (내용)</label>
+                                    <!-- ✨ 추천 프롬프트 표시 영역 추가 -->
+                                    <p class="prompt-suggestion" id="prompt-suggestion-text" style="display: none;"></p>
+                                    <textarea class="form-input" id="user_prompt" placeholder="그리고 싶은 내용을 입력하세요 (예: 한복을 입은 소녀)..." rows="5">{{ default_user_prompt }}</textarea>
+                                    <button class="translate-btn" data-target="user_prompt"><i class="fas fa-language"></i> Danbooru 태그로 변환</button>
                                 </div>
-                                <!-- 부정 프롬프트 -->
+                                <!-- 시스템 프롬프트 (스타일) - 읽기 전용 -->
                                 <div class="form-group">
-                                    <label class="form-label" for="negative_prompt"><i class="fas fa-ban"></i> 부정 프롬프트</label>
-                                    <textarea class="form-input" id="negative_prompt" placeholder="예: blurry, ugly..." rows="3">{{ default_negative_prompt }}</textarea>
+                                    <label class="form-label" for="style_prompt"><i class="fas fa-palette"></i> 시스템 프롬프트 (스타일 & 품질)</label>
+                                    <textarea class="form-input" id="style_prompt" rows="2" readonly>{{ default_style_prompt }}</textarea>
+                                </div>
+                                <!-- 시스템 부정 프롬프트 - 읽기 전용 -->
+                                <div class="form-group">
+                                    <label class="form-label" for="negative_prompt"><i class="fas fa-ban"></i> 시스템 부정 프롬프트</label>
+                                    <textarea class="form-input" id="negative_prompt" rows="2" readonly>{{ default_negative_prompt }}</textarea>
                                 </div>
                                 <!-- 이미지 사이즈 입력 -->
                                 <div class="size-input-group">
@@ -100,7 +107,7 @@
                                 <h3 class="placeholder-title"><i class="fas fa-magic"></i> AI 이미지 생성 결과</h3>
                                 <div class="placeholder-container">
                                     <div class="placeholder-icon"><i class="fas fa-image"></i></div>
-                                    <p class="placeholder-text">프롬프트를 입력하고 "이미지 생성하기" 버튼을 눌러<br>AI가 만든 놀라운 이미지를 확인해보세요!</p>
+                                    <p class="placeholder-text">그리고 싶은 내용을 프롬프트에 입력하고<br>"이미지 생성하기" 버튼을 눌러보세요!</p>
                                 </div>
                             </div>
                         </div>
@@ -126,8 +133,10 @@
             workflowList: document.getElementById('workflow-list'),
             selectedWorkflowName: document.getElementById('selected-workflow-name'),
             generateBtn: document.getElementById('generate-btn'),
-            promptInput: document.getElementById('prompt'),
+            userPromptInput: document.getElementById('user_prompt'),
+            stylePromptInput: document.getElementById('style_prompt'),
             negativePromptInput: document.getElementById('negative_prompt'),
+            promptSuggestionText: document.getElementById('prompt-suggestion-text'), // ✨ UI 요소 추가
             widthInput: document.getElementById('width'),
             heightInput: document.getElementById('height'),
             seedInput: document.getElementById('seed'),
@@ -145,6 +154,7 @@
         ws.onopen = () => console.log("✅ WebSocket connected");
         ws.onmessage = handleWebSocketMessage;
         ui.generateBtn.addEventListener('click', handleGenerateClick);
+        ui.promptSuggestionText.addEventListener('click', handleSuggestionClick); // ✨ 클릭 이벤트 추가
 
         async function loadWorkflows() {
             try {
@@ -173,13 +183,56 @@
                         </div>
                     </div>
                 </div>`).join('');
-            ui.workflowList.querySelectorAll('.workflow-item').forEach((item, i) => item.addEventListener('click', () => selectWorkflow(workflows[i])));
+            
+            ui.workflowList.querySelectorAll('.workflow-item').forEach((item, i) => {
+                item.addEventListener('click', () => selectWorkflow(workflows[i]));
+            });
         }
-
+        
         function selectWorkflow(workflow) {
             currentWorkflow = workflow;
-            document.querySelectorAll('.workflow-item').forEach(item => item.classList.toggle('selected', item.dataset.workflowId === workflow.id));
+            
+            document.querySelectorAll('.workflow-item').forEach(item => {
+                item.classList.toggle('selected', item.dataset.workflowId === workflow.id);
+            });
             ui.selectedWorkflowName.textContent = workflow.name;
+
+            ui.stylePromptInput.value = workflow.style_prompt;
+            ui.negativePromptInput.value = workflow.negative_prompt;
+            
+            // ✨ 추천 프롬프트 UI 업데이트
+            if (workflow.recommended_prompt) {
+                ui.promptSuggestionText.innerHTML = `✨ 추천: <span class="suggestion-tags">${workflow.recommended_prompt}</span> (클릭하여 추가)`;
+                ui.promptSuggestionText.style.display = 'block';
+            } else {
+                ui.promptSuggestionText.style.display = 'none';
+            }
+        }
+
+        // ✨ 추천 프롬프트 클릭 핸들러 함수
+        function handleSuggestionClick() {
+            if (!currentWorkflow || !currentWorkflow.recommended_prompt) return;
+
+            const cleanTags = (str) => str.split(',').map(tag => tag.trim()).filter(Boolean);
+
+            const existingTags = new Set(cleanTags(ui.userPromptInput.value.toLowerCase()));
+            const recommendedTags = cleanTags(currentWorkflow.recommended_prompt);
+            
+            const newTags = recommendedTags.filter(tag => !existingTags.has(tag.toLowerCase()));
+
+            if (newTags.length > 0) {
+                const newTagsString = newTags.join(', ');
+                const currentPrompt = ui.userPromptInput.value.trim();
+                
+                if (currentPrompt) {
+                    ui.userPromptInput.value = newTagsString + ', ' + currentPrompt;
+                } else {
+                    ui.userPromptInput.value = newTagsString;
+                }
+                
+                // 높이 자동 조절
+                autoResizeTextarea(ui.userPromptInput);
+            }
         }
 
         function handleWebSocketMessage(event) {
@@ -199,7 +252,7 @@
 
         async function handleGenerateClick() {
             if (!currentWorkflow) return showStatus('워크플로우를 먼저 선택해주세요.', 'error');
-            if (!ui.promptInput.value.trim()) return showStatus('긍정 프롬프트를 입력해주세요.', 'error');
+            if (!ui.userPromptInput.value.trim()) return showStatus('그리고 싶은 내용을 프롬프트에 입력해주세요.', 'error');
 
             const width = parseInt(ui.widthInput.value, 10);
             const height = parseInt(ui.heightInput.value, 10);
@@ -211,8 +264,7 @@
             showStatus('서버에 생성 요청을 보냅니다...', 'info');
 
             const requestData = {
-                prompt: ui.promptInput.value.trim(),
-                negative_prompt: ui.negativePromptInput.value.trim(),
+                user_prompt: ui.userPromptInput.value.trim(),
                 width: width,
                 height: height,
                 workflow_id: currentWorkflow.id,
@@ -258,12 +310,20 @@
                 ui.resultSection.style.display = 'block';
             };
         }
+        
+        function autoResizeTextarea(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+        }
+        
+        document.querySelectorAll('textarea.form-input:not([readonly])').forEach(t => {
+            t.addEventListener('input', () => autoResizeTextarea(t));
+            autoResizeTextarea(t);
+        });
 
-        document.querySelectorAll('textarea.form-input').forEach(t => t.addEventListener('input', () => { t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }));
         loadWorkflows();
     });
     </script>
     <script src="/static/js/prompt_translate.js"></script>
 </body>
 </html>
-
