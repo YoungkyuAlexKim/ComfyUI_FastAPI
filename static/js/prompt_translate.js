@@ -13,10 +13,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 버튼 상태 변경
+            // 버튼 상태 변경 (작은 버튼은 더 컴팩트한 스피너 사용)
             const originalButtonHtml = button.innerHTML;
+            const isSmall = button.classList.contains('translate-btn--small');
             button.disabled = true;
-            button.innerHTML = '<div class="loading-spinner-small"></div> 번역 중...';
+            button.innerHTML = isSmall
+                ? '<div class="loading-spinner-small"></div>'
+                : '<div class="loading-spinner-small"></div> 번역 중...';
 
             try {
                 const formData = new FormData();

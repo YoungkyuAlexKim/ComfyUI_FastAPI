@@ -42,10 +42,14 @@
                         <div class="card-content">
                             <div class="form-grid">
                                 <div class="form-group">
-                                    <label class="form-label" for="user_prompt"><i class="fas fa-pencil-alt"></i> 프롬프트 (내용)</label>
+                                    <label class="form-label" for="user_prompt"><i class="fas fa-comment-dots"></i> 프롬프트 (내용)</label>
                                     <p class="prompt-suggestion" id="prompt-suggestion-text" style="display: none;"></p>
-                                    <textarea class="form-input" id="user_prompt" placeholder="그리고 싶은 내용을 입력하세요 (예: 한복을 입은 소녀)..." rows="5">{{ default_user_prompt }}</textarea>
-                                    <button class="translate-btn" data-target="user_prompt"><i class="fas fa-language"></i> Danbooru 태그로 변환</button>
+                                    <div class="input-with-action">
+                                        <textarea class="form-input" id="user_prompt" placeholder="그리고 싶은 내용을 입력하세요 (예: 한복을 입은 소녀)..." rows="5">{{ default_user_prompt }}</textarea>
+                                        <button class="translate-btn translate-btn--icon" data-target="user_prompt" data-tooltip="Danbooru 태그로 변환" aria-label="Danbooru 태그로 변환">
+                                            <i class="fas fa-pencil-alt"></i>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label" for="style_prompt"><i class="fas fa-palette"></i> 시스템 프롬프트 (스타일 & 품질)</label>
