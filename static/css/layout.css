@@ -145,8 +145,7 @@
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-xl);
     overflow: hidden;
-    min-height: 600px;
-    height: auto;
+    height: 600px; /* 고정 높이로 이미지 영역 일관성 유지 */
     display: flex;
     flex-direction: column;
     position: sticky;
@@ -194,7 +193,7 @@
     flex: 1;
     display: block;
     padding: 0;
-    min-height: 500px;
+    height: 100%;
 }
 
 .placeholder-card {
@@ -203,7 +202,7 @@
     border-radius: var(--radius-xl);
     padding: var(--space-xl);
     text-align: center;
-    min-height: 500px;
+    height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -254,7 +253,7 @@
     flex: 1;
     display: none;
     padding: 0;
-    min-height: 500px;
+    height: 100%;
 }
 
 .result-card {
@@ -263,7 +262,7 @@
     border-radius: var(--radius-xl);
     padding: var(--space-xl);
     text-align: center;
-    min-height: 500px;
+    height: 100%;
     display: flex;
     flex-direction: column;
 }
@@ -273,6 +272,7 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
+    min-height: 0; /* flex 컨텍스트에서 자식 높이 계산 안정화 */
 }
 
 .result-title {
@@ -293,8 +293,8 @@
     justify-content: center;
     margin: var(--space-md) 0;
     width: 100%;
-    min-height: 400px;
-    max-height: 600px;
+    min-height: 0; /* 고정 영역 내에서 이미지가 영역을 넘지 않도록 */
+    overflow: hidden; /* 호버 확대 등으로 영역 넘침 방지 */
 }
 
 .result-hint {

@@ -49,16 +49,16 @@
     }
 
     .output-card {
-        min-height: 500px;
+        height: 500px; /* 고정 높이 유지 */
     }
 
     .image-container {
-        min-height: 350px;
-        max-height: 500px;
+        min-height: 0;
+        max-height: none;
     }
 
     .result-card {
-        min-height: 400px;
+        height: 100%;
         padding: var(--space-lg);
     }
 }
@@ -113,18 +113,18 @@
     }
 
     .output-card {
-        min-height: 450px;
+        height: 450px; /* 고정 높이 유지 */
         position: static;
     }
 
     .image-container {
-        min-height: 300px;
-        max-height: 400px;
+        min-height: 0;
+        max-height: none;
         margin: var(--space-sm) 0;
     }
 
     .result-card {
-        min-height: 350px;
+        height: 100%;
         padding: var(--space-lg);
     }
 }
@@ -190,16 +190,16 @@
     }
 
     .output-card {
-        min-height: 400px;
+        height: 400px; /* 고정 높이 유지 */
     }
 
     .image-container {
-        min-height: 250px;
-        max-height: 350px;
+        min-height: 0;
+        max-height: none;
     }
 
     .result-card {
-        min-height: 300px;
+        height: 100%;
         padding: var(--space-lg);
     }
 

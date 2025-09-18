@@ -6,7 +6,7 @@
     <title>ComfyUI FastAPI - AI 이미지 생성</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="/static/css/styles.css?v=20240918_11" rel="stylesheet">
+    <link href="/static/css/styles.css?v=20250918_01" rel="stylesheet">
 </head>
 <body>
     <div class="app-container">
@@ -343,6 +343,44 @@
             };
         }
 
+        // --- Lightbox Logic ---
+        const lightbox = document.getElementById('image-lightbox');
+        const lightboxImage = document.getElementById('lightbox-image');
+        const lightboxCloseBtn = document.getElementById('lightbox-close');
+
+        function openLightbox(src, alt = '') {
+            lightboxImage.src = src;
+            lightboxImage.alt = alt || '확대된 이미지';
+            lightbox.classList.add('open');
+            lightbox.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox() {
+            lightbox.classList.remove('open');
+            lightbox.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+
+        ui.resultImage.addEventListener('click', () => {
+            if (!ui.resultImage.src) return;
+            openLightbox(ui.resultImage.src, ui.resultImage.alt);
+        });
+
+        lightboxCloseBtn.addEventListener('click', closeLightbox);
+
+        lightbox.addEventListener('click', (e) => {
+            if (e.target === lightbox) {
+                closeLightbox();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && lightbox.classList.contains('open')) {
+                closeLightbox();
+            }
+        });
+
         async function handleCancelClick() {
             try {
                 const response = await fetch('/api/v1/cancel', { method: 'POST' });
@@ -367,6 +405,16 @@
         loadWorkflows();
     });
     </script>
+    
+    <!-- Lightbox (이미지 확대 보기) -->
+    <div class="lightbox-overlay" id="image-lightbox" aria-hidden="true" role="dialog" aria-modal="true">
+        <div class="lightbox-content" role="document">
+            <button class="lightbox-close" id="lightbox-close" type="button" aria-label="닫기">
+                <i class="fas fa-times"></i>
+            </button>
+            <img id="lightbox-image" alt="확대된 이미지" />
+        </div>
+    </div>
     <script src="/static/js/prompt_translate.js"></script>
 </body>
 </html>
