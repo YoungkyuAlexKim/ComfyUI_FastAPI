@@ -1,0 +1,304 @@
+/* Layout */
+.app-container { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* Sidebar Layout */
+.app-layout {
+    display: flex;
+    flex: 1;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 300px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid var(--neutral-200);
+    display: flex;
+    flex-direction: column;
+    transition: all var(--transition-normal);
+}
+
+
+.sidebar-header {
+    padding: var(--space-xl);
+    border-bottom: 1px solid var(--neutral-200);
+    text-align: left;
+}
+
+.workflow-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.workflow-section-header {
+    padding: var(--space-lg) var(--space-xl) var(--space-md);
+}
+
+.sidebar-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--neutral-800);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-sm);
+}
+
+.workflow-list {
+    flex: 1;
+    padding: 0 var(--space-xl) var(--space-sm);
+    overflow-y: auto;
+    background: transparent;
+}
+
+
+.workflow-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-xl);
+    color: var(--neutral-500);
+    font-size: 0.875rem;
+}
+
+
+.sidebar-footer {
+    padding: var(--space-md) var(--space-lg);
+    border-top: 1px solid var(--neutral-200);
+    background: transparent;
+}
+
+.workflow-info {
+    color: var(--neutral-500);
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-weight: 500;
+}
+
+
+.main-content {
+    flex: 1;
+    width: calc(100% - 300px);
+    padding: var(--space-xl) var(--space-lg);
+    overflow-y: auto;
+    display: flex;
+    gap: var(--space-lg);
+    align-items: flex-start;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.input-panel {
+    flex: 0 0 45%;
+    max-width: 600px;
+    min-width: 450px;
+}
+
+.output-panel {
+    flex: 0 0 55%;
+    max-width: 700px;
+    min-width: 500px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+}
+
+/* App Title in Sidebar */
+.app-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary-600), var(--primary-500));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin: 0 0 var(--space-lg) 0;
+    padding: 0;
+}
+
+
+/* Input Card */
+.input-card {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-xl);
+    overflow: hidden;
+    height: fit-content;
+    position: sticky;
+    top: var(--space-lg);
+}
+
+/* Output Card */
+.output-card {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-xl);
+    overflow: hidden;
+    min-height: 600px;
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: var(--space-lg);
+}
+
+
+.card-header {
+    padding: var(--space-2xl);
+    border-bottom: 1px solid var(--neutral-200);
+    text-align: center;
+}
+
+
+.workflow-info-header {
+    text-align: center;
+}
+
+.workflow-name-display {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--neutral-800);
+    margin-bottom: var(--space-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+}
+
+.workflow-name-display.selected {
+    color: var(--primary-600);
+}
+
+.workflow-description-display {
+    color: var(--neutral-500);
+    font-size: 0.9rem;
+    line-height: 1.4;
+    margin: 0;
+}
+
+.card-content { padding: var(--space-2xl); }
+
+/* Placeholder Section */
+.placeholder-section {
+    flex: 1;
+    display: block;
+    padding: 0;
+    min-height: 500px;
+}
+
+.placeholder-card {
+    background: var(--neutral-50);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-xl);
+    padding: var(--space-xl);
+    text-align: center;
+    min-height: 500px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.placeholder-title {
+    margin-bottom: var(--space-xl);
+    color: var(--neutral-600);
+    font-size: 1.25rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+}
+
+.placeholder-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+.placeholder-icon {
+    width: 120px;
+    height: 120px;
+    background: linear-gradient(135deg, var(--primary-100), var(--primary-200));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    color: var(--primary-500);
+    margin-bottom: var(--space-md);
+}
+
+.placeholder-text {
+    color: var(--neutral-500);
+    font-size: 1rem;
+    line-height: 1.6;
+    max-width: 400px;
+    margin: 0;
+}
+
+/* Result Section */
+.result-section {
+    flex: 1;
+    display: none;
+    padding: 0;
+    min-height: 500px;
+}
+
+.result-card {
+    background: var(--neutral-50);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-xl);
+    padding: var(--space-xl);
+    text-align: center;
+    min-height: 500px;
+    display: flex;
+    flex-direction: column;
+}
+
+.result-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.result-title {
+    margin-bottom: var(--space-lg);
+    color: var(--neutral-700);
+    font-size: 1.25rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+}
+
+.image-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: var(--space-md) 0;
+    width: 100%;
+    min-height: 400px;
+    max-height: 600px;
+}
+
+.result-hint {
+    margin-top: var(--space-lg);
+    color: var(--neutral-500);
+    font-size: 0.875rem;
+}

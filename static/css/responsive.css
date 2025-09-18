@@ -1,0 +1,255 @@
+/* Responsive */
+@media (max-width: 768px) {
+    .main-content { padding: var(--space-lg); }
+    .card-title { font-size: 1.5rem; }
+    .card-content { padding: var(--space-lg); }
+    .form-grid { gap: var(--space-lg); }
+}
+
+/* Tablet Responsive */
+@media (max-width: 1200px) {
+    .input-panel {
+        flex: 0 0 42%;
+        max-width: 550px;
+        min-width: 400px;
+    }
+
+    .output-panel {
+        flex: 0 0 58%;
+        max-width: 650px;
+        min-width: 450px;
+    }
+
+    .main-content {
+        gap: var(--space-md);
+    }
+}
+
+@media (max-width: 1024px) {
+    .sidebar {
+        width: 260px;
+    }
+
+    .main-content {
+        width: calc(100% - 260px);
+        padding: var(--space-md);
+        gap: var(--space-md);
+    }
+
+    .input-panel {
+        flex: 0 0 40%;
+        max-width: 500px;
+        min-width: 350px;
+    }
+
+    .output-panel {
+        flex: 0 0 60%;
+        max-width: 600px;
+        min-width: 400px;
+    }
+
+    .output-card {
+        min-height: 500px;
+    }
+
+    .image-container {
+        min-height: 350px;
+        max-height: 500px;
+    }
+
+    .result-card {
+        min-height: 400px;
+        padding: var(--space-lg);
+    }
+}
+
+@media (max-width: 768px) {
+    .app-layout {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        max-height: 320px;
+        border-right: none;
+        border-bottom: 1px solid var(--neutral-200);
+    }
+
+    .sidebar-header {
+        padding: var(--space-lg);
+    }
+
+    .workflow-section-header {
+        padding: var(--space-md) var(--space-lg) var(--space-sm);
+    }
+
+    .workflow-list {
+        padding: 0 var(--space-lg) var(--space-sm);
+    }
+
+    .app-title {
+        font-size: 1.125rem;
+        margin-bottom: 0;
+    }
+
+    .main-content {
+        width: 100%;
+        padding: var(--space-lg);
+        flex-direction: column;
+        gap: var(--space-lg);
+    }
+
+    .input-panel {
+        flex: none;
+        max-width: 100%;
+        min-width: auto;
+    }
+
+    .output-panel {
+        flex: none;
+        width: 100%;
+        max-width: 100%;
+        min-width: auto;
+    }
+
+    .output-card {
+        min-height: 450px;
+        position: static;
+    }
+
+    .image-container {
+        min-height: 300px;
+        max-height: 400px;
+        margin: var(--space-sm) 0;
+    }
+
+    .result-card {
+        min-height: 350px;
+        padding: var(--space-lg);
+    }
+}
+
+@media (max-width: 600px) {
+    .workflow-list {
+        padding: var(--space-md);
+    }
+
+    .workflow-item {
+        padding: var(--space-md);
+    }
+
+    .workflow-item-header {
+        gap: var(--space-sm);
+    }
+
+    .workflow-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .sidebar-header {
+        padding: var(--space-md);
+    }
+
+    .workflow-section-header {
+        padding: var(--space-sm) var(--space-md) var(--space-xs);
+    }
+
+    .workflow-list {
+        padding: 0 var(--space-md) var(--space-sm);
+    }
+
+    .app-title {
+        font-size: 1rem;
+    }
+
+    .sidebar-title {
+        font-size: 0.9rem;
+    }
+
+    .workflow-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-xs);
+    }
+
+    .main-content {
+        padding: var(--space-md);
+        gap: var(--space-md);
+    }
+
+    .card-header {
+        padding: var(--space-lg);
+    }
+
+    .card-content {
+        padding: var(--space-lg);
+    }
+
+    .output-card {
+        min-height: 400px;
+    }
+
+    .image-container {
+        min-height: 250px;
+        max-height: 350px;
+    }
+
+    .result-card {
+        min-height: 300px;
+        padding: var(--space-lg);
+    }
+
+    .form-input {
+        min-height: 100px;
+    }
+}
+
+/* Responsive adjustments for control section */
+@media (max-width: 768px) {
+    .seed-input-group {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-sm);
+        justify-content: flex-start;
+    }
+
+    .seed-input-wrapper {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-sm);
+        width: 100%;
+    }
+
+    .seed-input {
+        max-width: 100%;
+        width: 100%;
+    }
+
+    .seed-hint {
+        align-self: flex-start;
+    }
+
+    .generate-btn {
+        margin-top: var(--space-sm);
+        width: 100%;
+    }
+
+    /* 모바일에서 로딩바 스타일 조정 */
+    .progress-section {
+        padding: var(--space-md);
+    }
+
+    .progress-title {
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .seed-section {
+        padding: var(--space-sm);
+    }
+}
