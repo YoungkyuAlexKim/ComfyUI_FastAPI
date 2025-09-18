@@ -112,6 +112,41 @@
     white-space: nowrap;
 }
 
+.generate-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.cancel-btn {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: white;
+    border: none;
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg) var(--space-xl);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.cancel-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.cancel-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .generate-btn:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);

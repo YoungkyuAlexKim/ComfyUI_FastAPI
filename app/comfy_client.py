@@ -116,8 +116,8 @@ class ComfyUIClient:
             print("웹소켓 연결이 정상적으로 닫혔습니다.")
         except Exception as e:
             print(f"메시지 수신 중 오류 발생: {e}")
-            if self.manager:
-                asyncio.run(self.manager.broadcast_json({"error": str(e)}))
+            # 오류 브로드캐스트는 상위 레벨에서 일괄 처리합니다.
+            raise
         finally:
             ws.close()
 
@@ -133,6 +133,24 @@ class ComfyUIClient:
                         images_output[image['filename']] = image_data
 
         return images_output
+
+    def interrupt(self):
+        """
+        현재 client_id로 ComfyUI 서버에 인터럽트 요청을 보냅니다.
+        실행 중인 작업이 있다면 즉시 중단됩니다.
+        """
+        url = f"http://{self.server_address}/interrupt"
+        try:
+            import requests
+            response = requests.post(url, json={"client_id": self.client_id})
+            response.raise_for_status()
+            return True
+        except ImportError:
+            print("❌ 에러: 'requests' 라이브러리가 설치되지 않았습니다. 'pip install requests'를 실행해주세요.")
+            return False
+        except Exception as e:
+            print(f"❌ 인터럽트 전송 실패: {e}")
+            return False
 
     def get_history(self, prompt_id):
         """HTTP를 통해 특정 prompt_id의 히스토리를 가져옵니다."""

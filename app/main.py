@@ -47,6 +47,9 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# --- 이미지 생성 작업 상태 (단일 사용자 가정) ---
+ACTIVE_JOB: dict = {"client": None, "prompt_id": None, "cancelled": False}
+
 @app.get("/", response_class=HTMLResponse, tags=["Page"])
 async def read_root(request: Request):
     default_values = get_default_values()
@@ -95,8 +98,14 @@ def _run_generation(request: GenerateRequest):
             seed=request.seed
         )
         client = ComfyUIClient(SERVER_ADDRESS, manager=manager)
+        # 활성 작업 등록
+        ACTIVE_JOB["client"] = client
+        ACTIVE_JOB["prompt_id"] = None
+        ACTIVE_JOB["cancelled"] = False
+
         prompt_id = client.queue_prompt(workflow_path, prompt_overrides).get('prompt_id')
         if not prompt_id: raise RuntimeError("Failed to get prompt_id.")
+        ACTIVE_JOB["prompt_id"] = prompt_id
         images_data = client.get_images(prompt_id)
         if not images_data: raise RuntimeError("Failed to receive generated images.")
 
@@ -111,8 +120,16 @@ def _run_generation(request: GenerateRequest):
         loop.run_until_complete(manager.broadcast_json({"status": "complete", "image_path": web_path}))
     except Exception as e:
         print(f"❌ Background task error: {e}")
-        loop.run_until_complete(manager.broadcast_json({"error": str(e)}))
+        # 사용자가 취소한 경우 'cancelled' 상태로 브로드캐스트
+        if ACTIVE_JOB.get("cancelled"):
+            loop.run_until_complete(manager.broadcast_json({"status": "cancelled"}))
+        else:
+            loop.run_until_complete(manager.broadcast_json({"error": str(e)}))
     finally:
+        # 작업 상태 초기화
+        ACTIVE_JOB["client"] = None
+        ACTIVE_JOB["prompt_id"] = None
+        ACTIVE_JOB["cancelled"] = False
         loop.close()
 
 @app.post("/api/v1/generate", tags=["Image Generation"])
@@ -120,6 +137,27 @@ async def generate_image(request: GenerateRequest, background_tasks: BackgroundT
     # ✨ width, height 유효성 검사 로직 제거
     background_tasks.add_task(_run_generation, request)
     return {"message": "Image generation request received."}
+
+@app.post("/api/v1/cancel", tags=["Image Generation"])
+async def cancel_generation():
+    try:
+        client: ComfyUIClient | None = ACTIVE_JOB.get("client")
+        if client is None:
+            raise HTTPException(status_code=400, detail="No active generation to cancel.")
+
+        # 취소 플래그 설정 및 서버에 인터럽트 전송
+        ACTIVE_JOB["cancelled"] = True
+        ok = client.interrupt()
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to send interrupt to ComfyUI.")
+
+        # UI에 'cancelling' 상태 브로드캐스트 (선택)
+        await manager.broadcast_json({"status": "cancelling"})
+        return {"message": "Cancel request sent."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/v1/translate-prompt", tags=["Prompt Translation"])
 async def translate_prompt_endpoint(text: str = Form(...)):

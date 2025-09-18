@@ -87,9 +87,14 @@
                                 <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0">
                                 <small class="seed-hint">동일 이미지 재생성용</small>
                             </div>
-                            <button class="generate-btn" id="generate-btn">
-                                <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
-                            </button>
+                            <div class="generate-actions">
+                                <button class="generate-btn" id="generate-btn">
+                                    <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
+                                </button>
+                                <button class="cancel-btn" id="cancel-btn" disabled>
+                                    <i class="fas fa-stop-circle"></i> <span>생성 취소</span>
+                                </button>
+                            </div>
                         </div>
                         </div>
                     </div>
@@ -163,6 +168,8 @@
         ws.onopen = () => console.log("✅ WebSocket connected");
         ws.onmessage = handleWebSocketMessage;
         ui.generateBtn.addEventListener('click', handleGenerateClick);
+        const cancelBtn = document.getElementById('cancel-btn');
+        cancelBtn.addEventListener('click', handleCancelClick);
         ui.promptSuggestionText.addEventListener('click', handleSuggestionClick);
 
         ui.aspectRatioGroup.addEventListener('click', (e) => {
@@ -254,16 +261,24 @@
         function handleWebSocketMessage(event) {
             const data = JSON.parse(event.data);
             if (data.progress !== undefined) updateProgress(data.progress);
-            if (data.status === 'running') setGenerateButtonState(true, 'AI 생성 중...');
+            if (data.status === 'running') setGenerationState(true, 'AI 생성 중...');
             if (data.status === 'complete') {
                 showStatus('🎉 이미지 생성 완료!', 'success');
-                setGenerateButtonState(false, '새 이미지 생성하기');
+                setGenerationState(false, '새 이미지 생성하기');
                 updateProgress(0); // 완료 후 진행률을 0%로 리셋
                 if (data.image_path) displayImage(data.image_path);
             }
+            if (data.status === 'cancelling') {
+                showStatus('⏸️ 취소 요청 전송됨...', 'info');
+            }
+            if (data.status === 'cancelled') {
+                showStatus('🛑 이미지 생성을 취소했습니다.', 'error');
+                setGenerationState(false, '이미지 생성하기');
+                updateProgress(0);
+            }
             if (data.error) {
                 showStatus(`❌ 오류: ${data.error}`, 'error');
-                setGenerateButtonState(false, '이미지 생성하기');
+                setGenerationState(false, '이미지 생성하기');
                 updateProgress(0); // 에러 발생 시에도 진행률을 0%로 리셋
             }
         }
@@ -272,7 +287,7 @@
             if (!currentWorkflow) return showStatus('워크플로우를 먼저 선택해주세요.', 'error');
             if (!ui.userPromptInput.value.trim()) return showStatus('그리고 싶은 내용을 프롬프트에 입력해주세요.', 'error');
 
-            setGenerateButtonState(true, '요청 처리 중...');
+            setGenerationState(true, '요청 처리 중...');
             showStatus('서버에 생성 요청을 보냅니다...', 'info');
 
             const requestData = {
@@ -293,14 +308,16 @@
                 showStatus(result.message, 'info');
             } catch (error) {
                 showStatus(`❌ 요청 실패: ${error.message}`, 'error');
-                setGenerateButtonState(false, '이미지 생성하기');
+                setGenerationState(false, '이미지 생성하기');
                 updateProgress(0); // 요청 실패 시에도 진행률을 0%로 리셋
             }
         }
 
-        function setGenerateButtonState(isLoading, text) {
-            ui.generateBtn.disabled = isLoading;
-            ui.generateBtn.innerHTML = isLoading ? `<div class="loading-spinner"></div><span>${text}</span>` : `<i class="fas fa-sparkles"></i><span>${text}</span>`;
+        function setGenerationState(isGenerating, text) {
+            ui.generateBtn.disabled = isGenerating;
+            const cancelBtn = document.getElementById('cancel-btn');
+            cancelBtn.disabled = !isGenerating;
+            ui.generateBtn.innerHTML = isGenerating ? `<div class="loading-spinner"></div><span>${text}</span>` : `<i class="fas fa-sparkles"></i><span>${text}</span>`;
         }
 
         function showStatus(message, type = 'info') {
@@ -320,6 +337,17 @@
                 ui.placeholderSection.style.display = 'none';
                 ui.resultSection.style.display = 'block';
             };
+        }
+
+        async function handleCancelClick() {
+            try {
+                const response = await fetch('/api/v1/cancel', { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.detail || 'Cancel failed');
+                showStatus(result.message, 'info');
+            } catch (error) {
+                showStatus(`❌ 취소 실패: ${error.message}`, 'error');
+            }
         }
         
         function autoResizeTextarea(textarea) {
