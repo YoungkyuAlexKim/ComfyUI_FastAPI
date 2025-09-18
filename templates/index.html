@@ -6,17 +6,19 @@
     <title>ComfyUI FastAPI - AI 이미지 생성</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="/static/css/styles.css?v=20240917_01" rel="stylesheet">
+    <link href="/static/css/styles.css?v=20240918_04" rel="stylesheet">
+    <style>
+        .size-input-group { display: flex; gap: 1rem; align-items: center; }
+        .size-input-group .form-group { flex: 1; }
+        .size-input-group .form-input { min-height: auto; padding: 0.75rem 1rem; }
+    </style>
 </head>
 <body>
     <div class="app-container">
         <!-- Header -->
         <header class="app-header">
             <div class="header-content">
-                <h1 class="app-title">
-                    <i class="fas fa-palette"></i>
-                    ComfyUI AI 생성기
-                </h1>
+                <h1 class="app-title"><i class="fas fa-palette"></i> ComfyUI AI 생성기</h1>
             </div>
         </header>
 
@@ -25,26 +27,14 @@
             <!-- Sidebar -->
             <aside class="sidebar">
                 <div class="sidebar-header">
-                    <h3 class="sidebar-title">
-                        <i class="fas fa-cogs"></i>
-                        워크플로우
-                    </h3>
+                    <h3 class="sidebar-title"><i class="fas fa-cogs"></i> 워크플로우</h3>
                     <p class="sidebar-subtitle">사용할 워크플로우를 선택하세요</p>
                 </div>
-
-                <div class="workflow-list" id="workflow-list">
-                    <!-- 워크플로우 목록이 동적으로 로드됩니다 -->
-                    <div class="workflow-loading">
-                        <div class="loading-spinner"></div>
-                        <span>워크플로우 로딩 중...</span>
-                    </div>
-                </div>
-
+                <div class="workflow-list" id="workflow-list"></div>
                 <div class="sidebar-footer">
                     <div class="current-workflow" id="current-workflow">
                         <small class="workflow-info">
-                            <i class="fas fa-info-circle"></i>
-                            선택된 워크플로우: <span id="selected-workflow-name">없음</span>
+                            <i class="fas fa-info-circle"></i> 선택된 워크플로우: <span id="selected-workflow-name">없음</span>
                         </small>
                     </div>
                 </div>
@@ -52,147 +42,75 @@
 
             <!-- Main Content -->
             <main class="main-content">
-                <!-- Input Panel (왼쪽) -->
+                <!-- Input Panel -->
                 <div class="input-panel">
                     <div class="input-card">
-                        <!-- Card Header -->
                         <div class="card-header">
-                            <h2 class="card-title">
-                                <i class="fas fa-magic"></i>
-                                AI 이미지 생성
-                            </h2>
-                            <p class="card-subtitle">ComfyUI를 활용한 고품질 이미지 생성 서비스</p>
+                            <h2 class="card-title"><i class="fas fa-magic"></i> AI 이미지 생성</h2>
+                            <p class="card-subtitle">ComfyUI를 활용한 고품질 이미지 생성</p>
                         </div>
-
-                        <!-- Card Content -->
                         <div class="card-content">
-                            <!-- Form Grid -->
                             <div class="form-grid">
+                                <!-- 긍정 프롬프트 -->
                                 <div class="form-group">
-                                    <label class="form-label" for="prompt_a">
-                                        <i class="fas fa-user"></i>
-                                        긍정 프롬프트 A (캐릭터, 행동 등)
-                                    </label>
-                                    <textarea
-                                        class="form-input"
-                                        id="prompt_a"
-                                        placeholder="예: 1girl, beautiful face, detailed eyes..."
-                                        rows="4"
-                                    >{{ default_prompt_a }}</textarea>
-                                    <button class="translate-btn" data-target="prompt_a">
-                                        <i class="fas fa-language"></i>
-                                        Danbooru 태그로 변환
-                                    </button>
+                                    <label class="form-label" for="prompt"><i class="fas fa-check-circle"></i> 긍정 프롬프트</label>
+                                    <textarea class="form-input" id="prompt" placeholder="예: 1girl, pixel art..." rows="6">{{ default_prompt }}</textarea>
+                                    <button class="translate-btn" data-target="prompt"><i class="fas fa-language"></i> Danbooru 태그로 변환</button>
                                 </div>
-
+                                <!-- 부정 프롬프트 -->
                                 <div class="form-group">
-                                    <label class="form-label" for="prompt_b">
-                                        <i class="fas fa-palette"></i>
-                                        긍정 프롬프트 B (스타일, 화풍 등)
-                                    </label>
-                                    <textarea
-                                        class="form-input"
-                                        id="prompt_b"
-                                        placeholder="예: digital art, high resolution, masterpiece..."
-                                        rows="4"
-                                    >{{ default_prompt_b }}</textarea>
-                                    <button class="translate-btn" data-target="prompt_b">
-                                        <i class="fas fa-language"></i>
-                                        Danbooru 태그로 변환
-                                    </button>
+                                    <label class="form-label" for="negative_prompt"><i class="fas fa-ban"></i> 부정 프롬프트</label>
+                                    <textarea class="form-input" id="negative_prompt" placeholder="예: blurry, ugly..." rows="3">{{ default_negative_prompt }}</textarea>
                                 </div>
-
-                                <div class="form-group">
-                                    <label class="form-label" for="negative_prompt">
-                                        <i class="fas fa-ban"></i>
-                                        부정 프롬프트
-                                    </label>
-                                    <textarea
-                                        class="form-input"
-                                        id="negative_prompt"
-                                        placeholder="예: blurry, ugly, deformed..."
-                                        rows="3"
-                                    >{{ default_negative_prompt }}</textarea>
+                                <!-- 이미지 사이즈 입력 -->
+                                <div class="size-input-group">
+                                    <div class="form-group">
+                                        <label class="form-label" for="width"><i class="fas fa-arrows-alt-h"></i> 가로</label>
+                                        <input type="number" class="form-input" id="width" value="{{ default_width }}" min="64" step="8">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="height"><i class="fas fa-arrows-alt-v"></i> 세로</label>
+                                        <input type="number" class="form-input" id="height" value="{{ default_height }}" min="64" step="8">
+                                    </div>
                                 </div>
-
                             </div>
-
-                            <!-- Generate Button -->
                             <button class="generate-btn" id="generate-btn">
-                                <i class="fas fa-sparkles"></i>
-                                <span>이미지 생성하기</span>
+                                <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
                             </button>
-
-                            <!-- Progress Section -->
-                            <div class="progress-section" id="progress-section">
-                                <div class="progress-container">
-                                    <div class="progress-bar" id="progress-bar"></div>
-                                </div>
+                            <div class="progress-section" id="progress-section" style="display: none;">
+                                <div class="progress-container"><div class="progress-bar" id="progress-bar"></div></div>
                                 <div class="progress-text" id="progress-text">0%</div>
                             </div>
-
-                            <!-- Status Messages -->
-                            <div class="status-container status-info" id="status-container" style="display: none;">
-                                <p id="status-message"></p>
-                            </div>
+                            <div class="status-container" id="status-container" style="display: none;"><p id="status-message"></p></div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Output Panel (오른쪽) -->
+                <!-- Output Panel -->
                 <div class="output-panel">
-                    <!-- Seed Input Section (Compact) -->
                     <div class="seed-section">
                         <div class="seed-input-group">
-                            <label class="seed-label" for="seed">
-                                <i class="fas fa-dice"></i>
-                                시드값
-                            </label>
-                            <input
-                                type="number"
-                                class="seed-input"
-                                id="seed"
-                                placeholder="랜덤"
-                                min="0"
-                                max="999999999"
-                            >
+                            <label class="seed-label" for="seed"><i class="fas fa-dice"></i> 시드값</label>
+                            <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0">
                             <small class="seed-hint">동일 이미지 재생성용</small>
                         </div>
                     </div>
-                    
                     <div class="output-card">
-                        <!-- Default Placeholder -->
                         <div class="placeholder-section" id="placeholder-section">
-                            <div class="placeholder-card">
-                                <h3 class="placeholder-title">
-                                    <i class="fas fa-magic"></i>
-                                    AI 이미지 생성 결과
-                                </h3>
+                             <div class="placeholder-card">
+                                <h3 class="placeholder-title"><i class="fas fa-magic"></i> AI 이미지 생성 결과</h3>
                                 <div class="placeholder-container">
-                                    <div class="placeholder-icon">
-                                        <i class="fas fa-image"></i>
-                                    </div>
-                                    <p class="placeholder-text">
-                                        프롬프트를 입력하고 "이미지 생성하기" 버튼을 눌러<br>
-                                        AI가 만든 놀라운 이미지를 확인해보세요!
-                                    </p>
+                                    <div class="placeholder-icon"><i class="fas fa-image"></i></div>
+                                    <p class="placeholder-text">프롬프트를 입력하고 "이미지 생성하기" 버튼을 눌러<br>AI가 만든 놀라운 이미지를 확인해보세요!</p>
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Result Section -->
-                        <div class="result-section" id="result-section">
-                            <div class="result-card">
-                                <h3 class="result-title">
-                                    <i class="fas fa-image"></i>
-                                    생성된 이미지
-                                </h3>
+                        <div class="result-section" id="result-section" style="display: none;">
+                             <div class="result-card">
+                                <h3 class="result-title"><i class="fas fa-image"></i> 생성된 이미지</h3>
                                 <div class="image-container">
                                     <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image">
                                 </div>
-                                <p class="result-hint">
-                                    이미지를 클릭하면 크게 볼 수 있습니다
-                                </p>
+                                <p class="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
                             </div>
                         </div>
                     </div>
@@ -202,385 +120,150 @@
     </div>
 
     <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            // --- Workflow State Management ---
-            let currentWorkflow = null;
-            let availableWorkflows = [];
+    document.addEventListener("DOMContentLoaded", function() {
+        let currentWorkflow = null;
+        const ui = {
+            workflowList: document.getElementById('workflow-list'),
+            selectedWorkflowName: document.getElementById('selected-workflow-name'),
+            generateBtn: document.getElementById('generate-btn'),
+            promptInput: document.getElementById('prompt'),
+            negativePromptInput: document.getElementById('negative_prompt'),
+            widthInput: document.getElementById('width'),
+            heightInput: document.getElementById('height'),
+            seedInput: document.getElementById('seed'),
+            progressSection: document.getElementById('progress-section'),
+            progressBar: document.getElementById('progress-bar'),
+            progressText: document.getElementById('progress-text'),
+            statusContainer: document.getElementById('status-container'),
+            statusMessage: document.getElementById('status-message'),
+            placeholderSection: document.getElementById('placeholder-section'),
+            resultSection: document.getElementById('result-section'),
+            resultImage: document.getElementById('result-image'),
+        };
 
+        const ws = new WebSocket(`ws://${window.location.host}/ws/status`);
+        ws.onopen = () => console.log("✅ WebSocket connected");
+        ws.onmessage = handleWebSocketMessage;
+        ui.generateBtn.addEventListener('click', handleGenerateClick);
 
-            // --- Workflow Management Functions ---
-            async function loadWorkflows() {
-                const workflowList = document.getElementById('workflow-list');
-
-                try {
-                    const response = await fetch('/api/v1/workflows');
-                    const data = await response.json();
-
-                    if (response.ok && data.workflows.length > 0) {
-                        availableWorkflows = data.workflows;
-                        renderWorkflows(data.workflows);
-
-
-                        // 첫 번째 워크플로우를 기본 선택
-                        if (!currentWorkflow) {
-                            selectWorkflow(data.workflows[0]);
-                        }
-                    } else {
-                        showWorkflowError('워크플로우를 불러올 수 없습니다.');
-                    }
-                } catch (error) {
-                    console.error('워크플로우 로드 중 오류:', error);
-                    showWorkflowError('워크플로우 로드 중 오류가 발생했습니다.');
+        async function loadWorkflows() {
+            try {
+                const response = await fetch('/api/v1/workflows');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                if (data.workflows && data.workflows.length > 0) {
+                    renderWorkflows(data.workflows);
+                    selectWorkflow(data.workflows[0]);
+                } else {
+                    ui.workflowList.innerHTML = `<div class="workflow-error">워크플로우를 찾을 수 없습니다.</div>`;
                 }
+            } catch (error) {
+                console.error('Workflow load error:', error);
             }
+        }
 
-            function renderWorkflows(workflows) {
-                const workflowList = document.getElementById('workflow-list');
-                const workflowItems = workflows.map(workflow => createWorkflowItem(workflow)).join('');
-
-                workflowList.innerHTML = workflowItems;
-
-                // 이벤트 리스너 추가
-                workflowList.querySelectorAll('.workflow-item').forEach((item, index) => {
-                    item.addEventListener('click', () => selectWorkflow(workflows[index]));
-                });
-            }
-
-            function createWorkflowItem(workflow) {
-                const isSelected = currentWorkflow && currentWorkflow.id === workflow.id;
-                return `
-                    <div class="workflow-item ${isSelected ? 'selected' : ''}" data-workflow-id="${workflow.id}">
-                        <div class="workflow-selected-indicator"></div>
-                        <div class="workflow-item-header">
-                            <div class="workflow-icon">
-                                <i class="fas fa-project-diagram"></i>
-                            </div>
-                            <div class="workflow-item-info">
-                                <div class="workflow-name">${workflow.name}</div>
-                                <div class="workflow-description">${workflow.description}</div>
-                            </div>
-                        </div>
-                        <div class="workflow-meta">
-                            <div class="workflow-node-count">
-                                <i class="fas fa-cubes"></i>
-                                ${workflow.node_count} 노드
-                            </div>
+        function renderWorkflows(workflows) {
+            ui.workflowList.innerHTML = workflows.map(wf => `
+                <div class="workflow-item" data-workflow-id="${wf.id}">
+                    <div class="workflow-item-header">
+                        <div class="workflow-icon"><i class="fas fa-project-diagram"></i></div>
+                        <div class="workflow-item-info">
+                            <div class="workflow-name">${wf.name}</div>
+                            <div class="workflow-description">${wf.description}</div>
                         </div>
                     </div>
-                `;
+                </div>`).join('');
+            ui.workflowList.querySelectorAll('.workflow-item').forEach((item, i) => item.addEventListener('click', () => selectWorkflow(workflows[i])));
+        }
+
+        function selectWorkflow(workflow) {
+            currentWorkflow = workflow;
+            document.querySelectorAll('.workflow-item').forEach(item => item.classList.toggle('selected', item.dataset.workflowId === workflow.id));
+            ui.selectedWorkflowName.textContent = workflow.name;
+        }
+
+        function handleWebSocketMessage(event) {
+            const data = JSON.parse(event.data);
+            if (data.progress !== undefined) updateProgress(data.progress);
+            if (data.status === 'running') setGenerateButtonState(true, 'AI 생성 중...');
+            if (data.status === 'complete') {
+                showStatus('🎉 이미지 생성 완료!', 'success');
+                setGenerateButtonState(false, '새 이미지 생성하기');
+                if (data.image_path) displayImage(data.image_path);
             }
-
-            function selectWorkflow(workflow) {
-                // 이전 선택 해제
-                document.querySelectorAll('.workflow-item').forEach(item => {
-                    item.classList.remove('selected');
-                    // CSS 기본값으로 리셋
-                    item.style.removeProperty('background-color');
-                    item.style.removeProperty('border-color');
-                    item.style.removeProperty('color');
-                });
-
-                // 새 워크플로우 선택
-                const selectedItem = document.querySelector(`[data-workflow-id="${workflow.id}"]`);
-                if (selectedItem) {
-                    selectedItem.classList.add('selected');
-                    // CSS 기본값으로 리셋
-                    selectedItem.style.removeProperty('background-color');
-                    selectedItem.style.removeProperty('border-color');
-                    selectedItem.style.removeProperty('color');
-                }
-
-                // 상태 업데이트
-                currentWorkflow = workflow;
-
-                // UI 업데이트
-                updateSelectedWorkflowDisplay(workflow);
-
-                // 워크플로우 변경 알림
-                showStatus(`워크플로우가 "${workflow.name}"으로 변경되었습니다.`, 'info');
+            if (data.error) {
+                showStatus(`❌ 오류: ${data.error}`, 'error');
+                setGenerateButtonState(false, '이미지 생성하기');
             }
+        }
 
-            function updateSelectedWorkflowDisplay(workflow) {
-                const selectedWorkflowName = document.getElementById('selected-workflow-name');
-                selectedWorkflowName.textContent = workflow.name;
-            }
+        async function handleGenerateClick() {
+            if (!currentWorkflow) return showStatus('워크플로우를 먼저 선택해주세요.', 'error');
+            if (!ui.promptInput.value.trim()) return showStatus('긍정 프롬프트를 입력해주세요.', 'error');
 
-            function showWorkflowError(message) {
-                const workflowList = document.getElementById('workflow-list');
-                workflowList.innerHTML = `
-                    <div class="workflow-loading" style="color: var(--error);">
-                        <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 1rem;"></i>
-                        <span>${message}</span>
-                    </div>
-                `;
-            }
+            const width = parseInt(ui.widthInput.value, 10);
+            const height = parseInt(ui.heightInput.value, 10);
 
-            // --- HTML 요소 가져오기 ---
-            const generateBtn = document.getElementById('generate-btn');
-            const progressSection = document.getElementById('progress-section');
-            const progressBar = document.getElementById('progress-bar');
-            const progressText = document.getElementById('progress-text');
-            const statusContainer = document.getElementById('status-container');
-            const statusMessage = document.getElementById('status-message');
-            const placeholderSection = document.getElementById('placeholder-section');
-            const resultSection = document.getElementById('result-section');
-            const resultImage = document.getElementById('result-image');
+            if (isNaN(width) || width <= 0) return showStatus('유효한 가로(width) 크기를 입력해주세요.', 'error');
+            if (isNaN(height) || height <= 0) return showStatus('유효한 세로(height) 크기를 입력해주세요.', 'error');
 
-            // --- 웹소켓 설정 ---
-            const ws = new WebSocket(`ws://${window.location.host}/ws/status`);
+            setGenerateButtonState(true, '요청 처리 중...');
+            showStatus('서버에 생성 요청을 보냅니다...', 'info');
 
-            ws.onopen = () => {
-                console.log("✅ 웹소켓 연결 성공!");
-                showStatus('웹소켓 연결됨', 'success');
-            };
-            ws.onclose = () => console.log("🔌 웹소켓 연결 종료.");
-            ws.onerror = (error) => console.error("💥 웹소켓 에러:", error);
-
-
-            function showStatus(message, type = 'info') {
-                statusMessage.textContent = message;
-                statusContainer.className = `status-container status-${type}`;
-                statusContainer.style.display = 'block';
-
-                // 5초 후 자동 숨김 (성공 메시지만)
-                if (type === 'success') {
-                    setTimeout(() => {
-                        statusContainer.style.display = 'none';
-                    }, 5000);
-                }
-            }
-
-            // --- '이미지 생성' 버튼 클릭 이벤트 ---
-            generateBtn.addEventListener('click', async function() {
-                // 입력 필드에서 값 가져오기
-                const promptA = document.getElementById('prompt_a').value.trim();
-                const promptB = document.getElementById('prompt_b').value.trim();
-                const negativePrompt = document.getElementById('negative_prompt').value.trim();
-                const seedInput = document.getElementById('seed').value.trim();
-
-                // 입력 검증
-                if (!promptA || !promptB) {
-                    showStatus('프롬프트 A와 B는 필수 입력사항입니다.', 'error');
-                    return;
-                }
-
-                // UI 초기화 및 버튼 비활성화
-                generateBtn.disabled = true;
-                generateBtn.classList.add('loading');
-                generateBtn.innerHTML = '<div class="loading-spinner"></div><span>요청 처리 중...</span>';
-
-                showStatus('서버에 생성 요청을 보내는 중...', 'info');
-                progressBar.style.width = '0%';
-                progressText.textContent = '0%';
-                progressSection.style.display = 'none';
-                placeholderSection.style.display = 'none';
-                resultSection.style.display = 'none';
-
-                try {
-                    // 선택된 워크플로우 확인
-                    if (!currentWorkflow) {
-                        showStatus('워크플로우를 먼저 선택해주세요.', 'error');
-                        generateBtn.disabled = false;
-                        generateBtn.classList.remove('loading');
-                        generateBtn.innerHTML = '<i class="fas fa-sparkles"></i><span>이미지 생성하기</span>';
-                        placeholderSection.style.display = 'block';
-                        return;
-                    }
-
-                    // 요청 데이터 구성 (seed 값이 있으면 포함)
-                    const requestData = {
-                        prompt_a: promptA,
-                        prompt_b: promptB,
-                        negative_prompt: negativePrompt,
-                        workflow_id: currentWorkflow.id
-                    };
-
-                    // seed 값이 입력되었으면 추가 (빈 값이면 제외하여 자동 랜덤 생성)
-                    if (seedInput !== '') {
-                        requestData.seed = parseInt(seedInput);
-                    }
-
-                    // FastAPI 서버의 API 엔드포인트 호출
-                    const response = await fetch('/api/v1/generate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestData)
-                    });
-
-                    const result = await response.json();
-
-                    if (response.ok) {
-                        showStatus(result.message, 'info');
-                    } else {
-                        throw new Error(result.detail || '알 수 없는 오류가 발생했습니다.');
-                    }
-
-                } catch (error) {
-                    showStatus(`❌ 요청 실패: ${error.message}`, 'error');
-                    generateBtn.disabled = false;
-                    generateBtn.classList.remove('loading');
-                    generateBtn.innerHTML = '<i class="fas fa-sparkles"></i><span>이미지 생성하기</span>';
-                    placeholderSection.style.display = 'block';
-                }
-            });
-
-            // --- 폼 입력 개선 ---
-            const textareas = document.querySelectorAll('.form-input');
-
-            textareas.forEach(textarea => {
-                // Auto-resize 기능
-                textarea.addEventListener('input', function() {
-                    this.style.height = 'auto';
-                    this.style.height = (this.scrollHeight) + 'px';
-                });
-
-                // 초기 높이 설정
-                textarea.style.height = textarea.scrollHeight + 'px';
-
-                // 포커스 시 부모 그룹 강조
-                textarea.addEventListener('focus', function() {
-                    this.parentElement.classList.add('focused');
-                });
-
-                textarea.addEventListener('blur', function() {
-                    this.parentElement.classList.remove('focused');
-                });
-            });
-
-            // --- 키보드 단축키 ---
-            document.addEventListener('keydown', function(e) {
-                // Ctrl+Enter 또는 Cmd+Enter로 생성
-                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                    e.preventDefault();
-                    if (!generateBtn.disabled) {
-                        generateBtn.click();
-                    }
-                }
-            });
-
-            // --- 로딩 애니메이션 최적화 ---
-            let loadingInterval;
-            ws.onmessage = function(event) {
-                // 기존 로딩 인터벌 정리
-                if (loadingInterval) {
-                    clearInterval(loadingInterval);
-                }
-
-                const data = JSON.parse(event.data);
-                console.log("📥 서버로부터 메시지 수신:", data);
-
-                // 진행률 업데이트
-                if (data.progress !== undefined) {
-                    const percent = Math.min(data.progress, 100).toFixed(1);
-                    progressBar.style.width = percent + '%';
-                    progressText.textContent = percent + '% 완료';
-
-                    // 진행률이 0이 아니면 프로그레스 바 표시
-                    if (percent > 0) {
-                        progressSection.style.display = 'block';
-                    }
-                }
-
-                // 상태 메시지 업데이트
-                if (data.status === 'running') {
-                    showStatus('AI가 창의적으로 이미지를 생성하고 있습니다...', 'info');
-                    progressSection.style.display = 'block';
-                    placeholderSection.style.display = 'none';
-                    resultSection.style.display = 'none';
-                    generateBtn.classList.add('loading');
-                    generateBtn.innerHTML = '<div class="loading-spinner"></div><span>AI 생성 중...</span>';
-
-                    // 로딩 애니메이션 시작
-                    let dots = 0;
-                    loadingInterval = setInterval(() => {
-                        dots = (dots + 1) % 4;
-                        const dotString = '.'.repeat(dots);
-                        generateBtn.querySelector('span').textContent = `AI 생성 중${dotString}`;
-                    }, 500);
-                }
-
-                // 작업 완료 처리
-                if (data.status === 'complete') {
-                    if (loadingInterval) {
-                        clearInterval(loadingInterval);
-                    }
-                    showStatus('🎉 이미지 생성이 성공적으로 완료되었습니다!', 'success');
-                    generateBtn.disabled = false;
-                    generateBtn.classList.remove('loading');
-                    generateBtn.innerHTML = '<i class="fas fa-sparkles"></i><span>새 이미지 생성하기</span>';
-
-                    // 이미지 경로가 있으면 결과 이미지 표시
-                    if (data.image_path) {
-                        // 이미지 로드 완료까지 기다렸다가 표시
-                        const img = new Image();
-                        img.onload = function() {
-                            resultImage.src = `${data.image_path}?t=${new Date().getTime()}`;
-                            resultImage.style.display = 'block';
-                            placeholderSection.style.display = 'none';
-                            resultSection.style.display = 'block';
-
-                            // 성공 애니메이션
-                            resultSection.style.animation = 'fadeInUp 0.5s ease-out';
-                        };
-                        img.src = `${data.image_path}?t=${new Date().getTime()}`;
-                    }
-                }
-
-                // 에러 처리
-                if (data.error) {
-                    if (loadingInterval) {
-                        clearInterval(loadingInterval);
-                    }
-                    showStatus(`❌ 오류 발생: ${data.error}`, 'error');
-                    generateBtn.disabled = false;
-                    generateBtn.classList.remove('loading');
-                    generateBtn.innerHTML = '<i class="fas fa-sparkles"></i><span>이미지 생성하기</span>';
-                    progressSection.style.display = 'none';
-                    placeholderSection.style.display = 'block';
-                }
+            const requestData = {
+                prompt: ui.promptInput.value.trim(),
+                negative_prompt: ui.negativePromptInput.value.trim(),
+                width: width,
+                height: height,
+                workflow_id: currentWorkflow.id,
+                seed: ui.seedInput.value ? parseInt(ui.seedInput.value, 10) : null
             };
 
-            // --- Initialize Application ---
-            // 워크플로우 로드
-            loadWorkflows();
+            try {
+                const response = await fetch('/api/v1/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestData)
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.detail || 'Unknown error');
+                showStatus(result.message, 'info');
+            } catch (error) {
+                showStatus(`❌ 요청 실패: ${error.message}`, 'error');
+                setGenerateButtonState(false, '이미지 생성하기');
+            }
+        }
 
+        function setGenerateButtonState(isLoading, text) {
+            ui.generateBtn.disabled = isLoading;
+            ui.generateBtn.innerHTML = isLoading ? `<div class="loading-spinner"></div><span>${text}</span>` : `<i class="fas fa-sparkles"></i><span>${text}</span>`;
+        }
 
-            // --- CSS 애니메이션 추가 ---
-            const style = document.createElement('style');
-            style.textContent = `
-                @keyframes fadeInUp {
-                    from {
-                        opacity: 0;
-                        transform: translateY(20px);
-                    }
-                    to {
-                        opacity: 1;
-                        transform: translateY(0);
-                    }
-                }
+        function showStatus(message, type = 'info') {
+            ui.statusMessage.textContent = message;
+            ui.statusContainer.className = `status-container status-${type}`;
+            ui.statusContainer.style.display = 'block';
+        }
 
-                .form-group.focused .form-label {
-                    color: var(--primary-600);
-                }
+        function updateProgress(percent) {
+            ui.progressSection.style.display = 'block';
+            ui.progressBar.style.width = `${percent}%`;
+            ui.progressText.textContent = `${Math.round(percent)}%`;
+        }
 
-                [data-theme="dark"] .form-group.focused .form-label {
-                    color: var(--primary-400);
-                }
+        function displayImage(imagePath) {
+            ui.resultImage.src = `${imagePath}?t=${new Date().getTime()}`;
+            ui.resultImage.onload = () => {
+                ui.placeholderSection.style.display = 'none';
+                ui.resultSection.style.display = 'block';
+            };
+        }
 
-                .form-hint {
-                    display: block;
-                    margin-top: 0.25rem;
-                    font-size: 0.875rem;
-                    color: var(--text-secondary);
-                }
-
-                [data-theme="dark"] .form-hint {
-                    color: var(--text-secondary-dark);
-                }
-            `;
-            document.head.appendChild(style);
-        });
+        document.querySelectorAll('textarea.form-input').forEach(t => t.addEventListener('input', () => { t.style.height = 'auto'; t.style.height = `${t.scrollHeight}px`; }));
+        loadWorkflows();
+    });
     </script>
     <script src="/static/js/prompt_translate.js"></script>
 </body>
 </html>
+

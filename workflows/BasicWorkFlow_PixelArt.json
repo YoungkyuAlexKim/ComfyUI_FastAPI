@@ -1,0 +1,291 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 626069369030591,
+      "steps": 30,
+      "cfg": 3.5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "ddim_uniform",
+      "denoise": 1,
+      "model": [
+        "14",
+        0
+      ],
+      "positive": [
+        "23",
+        0
+      ],
+      "negative": [
+        "23",
+        1
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "4": {
+    "inputs": {
+      "ckpt_name": "novaPixelsXL_v10\\novaPixelsXL_v10.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "체크포인트 로드"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 800,
+      "height": 800,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "빈 잠재 이미지"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "1girl, solo, standing, full_body,  solid_oval_eyes, chibi,\nsimple background, \nmasterpiece, best quality, amazing quality, pixel_art, ",
+      "clip": [
+        "14",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP 텍스트 인코딩 (Positive)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "bad quality,worst quality,worst detail,sketch,censor, ",
+      "clip": [
+        "14",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP 텍스트 인코딩 (Negative)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "20",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE 디코드"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "2025-09-18/ComfyUI_2025-09-18",
+      "images": [
+        "26",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "이미지 저장"
+    }
+  },
+  "14": {
+    "inputs": {
+      "lora_name": "Characters\\Illustrious\\Sui illustxl.safetensors",
+      "strength_model": 0,
+      "strength_clip": 0,
+      "prompt": "pointy ears, elf, blonde hair, long hair, green eyes, colored eyelashes, orange hair, forehead jewel, low twintails, french braid, gradient hair, red gemstone,\n\nshoulder armor, turtleneck, black shirt, long sleeves, yellow dress, short dress, pauldrons, black pantyhose, turtleneck, black shirt, long sleeves, yellow dress, short dress, black pantyhose, black hooded, hooded jacket, zipper, green panties, green dress, off-shoulder dress, see-through, long sleeves, short dress",
+      "example": "notes",
+      "model": [
+        "4",
+        0
+      ],
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "LoraLoader|pysssss",
+    "_meta": {
+      "title": "Character Lora Loader 🐍"
+    }
+  },
+  "16": {
+    "inputs": {
+      "model_name": "RealESRGAN_x2plus.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "업스케일 모델 로드"
+    }
+  },
+  "17": {
+    "inputs": {
+      "upscale_model": [
+        "16",
+        0
+      ],
+      "image": [
+        "22",
+        0
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "모델을 사용한 이미지 확대"
+    }
+  },
+  "18": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 0.75,
+      "image": [
+        "17",
+        0
+      ]
+    },
+    "class_type": "ImageScaleBy",
+    "_meta": {
+      "title": "이미지 확대 비율"
+    }
+  },
+  "19": {
+    "inputs": {
+      "pixels": [
+        "18",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE 인코드"
+    }
+  },
+  "20": {
+    "inputs": {
+      "seed": 0,
+      "steps": 30,
+      "cfg": 3.5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "ddim_uniform",
+      "denoise": 0.4,
+      "model": [
+        "14",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "22": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE 디코드"
+    }
+  },
+  "23": {
+    "inputs": {
+      "strength": 0,
+      "start_percent": 0,
+      "end_percent": 0.33,
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "control_net": [
+        "25",
+        0
+      ],
+      "image": [
+        "28",
+        0
+      ]
+    },
+    "class_type": "ControlNetApplyAdvanced",
+    "_meta": {
+      "title": "컨트롤넷 적용"
+    }
+  },
+  "25": {
+    "inputs": {
+      "control_net_name": "controlnetxlCNXL_xinsirScribbleAnime.safetensors"
+    },
+    "class_type": "ControlNetLoader",
+    "_meta": {
+      "title": "컨트롤넷 모델 로드(Scribble)"
+    }
+  },
+  "26": {
+    "inputs": {
+      "measurement": "percentage",
+      "width": 25,
+      "height": 25,
+      "fit": "crop",
+      "method": "nearest-exact",
+      "image": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "Image Resize (rgthree)",
+    "_meta": {
+      "title": "Image Resize (rgthree)"
+    }
+  },
+  "28": {
+    "inputs": {
+      "image": "scribble0.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "이미지 로드"
+    }
+  }
+}
