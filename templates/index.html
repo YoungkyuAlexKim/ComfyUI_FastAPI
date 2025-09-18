@@ -131,6 +131,15 @@
                             </div>
                         </div>
                     </div>
+                    <div class="gallery-section" id="gallery-section" data-skeleton-count="12">
+                        <div class="gallery-card">
+                            <h3 class="gallery-title"><i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지</h3>
+                            <div class="gallery-grid" id="gallery-grid"></div>
+                            <button class="gallery-load-more" id="gallery-load-more" style="display:none;">
+                                <i class="fas fa-chevron-down"></i> 더 보기
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </main>
         </div>
@@ -343,6 +352,208 @@
             };
         }
 
+        // --- Gallery (History) ---
+        const gallery = {
+            grid: document.getElementById('gallery-grid'),
+            loadMoreBtn: document.getElementById('gallery-load-more')
+        };
+        let galleryItems = [];
+        let nextCursor = null;
+        let galleryLoading = false;
+        let currentLightboxIndex = -1;
+
+        function renderSkeleton(count) {
+            const configured = parseInt(document.getElementById('gallery-section').dataset.skeletonCount || '12', 10);
+            const n = Number.isFinite(configured) ? configured : (Number.isFinite(count) ? count : 12);
+            gallery.grid.innerHTML = '';
+            const frag = document.createDocumentFragment();
+            for (let i = 0; i < n; i++) {
+                const sk = document.createElement('div');
+                sk.className = 'skeleton-item';
+                frag.appendChild(sk);
+            }
+            gallery.grid.appendChild(frag);
+        }
+
+        async function fetchGallery(initial = false) {
+            if (galleryLoading) return;
+            galleryLoading = true;
+            renderSkeleton(12);
+            try {
+                const params = new URLSearchParams();
+                params.set('page', String(currentPage));
+                params.set('size', '24');
+                const res = await fetch(`/api/v1/images?${params.toString()}`);
+                if (!res.ok) throw new Error(`Failed to fetch images (${res.status})`);
+                const data = await res.json();
+                const items = Array.isArray(data.items) ? data.items : [];
+                renderGallery(items, true);
+                renderPagination(data.page, data.total_pages);
+                gallery.loadMoreBtn.style.display = 'none';
+            } catch (e) {
+                console.error(e);
+            } finally {
+                galleryLoading = false;
+            }
+        }
+
+        function renderGallery(items) {
+            galleryItems = [];
+            gallery.grid.innerHTML = '';
+            const startIndex = galleryItems.length;
+            galleryItems = items.slice();
+            const frag = document.createDocumentFragment();
+            items.forEach((it, idx) => {
+                const i = startIndex + idx;
+                const a = document.createElement('button');
+                a.className = 'gallery-item';
+                a.setAttribute('aria-label', '이미지 보기');
+                const img = document.createElement('img');
+                img.className = 'gallery-thumb';
+                img.src = it.thumb_url || it.url;
+                img.alt = it?.meta?.prompt ? it.meta.prompt : '생성 이미지';
+                a.appendChild(img);
+                // trash icon
+                const trash = document.createElement('div');
+                trash.className = 'gallery-trash';
+                trash.innerHTML = '<i class="fas fa-trash"></i>';
+                trash.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    openDeleteConfirm(it.id);
+                });
+                a.appendChild(trash);
+                a.addEventListener('click', () => openLightboxAt(i));
+                frag.appendChild(a);
+            });
+            gallery.grid.appendChild(frag);
+        }
+
+        // Pagination UI
+        let currentPage = 1;
+        const pagination = document.createElement('div');
+        pagination.className = 'gallery-pagination';
+        document.getElementById('gallery-section').appendChild(pagination);
+
+        function renderPagination(page, totalPages) {
+            currentPage = page;
+            pagination.innerHTML = '';
+            const makeBtn = (label, disabled, onClick) => {
+                const btn = document.createElement('button');
+                btn.className = 'page-btn';
+                btn.textContent = label;
+                btn.disabled = disabled;
+                if (onClick) btn.addEventListener('click', onClick);
+                return btn;
+            };
+            const first = makeBtn('처음', page === 1, () => goToPage(1));
+            const prev = makeBtn('이전', page === 1, () => goToPage(page - 1));
+            const next = makeBtn('다음', page >= totalPages, () => goToPage(page + 1));
+            const last = makeBtn('마지막', page >= totalPages, () => goToPage(totalPages));
+            pagination.appendChild(first);
+            pagination.appendChild(prev);
+            // simple number window
+            const windowSize = 5;
+            const start = Math.max(1, page - Math.floor(windowSize/2));
+            const end = Math.min(totalPages, start + windowSize - 1);
+            for (let p = start; p <= end; p++) {
+                const num = makeBtn(String(p), p === page, () => goToPage(p));
+                if (p === page) num.classList.add('active');
+                pagination.appendChild(num);
+            }
+            pagination.appendChild(next);
+            pagination.appendChild(last);
+        }
+
+        function goToPage(page) {
+            if (page < 1) return;
+            currentPage = page;
+            fetchGallery(true);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function openLightboxAt(index) {
+            if (index < 0 || index >= galleryItems.length) return;
+            currentLightboxIndex = index;
+            const item = galleryItems[index];
+            openLightbox(item.url, item?.meta?.prompt || '확대된 이미지');
+        }
+
+        function gotoPrev() {
+            if (currentLightboxIndex <= 0) return;
+            openLightboxAt(currentLightboxIndex - 1);
+        }
+
+        function gotoNext() {
+            if (currentLightboxIndex < 0) return;
+            if (currentLightboxIndex >= galleryItems.length - 1) return;
+            openLightboxAt(currentLightboxIndex + 1);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (!lightbox.classList.contains('open')) return;
+            if (e.key === 'ArrowLeft') gotoPrev();
+            if (e.key === 'ArrowRight') gotoNext();
+        });
+
+        // After image generation completes, refresh gallery head
+        const _displayImageOriginal = displayImage;
+        displayImage = function(imagePath) {
+            _displayImageOriginal(imagePath);
+            goToPage(1);
+        };
+
+        // Confirm modal for deletion
+        function ensureConfirmModal() {
+            let ov = document.getElementById('confirm-overlay');
+            if (ov) return ov;
+            ov = document.createElement('div');
+            ov.className = 'confirm-overlay';
+            ov.id = 'confirm-overlay';
+            ov.innerHTML = `
+                <div class="confirm-card">
+                    <h3 class="confirm-title"><i class="fas fa-trash"></i> 이미지 삭제</h3>
+                    <p class="confirm-text">이 이미지를 휴지통으로 이동할까요? (나중에 복구 가능)</p>
+                    <div class="confirm-actions">
+                        <button class="btn-ghost" id="confirm-cancel">취소</button>
+                        <button class="btn-danger" id="confirm-ok">삭제</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(ov);
+            ov.addEventListener('click', (e) => { if (e.target === ov) closeConfirm(); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ov.classList.contains('open')) closeConfirm(); });
+            return ov;
+        }
+
+        let pendingDeleteId = null;
+        function openDeleteConfirm(imageId) {
+            pendingDeleteId = imageId;
+            const ov = ensureConfirmModal();
+            ov.classList.add('open');
+            ov.setAttribute('aria-hidden', 'false');
+            const cancelBtn = document.getElementById('confirm-cancel');
+            const okBtn = document.getElementById('confirm-ok');
+            cancelBtn.onclick = closeConfirm;
+            okBtn.onclick = doDelete;
+        }
+        function closeConfirm() {
+            const ov = document.getElementById('confirm-overlay');
+            if (ov) { ov.classList.remove('open'); ov.setAttribute('aria-hidden', 'true'); }
+            pendingDeleteId = null;
+        }
+        async function doDelete() {
+            if (!pendingDeleteId) return;
+            try {
+                const res = await fetch(`/api/v1/images/${pendingDeleteId}/delete`, { method: 'POST' });
+                if (!res.ok) throw new Error('삭제 실패');
+                closeConfirm();
+                // reload current page
+                fetchGallery(true);
+            } catch (e) {
+                console.error(e);
+                closeConfirm();
+            }
+        }
+
         // --- Lightbox Logic ---
         const lightbox = document.getElementById('image-lightbox');
         const lightboxImage = document.getElementById('lightbox-image');
@@ -403,6 +614,8 @@
         });
 
         loadWorkflows();
+        // 초기 진입 시 갤러리 즉시 로드
+        fetchGallery(true);
     });
     </script>
     

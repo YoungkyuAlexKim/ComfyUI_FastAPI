@@ -151,6 +151,9 @@
     position: sticky;
     top: var(--space-lg);
 }
+.gallery-section { /* 갤러리를 카드 밖으로 뺀 만큼 별도 마진 */
+    margin-top: var(--space-lg);
+}
 
 
 .card-header {

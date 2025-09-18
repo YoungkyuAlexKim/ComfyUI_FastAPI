@@ -30,4 +30,9 @@
     --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
     --transition-fast: 0.15s ease-in-out;
     --transition-normal: 0.3s ease-in-out;
+
+    /* Skeleton config */
+    --skeleton-color-1: var(--neutral-100);
+    --skeleton-color-2: var(--neutral-200);
+    --skeleton-speed: 1.2s;
 }

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - ComfyUI FastAPI</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/css/styles.css?v=20250918_01" rel="stylesheet">
+    <style>
+        .admin-layout { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+        .admin-grid { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+        .admin-card { background: #fff; border: 1px solid var(--neutral-200); border-radius: var(--radius-xl); padding: 16px; }
+        .admin-users { max-height: 70vh; overflow: auto; }
+        .admin-user { padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+        .admin-user:hover { background: var(--neutral-100); }
+        .admin-user.active { background: var(--primary-50); border: 1px solid var(--primary-200); }
+        .admin-toolbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .admin-gallery { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+        @media (max-width: 1024px){ .admin-gallery{ grid-template-columns: repeat(4,1fr);} }
+        @media (max-width: 768px){ .admin-gallery{ grid-template-columns: repeat(3,1fr);} }
+        @media (max-width: 480px){ .admin-gallery{ grid-template-columns: repeat(2,1fr);} }
+        .admin-thumb { position: relative; aspect-ratio: 1/1; border-radius: 10px; overflow: hidden; background: var(--neutral-100); display: flex; align-items: center; justify-content: center; }
+        .admin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .admin-actions { display: flex; gap: 6px; margin-top: 6px; }
+        .btn { padding: 6px 10px; border: 1px solid var(--neutral-300); background: #fff; border-radius: 8px; cursor: pointer; }
+        .btn.danger { border-color: #ef4444; color: #ef4444; }
+        .btn.success { border-color: #10b981; color: #10b981; }
+        .pagination { display:flex; gap:8px; justify-content:center; margin-top:12px; }
+        .status-badge { position:absolute; top:8px; left:8px; padding: 3px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700; color: #fff; box-shadow: var(--shadow-lg); letter-spacing: .2px; backdrop-filter: saturate(120%) blur(2px); }
+        .badge-active { background: rgba(16, 185, 129, .9); border: 1px solid rgba(16, 185, 129, .3); }
+        .badge-trash { background: rgba(239, 68, 68, .9); border: 1px solid rgba(239, 68, 68, .3); }
+    </style>
+</head>
+<body>
+    <div class="admin-layout">
+        <h1 style="margin-bottom:12px;">관리자 페이지</h1>
+        <div class="admin-grid">
+            <div class="admin-card admin-users">
+                <h3 style="margin-top:0;">사용자 목록</h3>
+                <div id="user-list"></div>
+            </div>
+            <div class="admin-card">
+                <div class="admin-toolbar">
+                    <div>
+                        <strong id="current-user-label">사용자 선택 안 됨</strong>
+                    </div>
+                    <div>
+                        <select id="filter-select">
+                            <option value="all">전체</option>
+                            <option value="active">활성</option>
+                            <option value="trash">휴지통</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                    <label>From <input type="date" id="from-date"></label>
+                    <label>To <input type="date" id="to-date"></label>
+                    <button class="btn" id="apply-date">적용</button>
+                    <div style="flex:1"></div>
+                    <button class="btn danger" id="purge-trash">휴지통 비우기</button>
+                </div>
+                <div class="admin-gallery" id="admin-gallery"></div>
+                <div class="pagination" id="admin-pagination"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const userList = document.getElementById('user-list');
+        const gallery = document.getElementById('admin-gallery');
+        const pager = document.getElementById('admin-pagination');
+        const currentUserLabel = document.getElementById('current-user-label');
+        const filterSelect = document.getElementById('filter-select');
+
+        let currentUser = null;
+        let page = 1;
+        let include = 'all';
+        let fromDate = '';
+        let toDate = '';
+
+        async function loadUsers(){
+            const res = await fetch('/api/v1/admin/users');
+            const data = await res.json();
+            userList.innerHTML = '';
+            data.users.forEach(u => {
+                const div = document.createElement('div');
+                div.className = 'admin-user';
+                div.textContent = u;
+                div.addEventListener('click', () => selectUser(u, div));
+                userList.appendChild(div);
+            });
+        }
+
+        function selectUser(u, el){
+            currentUser = u;
+            page = 1;
+            currentUserLabel.textContent = `선택된 사용자: ${u}`;
+            document.querySelectorAll('.admin-user').forEach(e => e.classList.remove('active'));
+            el.classList.add('active');
+            loadImages();
+        }
+
+        async function loadImages(){
+            if (!currentUser) { gallery.innerHTML = ''; pager.innerHTML=''; return; }
+            const params = new URLSearchParams({ user_id: currentUser, page: String(page), size: '24', include });
+            if (fromDate) params.set('from_date', fromDate);
+            if (toDate) params.set('to_date', toDate);
+            const res = await fetch(`/api/v1/admin/images?${params.toString()}`);
+            const data = await res.json();
+            renderImages(data.items);
+            renderPager(data.page, data.total_pages);
+        }
+
+        function renderImages(items){
+            gallery.innerHTML = '';
+            items.forEach(it => {
+                const wrap = document.createElement('div');
+                const thumb = document.createElement('div');
+                thumb.className = 'admin-thumb';
+                const img = document.createElement('img');
+                img.src = it.thumb_url || it.url;
+                img.alt = it.id;
+                thumb.appendChild(img);
+                // status badge
+                const badge = document.createElement('span');
+                const isActive = (it.status === 'active');
+                badge.className = 'status-badge ' + (isActive ? 'badge-active' : 'badge-trash');
+                badge.textContent = isActive ? '활성' : '휴지통';
+                thumb.appendChild(badge);
+                const actions = document.createElement('div');
+                actions.className = 'admin-actions';
+                if (isActive) {
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'btn danger';
+                    delBtn.textContent = '휴지통으로';
+                    delBtn.addEventListener('click', () => updateImage(it.id, 'delete'));
+                    actions.appendChild(delBtn);
+                } else {
+                    const resBtn = document.createElement('button');
+                    resBtn.className = 'btn success';
+                    resBtn.textContent = '복구';
+                    resBtn.addEventListener('click', () => updateImage(it.id, 'restore'));
+                    actions.appendChild(resBtn);
+                }
+                wrap.appendChild(thumb);
+                wrap.appendChild(actions);
+                gallery.appendChild(wrap);
+            });
+        }
+
+        function renderPager(p, total){
+            pager.innerHTML = '';
+            const makeBtn = (label, disabled, onClick) => {
+                const b = document.createElement('button');
+                b.className = 'btn';
+                b.textContent = label;
+                b.disabled = disabled;
+                if (onClick) b.addEventListener('click', onClick);
+                return b;
+            };
+            pager.appendChild(makeBtn('처음', p===1, ()=>{page=1;loadImages();}));
+            pager.appendChild(makeBtn('이전', p===1, ()=>{page=Math.max(1,p-1);loadImages();}));
+            pager.appendChild(makeBtn('다음', p===total, ()=>{page=Math.min(total,p+1);loadImages();}));
+            pager.appendChild(makeBtn('마지막', p===total, ()=>{page=total;loadImages();}));
+        }
+
+        async function updateImage(id, action){
+            if (!currentUser) return;
+            const url = action === 'delete' ? `/api/v1/admin/images/${id}/delete` : `/api/v1/admin/images/${id}/restore`;
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ user_id: currentUser }) });
+            if (res.ok){ loadImages(); }
+        }
+
+        filterSelect.addEventListener('change', () => { include = filterSelect.value; page = 1; loadImages(); });
+
+        document.getElementById('apply-date').addEventListener('click', () => {
+            fromDate = document.getElementById('from-date').value;
+            toDate = document.getElementById('to-date').value;
+            page = 1;
+            loadImages();
+        });
+
+        document.getElementById('purge-trash').addEventListener('click', async () => {
+            if (!currentUser) return;
+            if (!confirm('휴지통을 비우시겠습니까? 복구할 수 없습니다.')) return;
+            const res = await fetch('/api/v1/admin/purge-trash', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user_id: currentUser }) });
+            if (res.ok) { loadImages(); }
+        });
+
+        loadUsers();
+    });
+    </script>
+</body>
+</html>
+
