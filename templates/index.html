@@ -6,23 +6,21 @@
     <title>ComfyUI FastAPI - AI 이미지 생성</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="/static/css/styles.css?v=20240918_09" rel="stylesheet">
+    <link href="/static/css/styles.css?v=20240918_11" rel="stylesheet">
 </head>
 <body>
     <div class="app-container">
-        <header class="app-header">
-            <div class="header-content">
-                <h1 class="app-title"><i class="fas fa-palette"></i> ComfyUI AI 생성기</h1>
-            </div>
-        </header>
-
         <div class="app-layout">
             <aside class="sidebar">
                 <div class="sidebar-header">
-                    <h3 class="sidebar-title"><i class="fas fa-cogs"></i> 워크플로우</h3>
-                    <p class="sidebar-subtitle">사용할 워크플로우를 선택하세요</p>
+                    <h1 class="app-title"><i class="fas fa-palette"></i> ComfyUI AI 생성기</h1>
                 </div>
-                <div class="workflow-list" id="workflow-list"></div>
+                <div class="workflow-section">
+                    <div class="workflow-section-header">
+                        <h3 class="sidebar-title"><i class="fas fa-cogs"></i> 워크플로우</h3>
+                    </div>
+                    <div class="workflow-list" id="workflow-list"></div>
+                </div>
                 <div class="sidebar-footer">
                     <div class="current-workflow" id="current-workflow">
                         <small class="workflow-info">
@@ -36,8 +34,10 @@
                 <div class="input-panel">
                     <div class="input-card">
                         <div class="card-header">
-                            <h2 class="card-title"><i class="fas fa-magic"></i> AI 이미지 생성</h2>
-                            <p class="card-subtitle">ComfyUI를 활용한 고품질 이미지 생성</p>
+                            <div class="workflow-info-header">
+                                <h2 class="workflow-name-display" id="workflow-name-display">워크플로우를 선택해주세요</h2>
+                                <p class="workflow-description-display" id="workflow-description-display">왼쪽에서 사용할 워크플로우를 선택하면 여기에 정보가 표시됩니다</p>
+                            </div>
                         </div>
                         <div class="card-content">
                             <div class="form-grid">
@@ -74,23 +74,23 @@
                                     </div>
                                 </div>
                             </div>
-                            <button class="generate-btn" id="generate-btn">
-                                <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
-                            </button>
-                            <div class="progress-section" id="progress-section" style="display: none;">
-                                <div class="progress-container"><div class="progress-bar" id="progress-bar"></div></div>
-                                <div class="progress-text" id="progress-text">0%</div>
-                            </div>
                             <div class="status-container" id="status-container" style="display: none;"><p id="status-message"></p></div>
                         </div>
                     </div>
                 </div>
                 <div class="output-panel">
-                    <div class="seed-section">
+                    <div class="control-section">
+                        <div class="seed-section">
                         <div class="seed-input-group">
-                            <label class="seed-label" for="seed"><i class="fas fa-dice"></i> 시드값</label>
-                            <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0">
-                            <small class="seed-hint">동일 이미지 재생성용</small>
+                            <div class="seed-input-wrapper">
+                                <label class="seed-label" for="seed"><i class="fas fa-dice"></i> 시드값</label>
+                                <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0">
+                                <small class="seed-hint">동일 이미지 재생성용</small>
+                            </div>
+                            <button class="generate-btn" id="generate-btn">
+                                <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
+                            </button>
+                        </div>
                         </div>
                     </div>
                     <div class="output-card">
@@ -105,11 +105,17 @@
                         </div>
                         <div class="result-section" id="result-section" style="display: none;">
                              <div class="result-card">
-                                <h3 class="result-title"><i class="fas fa-image"></i> 생성된 이미지</h3>
-                                <div class="image-container">
-                                    <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image">
+                                <div class="result-content">
+                                    <h3 class="result-title"><i class="fas fa-image"></i> 생성된 이미지</h3>
+                                    <div class="image-container">
+                                        <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image">
+                                    </div>
+                                    <p class="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
                                 </div>
-                                <p class="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
+                                <div class="progress-section" id="progress-section" style="display: none;">
+                                    <div class="progress-container"><div class="progress-bar" id="progress-bar"></div></div>
+                                    <div class="progress-text" id="progress-text">0%</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -119,16 +125,20 @@
     </div>
 
     <script id="workflows-sizes-data" type="application/json">{{ workflows_sizes_json | safe }}</script>
+    <script id="workflow-default-prompts-data" type="application/json">{{ workflow_default_prompts_json | safe }}</script>
 
     <script>
     document.addEventListener("DOMContentLoaded", function() {
         let currentWorkflow = null;
         let selectedAspectRatio = 'square';
         const workflowsSizes = JSON.parse(document.getElementById('workflows-sizes-data').textContent);
+        const workflowDefaultPrompts = JSON.parse(document.getElementById('workflow-default-prompts-data').textContent);
 
         const ui = {
             workflowList: document.getElementById('workflow-list'),
             selectedWorkflowName: document.getElementById('selected-workflow-name'),
+            workflowNameDisplay: document.getElementById('workflow-name-display'),
+            workflowDescriptionDisplay: document.getElementById('workflow-description-display'),
             generateBtn: document.getElementById('generate-btn'),
             userPromptInput: document.getElementById('user_prompt'),
             stylePromptInput: document.getElementById('style_prompt'),
@@ -202,6 +212,16 @@
                 item.classList.toggle('selected', item.dataset.workflowId === workflow.id);
             });
             ui.selectedWorkflowName.textContent = workflow.name;
+
+            // 메인 헤더 업데이트
+            ui.workflowNameDisplay.textContent = workflow.name;
+            ui.workflowNameDisplay.classList.add('selected');
+            ui.workflowDescriptionDisplay.textContent = workflow.description || '선택된 워크플로우로 고품질 이미지를 생성하세요';
+
+            // 워크플로우별 기본 프롬프트 설정
+            const defaultPrompt = workflowDefaultPrompts[workflow.id] || '';
+            ui.userPromptInput.value = defaultPrompt;
+            autoResizeTextarea(ui.userPromptInput);
 
             ui.stylePromptInput.value = workflow.style_prompt;
             ui.negativePromptInput.value = workflow.negative_prompt;

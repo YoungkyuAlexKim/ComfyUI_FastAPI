@@ -8,6 +8,13 @@ import time
 # --- 1. 워크플로우별 설정 ---
 WORKFLOW_CONFIGS = {
     "BasicWorkFlow_PixelArt": {
+        # 표시용 정보 (사용자가 수정 가능)
+        "display_name": "픽셀 아트",
+        "description": "레트로 감성의 픽셀 아트 스타일 이미지를 생성합니다",
+        
+        # 기본 사용자 프롬프트 (워크플로우별 고유)
+        "default_user_prompt": "a girl in a hanbok",
+        
         # 노드 ID
         "prompt_node": "6",
         "negative_prompt_node": "7",
@@ -27,12 +34,31 @@ WORKFLOW_CONFIGS = {
             "landscape": {"width": 1024, "height": 576}, # 16:9 비율
             "portrait": {"width": 576, "height": 1024}  # 9:16 비율
         }
-    }
+    },
+    
+    # 새 워크플로우 추가 예시 (파일이 있을 때 활성화)
+    # "AnotherWorkflow": {
+    #     "display_name": "리얼리스틱 포트레이트",
+    #     "description": "사실적인 인물 사진을 생성합니다",
+    #     "default_user_prompt": "beautiful woman, professional portrait",  # 워크플로우별 기본 프롬프트
+    #     "prompt_node": "6",
+    #     "negative_prompt_node": "7", 
+    #     "seed_node": "3",
+    #     "latent_image_node": "5",
+    #     "style_prompt": "photorealistic, high quality, detailed",
+    #     "negative_prompt": "cartoon, anime, low quality",
+    #     "recommended_prompt": "portrait, professional lighting",
+    #     "sizes": {
+    #         "square": {"width": 1024, "height": 1024},
+    #         "landscape": {"width": 1344, "height": 768},
+    #         "portrait": {"width": 768, "height": 1344}
+    #     }
+    # }
 }
 
 # --- 2. 기본 값 ---
 DEFAULT_VALUES = {
-    "user_prompt": "a girl in a hanbok",
+    # user_prompt는 워크플로우별로 개별 설정됨 (제거)
     "aspect_ratio": "square", # width, height 대신 aspect_ratio 사용
     # 기본 워크플로우의 고정/추천 프롬프트를 기본값으로 사용
     "style_prompt": WORKFLOW_CONFIGS["BasicWorkFlow_PixelArt"]["style_prompt"],
@@ -97,6 +123,12 @@ def get_prompt_overrides(
         
     return overrides
 
+def get_workflow_default_prompt(workflow_id: str) -> str:
+    """특정 워크플로우의 기본 사용자 프롬프트를 반환합니다."""
+    if workflow_id in WORKFLOW_CONFIGS:
+        return WORKFLOW_CONFIGS[workflow_id].get("default_user_prompt", "")
+    return ""
+
 def get_default_values() -> Dict[str, Any]:
     """API와 HTML에서 공통으로 사용할 기본 값들을 반환합니다."""
     # width, height를 제거하고, sizes 딕셔너리를 추가합니다.
@@ -105,6 +137,12 @@ def get_default_values() -> Dict[str, Any]:
     # 각 워크플로우의 사이즈 정보를 기본값에 포함시켜 프론트엔드로 전달
     defaults["workflows_sizes"] = {
         wf_id: wf_config.get("sizes", {})
+        for wf_id, wf_config in WORKFLOW_CONFIGS.items()
+    }
+    
+    # 워크플로우별 기본 프롬프트 정보 추가
+    defaults["workflow_default_prompts"] = {
+        wf_id: wf_config.get("default_user_prompt", "")
         for wf_id, wf_config in WORKFLOW_CONFIGS.items()
     }
     

@@ -10,7 +10,7 @@ import asyncio
 import json
 
 from .comfy_client import ComfyUIClient
-from .config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, get_default_values
+from .config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, get_default_values, get_workflow_default_prompt
 from llm.prompt_translator import PromptTranslator
 
 try:
@@ -52,11 +52,12 @@ async def read_root(request: Request):
     default_values = get_default_values()
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "default_user_prompt": default_values.get("user_prompt", ""),
+        "default_user_prompt": "",  # 워크플로우별로 설정되므로 빈 값
         "default_style_prompt": default_values.get("style_prompt", ""),
         "default_negative_prompt": default_values.get("negative_prompt", ""),
         "default_recommended_prompt": default_values.get("recommended_prompt", ""),
-        "workflows_sizes_json": json.dumps(default_values.get("workflows_sizes", {})) # ✨ 사이즈 정보 추가
+        "workflows_sizes_json": json.dumps(default_values.get("workflows_sizes", {})), # ✨ 사이즈 정보 추가
+        "workflow_default_prompts_json": json.dumps(default_values.get("workflow_default_prompts", {})) # 워크플로우별 기본 프롬프트
     })
 
 @app.get("/api/v1/workflows", tags=["Workflows"])
@@ -73,8 +74,8 @@ async def get_workflows():
                 print(f"Error processing workflow {json_path}: {e}")
         workflows.append({
             "id": workflow_id,
-            "name": workflow_id.replace("_", " ").title(),
-            "description": f"The main workflow for generating images.",
+            "name": config.get("display_name", workflow_id.replace("_", " ").title()),  # config에서 가져오기
+            "description": config.get("description", "워크플로우 설명이 없습니다."),  # config에서 가져오기
             "node_count": node_count,
             "style_prompt": config.get("style_prompt", ""),
             "negative_prompt": config.get("negative_prompt", ""),
