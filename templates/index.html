@@ -123,11 +123,17 @@
                              <div class="result-card">
                                 <div class="result-content">
                                     <h3 class="result-title"><i class="fas fa-image"></i> 생성된 이미지</h3>
-                                    <div class="image-container">
+                                    <div class="image-container" id="result-image-container">
                                         <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image">
                                     </div>
                                     <p class="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="preview-overlay" id="preview-overlay" aria-live="polite" aria-atomic="true">
+                            <div class="preview-overlay-content">
+                                <div class="loading-spinner" style="margin: 0 auto var(--space-sm);"></div>
+                                <div class="preview-overlay-tip typing-caret" id="preview-tip"></div>
                             </div>
                         </div>
                     </div>
@@ -279,22 +285,37 @@
             if (data.status === 'running') setGenerationState(true, 'AI 생성 중...');
             if (data.status === 'complete') {
                 showStatus('🎉 이미지 생성 완료!', 'success');
-                setGenerationState(false, '새 이미지 생성하기');
                 updateProgress(0); // 완료 후 진행률을 0%로 리셋
-                if (data.image_path) displayImage(data.image_path);
+                if (data.image_path) {
+                    displayImage(data.image_path, () => {
+                        // 먼저 오버레이 페이드아웃 시작
+                        hidePreviewOverlay();
+                        // 버튼 복구는 오버레이 페이드아웃이 끝난 뒤
+                        const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && (window.APP_CONFIG.loading.overlayFadeOutMs || window.APP_CONFIG.loading.fadeMs)) || 300;
+                        setTimeout(() => setGenerationState(false, '이미지 생성하기'), Math.max(50, fadeMs));
+                    });
+                } else {
+                    hidePreviewOverlay();
+                    const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && (window.APP_CONFIG.loading.overlayFadeOutMs || window.APP_CONFIG.loading.fadeMs)) || 300;
+                    setTimeout(() => setGenerationState(false, '이미지 생성하기'), Math.max(50, fadeMs));
+                }
             }
             if (data.status === 'cancelling') {
                 showStatus('⏸️ 취소 요청 전송됨...', 'info');
             }
             if (data.status === 'cancelled') {
                 showStatus('🛑 이미지 생성을 취소했습니다.', 'error');
-                setGenerationState(false, '이미지 생성하기');
                 updateProgress(0);
+                // 취소 시: 현재 보이는 이미지/플레이스홀더를 유지하고, 오버레이는 짧게 페이드아웃
+                // 버튼은 즉시 복구(취소 직후 재시도 가능하게)
+                hidePreviewOverlay();
+                setGenerationState(false, '이미지 생성하기');
             }
             if (data.error) {
                 showStatus(`❌ 오류: ${data.error}`, 'error');
                 setGenerationState(false, '이미지 생성하기');
                 updateProgress(0); // 에러 발생 시에도 진행률을 0%로 리셋
+                hidePreviewOverlay();
             }
         }
 
@@ -304,6 +325,8 @@
 
             setGenerationState(true, '요청 처리 중...');
             showStatus('서버에 생성 요청을 보냅니다...', 'info');
+
+            showPreviewOverlay();
 
             const requestData = {
                 user_prompt: ui.userPromptInput.value.trim(),
@@ -325,6 +348,7 @@
                 showStatus(`❌ 요청 실패: ${error.message}`, 'error');
                 setGenerationState(false, '이미지 생성하기');
                 updateProgress(0); // 요청 실패 시에도 진행률을 0%로 리셋
+                hidePreviewOverlay();
             }
         }
 
@@ -346,12 +370,141 @@
             ui.progressText.textContent = `${Math.round(percent)}%`;
         }
 
-        function displayImage(imagePath) {
-            ui.resultImage.src = `${imagePath}?t=${new Date().getTime()}`;
+        function displayImage(imagePath, onRevealDone) {
+            // Prepare cross-fade with previous visual
+            const container = document.getElementById('result-image-container');
+            const currentSrc = ui.resultImage.src;
+            let oldLayer = null;
+            if ((ui.resultSection.style.display === 'block' && currentSrc)) {
+                oldLayer = document.createElement('img');
+                oldLayer.className = 'result-image-old is-blurred';
+                oldLayer.alt = '이전 이미지';
+                oldLayer.src = currentSrc;
+                container.appendChild(oldLayer);
+            }
+
+            const cacheBusted = `${imagePath}?t=${new Date().getTime()}`;
+            ui.resultImage.src = cacheBusted;
             ui.resultImage.onload = () => {
                 ui.placeholderSection.style.display = 'none';
                 ui.resultSection.style.display = 'block';
+                // Sync durations with CSS variable from config
+                const revealMs = (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.revealMs) || 1000;
+                const hostCard = document.querySelector('.output-card');
+                if (hostCard) {
+                    hostCard.style.setProperty('--reveal-duration', `${revealMs}ms`);
+                    const easing = (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.revealEasing) || 'ease';
+                    hostCard.style.setProperty('--reveal-easing', easing);
+                }
+                // 새 이미지 블러는 즉시 해제하여 선명하게 페이드인
+                ui.resultImage.classList.remove('is-blurred');
+                ui.resultImage.style.filter = '';
+                // 이전 레이어의 블러는 페이드아웃과 함께 서서히 해제
+                if (oldLayer) requestAnimationFrame(() => oldLayer.classList.remove('is-blurred'));
+                ui.resultImage.classList.add('reveal');
+                // Clean up old layer after cross-fade completes
+                setTimeout(() => {
+                    ui.resultImage.classList.remove('reveal');
+                    if (oldLayer && oldLayer.parentNode) oldLayer.parentNode.removeChild(oldLayer);
+                    if (typeof onRevealDone === 'function') onRevealDone();
+                }, Math.max(50, revealMs + 50));
             };
+        }
+
+        // --- Loading overlay logic ---
+        const overlayEl = document.getElementById('preview-overlay');
+        const overlayTipEl = document.getElementById('preview-tip');
+        const resultContainer = document.getElementById('result-image-container');
+        let tipTimer = null;
+        let typingTimer = null;
+
+        function pickTips() {
+            const tips = Array.isArray(window.LOADING_TIPS) && window.LOADING_TIPS.length ? window.LOADING_TIPS : [
+                '조금만 기다려 주세요…',
+                '이미지를 정성껏 빚는 중…',
+                '빛과 그림자를 조율하는 중…',
+            ];
+            return tips.slice();
+        }
+
+        function setBlurOnTarget(enable) {
+            const blurPx = (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.blurPx) || 10;
+            const hostCard = document.querySelector('.output-card');
+            if (hostCard) hostCard.style.setProperty('--blur-amount', `${blurPx}px`);
+            const applyBlur = (el) => {
+                if (!el) return;
+                el.classList.toggle('is-blurred', !!enable);
+                // do not force inline filter; let CSS transition handle smooth fade via --overlay-fade
+                if (!enable) el.style.filter = '';
+            };
+            if (ui.resultSection.style.display === 'block' && ui.resultImage.src) {
+                applyBlur(ui.resultImage);
+            } else {
+                const ph = document.querySelector('#placeholder-section .placeholder-card');
+                applyBlur(ph || document.getElementById('placeholder-section'));
+            }
+        }
+
+        function typeText(text, onDone) {
+            overlayTipEl.textContent = '';
+            const speed = (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.typingSpeedMs) || 40;
+            let i = 0;
+            clearInterval(typingTimer);
+            typingTimer = setInterval(() => {
+                overlayTipEl.textContent = text.slice(0, i++);
+                if (i > text.length) {
+                    clearInterval(typingTimer);
+                    if (onDone) onDone();
+                }
+            }, speed);
+        }
+
+        function cycleTips() {
+            const tips = pickTips();
+            let idx = 0;
+            const interval = (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.messageIntervalMs) || 2200;
+            const tick = () => {
+                if (!overlayEl.classList.contains('open')) return;
+                typeText(tips[idx % tips.length], () => {
+                    // wait until next cycle
+                });
+                idx++;
+            };
+            tick();
+            clearInterval(tipTimer);
+            tipTimer = setInterval(tick, interval);
+        }
+
+        function showPreviewOverlay() {
+            if (!(window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.enabled)) return;
+            const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.fadeMs) || 300;
+            const hostCard = document.querySelector('.output-card');
+            if (hostCard) {
+                hostCard.style.setProperty('--overlay-fade', `${fadeMs}ms`);
+                const easing = (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.overlayEasing) || 'ease';
+                hostCard.style.setProperty('--overlay-easing', easing);
+            }
+            overlayEl.classList.add('open');
+            setBlurOnTarget(true);
+            cycleTips();
+        }
+
+        function hidePreviewOverlay() {
+            // allow CSS opacity transition to play; cleanup blur and timers after fade
+            overlayEl.classList.remove('open');
+            const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.overlayFadeOutMs) ||
+                           (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.fadeMs) || 300;
+            const hostCard = document.querySelector('.output-card');
+            if (hostCard) {
+                hostCard.style.setProperty('--overlay-fade', `${fadeMs}ms`);
+                const easing = (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.overlayEasing) || 'ease';
+                hostCard.style.setProperty('--overlay-easing', easing);
+            }
+            setTimeout(() => {
+                setBlurOnTarget(false);
+                clearInterval(tipTimer);
+                clearInterval(typingTimer);
+            }, Math.max(50, fadeMs));
         }
 
         // --- Gallery (History) ---
@@ -622,6 +775,7 @@
     });
     </script>
     <script src="/static/js/app_config.js"></script>
+    <script src="/static/js/loading_tips.js"></script>
     
     <!-- Lightbox (이미지 확대 보기) -->
     <div class="lightbox-overlay" id="image-lightbox" aria-hidden="true" role="dialog" aria-modal="true">
