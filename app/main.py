@@ -25,8 +25,7 @@ app = FastAPI(title="ComfyUI FastAPI Server", version="0.3.1 (Prompt Suggestion)
 # --- API 요청 모델 (v3.0 기준) ---
 class GenerateRequest(BaseModel):
     user_prompt: str
-    width: Optional[int] = None
-    height: Optional[int] = None
+    aspect_ratio: str  # 'width', 'height' 대신 'aspect_ratio' 사용
     workflow_id: str
     seed: Optional[int] = None
 
@@ -53,12 +52,11 @@ async def read_root(request: Request):
     default_values = get_default_values()
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "default_user_prompt": default_values["user_prompt"],
-        "default_style_prompt": default_values["style_prompt"],
-        "default_negative_prompt": default_values["negative_prompt"],
-        "default_width": default_values["width"],
-        "default_height": default_values["height"],
-        "default_recommended_prompt": default_values.get("recommended_prompt", "") # 추천 프롬프트 추가
+        "default_user_prompt": default_values.get("user_prompt", ""),
+        "default_style_prompt": default_values.get("style_prompt", ""),
+        "default_negative_prompt": default_values.get("negative_prompt", ""),
+        "default_recommended_prompt": default_values.get("recommended_prompt", ""),
+        "workflows_sizes_json": json.dumps(default_values.get("workflows_sizes", {})) # ✨ 사이즈 정보 추가
     })
 
 @app.get("/api/v1/workflows", tags=["Workflows"])
@@ -91,8 +89,7 @@ def _run_generation(request: GenerateRequest):
         workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
         prompt_overrides = get_prompt_overrides(
             user_prompt=request.user_prompt,
-            width=request.width,
-            height=request.height,
+            aspect_ratio=request.aspect_ratio, # ✨ width, height 대신 aspect_ratio 사용
             workflow_name=request.workflow_id,
             seed=request.seed
         )
@@ -119,11 +116,7 @@ def _run_generation(request: GenerateRequest):
 
 @app.post("/api/v1/generate", tags=["Image Generation"])
 async def generate_image(request: GenerateRequest, background_tasks: BackgroundTasks):
-    if request.width is None or request.width <= 0:
-        raise HTTPException(status_code=422, detail="A valid 'width' is required.")
-    if request.height is None or request.height <= 0:
-        raise HTTPException(status_code=422, detail="A valid 'height' is required.")
-
+    # ✨ width, height 유효성 검사 로직 제거
     background_tasks.add_task(_run_generation, request)
     return {"message": "Image generation request received."}
 

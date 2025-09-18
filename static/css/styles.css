@@ -1007,3 +1007,57 @@ body {
     animation: spin 0.8s ease-in-out infinite;
 }
 
+.aspect-ratio-group {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-md); /* 간격 축소 */
+    margin-bottom: var(--space-xl);
+}
+
+.aspect-ratio-btn {
+    background-color: var(--neutral-50);
+    border: 2px solid var(--neutral-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md) var(--space-sm); /* 패딩 축소 */
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-align: center;
+    font-weight: 600;
+    color: var(--neutral-600);
+    display: flex; /* 내부 요소 정렬을 위해 flexbox 사용 */
+    flex-direction: column; /* 세로 정렬 */
+    align-items: center; /* 가로 중앙 정렬 */
+    justify-content: center; /* 세로 중앙 정렬 */
+    min-height: 80px; /* 최소 높이 설정으로 버튼 일관성 유지 */
+}
+
+.aspect-ratio-btn:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary-200);
+    box-shadow: var(--shadow-lg);
+}
+
+.aspect-ratio-btn.selected {
+    background-color: var(--primary-50);
+    border-color: var(--primary-500);
+    color: var(--primary-700);
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+}
+
+.aspect-ratio-btn .icon {
+    font-size: 1.5rem; /* 아이콘 크기 축소 */
+    margin-bottom: var(--space-sm); /* 마진 축소 */
+    display: block;
+    color: var(--primary-600);
+}
+
+.aspect-ratio-btn .label {
+    font-size: 0.9rem; /* 라벨 폰트 크기 축소 */
+    display: block;
+    font-weight: 600; /* 라벨 굵기 유지 */
+    margin-bottom: 0; /* 해상도 숫자 제거에 따라 마진 제거 */
+}
+
+.aspect-ratio-btn .resolution { /* 해상도 숫자는 더 이상 표시되지 않으므로, 이 스타일은 더 이상 필요 없지만 만일을 위해 남겨둠 */
+    display: none; /* 해상도 텍스트 숨김 */
+}
