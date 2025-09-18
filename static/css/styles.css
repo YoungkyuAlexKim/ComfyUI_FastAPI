@@ -363,8 +363,26 @@ body {
     transform: none;
 }
 
-/* Progress */
-.progress-section { margin-top: var(--space-xl); display: none; }
+/* Progress - 독립적으로 분리된 로딩바 */
+.progress-section { 
+    margin-bottom: var(--space-lg);
+    padding: var(--space-lg);
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+}
+
+.progress-title {
+    margin: 0 0 var(--space-md) 0;
+    color: var(--neutral-700);
+    font-size: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
 .progress-container {
     background: var(--neutral-200);
     border-radius: var(--radius-xl);
@@ -983,6 +1001,15 @@ body {
     .generate-btn {
         margin-top: var(--space-sm);
         width: 100%;
+    }
+
+    /* 모바일에서 로딩바 스타일 조정 */
+    .progress-section {
+        padding: var(--space-md);
+    }
+
+    .progress-title {
+        font-size: 0.9rem;
     }
 }
 

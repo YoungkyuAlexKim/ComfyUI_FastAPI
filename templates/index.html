@@ -93,6 +93,13 @@
                         </div>
                         </div>
                     </div>
+                    <!-- 로딩바를 독립적으로 분리 -->
+                    <div class="progress-section" id="progress-section">
+                        <h3 class="progress-title"><i class="fas fa-clock"></i> 생성 진행률</h3>
+                        <div class="progress-container"><div class="progress-bar" id="progress-bar"></div></div>
+                        <div class="progress-text" id="progress-text">0%</div>
+                    </div>
+                    
                     <div class="output-card">
                         <div class="placeholder-section" id="placeholder-section">
                              <div class="placeholder-card">
@@ -111,10 +118,6 @@
                                         <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image">
                                     </div>
                                     <p class="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
-                                </div>
-                                <div class="progress-section" id="progress-section" style="display: none;">
-                                    <div class="progress-container"><div class="progress-bar" id="progress-bar"></div></div>
-                                    <div class="progress-text" id="progress-text">0%</div>
                                 </div>
                             </div>
                         </div>
@@ -255,11 +258,13 @@
             if (data.status === 'complete') {
                 showStatus('🎉 이미지 생성 완료!', 'success');
                 setGenerateButtonState(false, '새 이미지 생성하기');
+                updateProgress(0); // 완료 후 진행률을 0%로 리셋
                 if (data.image_path) displayImage(data.image_path);
             }
             if (data.error) {
                 showStatus(`❌ 오류: ${data.error}`, 'error');
                 setGenerateButtonState(false, '이미지 생성하기');
+                updateProgress(0); // 에러 발생 시에도 진행률을 0%로 리셋
             }
         }
 
@@ -289,6 +294,7 @@
             } catch (error) {
                 showStatus(`❌ 요청 실패: ${error.message}`, 'error');
                 setGenerateButtonState(false, '이미지 생성하기');
+                updateProgress(0); // 요청 실패 시에도 진행률을 0%로 리셋
             }
         }
 
@@ -304,7 +310,6 @@
         }
 
         function updateProgress(percent) {
-            ui.progressSection.style.display = 'block';
             ui.progressBar.style.width = `${percent}%`;
             ui.progressText.textContent = `${Math.round(percent)}%`;
         }
