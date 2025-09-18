@@ -86,9 +86,10 @@
     width: calc(100% - 300px);
     padding: var(--space-xl) var(--space-lg);
     overflow-y: auto;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(450px, 600px) minmax(500px, 1fr) 360px; /* 입력 | 결과 | 갤러리 */
     gap: var(--space-lg);
-    align-items: flex-start;
+    align-items: start;
     max-width: 1400px;
     margin: 0 auto;
 }
@@ -100,9 +101,6 @@
 }
 
 .output-panel {
-    flex: 0 0 55%;
-    max-width: 700px;
-    min-width: 500px;
     display: flex;
     flex-direction: column;
     gap: var(--space-lg);
@@ -150,6 +148,25 @@
     flex-direction: column;
     position: sticky;
     top: var(--space-lg);
+}
+.output-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--neutral-200);
+    background: rgba(255,255,255,0.7);
+}
+.input-panel { grid-column: 1; }
+.output-panel { grid-column: 2; }
+.gallery-panel { grid-column: 3; }
+
+.gallery-panel {
+    position: sticky;
+    top: var(--space-lg);
+    height: calc(100vh - 2 * var(--space-lg));
+    overflow: auto;
 }
 .gallery-section { /* 갤러리를 카드 밖으로 뺀 만큼 별도 마진 */
     margin-top: var(--space-lg);

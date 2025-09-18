@@ -91,14 +91,6 @@
                                 <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0">
                                 <small class="seed-hint">동일 이미지 재생성용</small>
                             </div>
-                            <div class="generate-actions">
-                                <button class="generate-btn" id="generate-btn">
-                                    <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
-                                </button>
-                                <button class="cancel-btn" id="cancel-btn" disabled>
-                                    <i class="fas fa-stop-circle"></i> <span>생성 취소</span>
-                                </button>
-                            </div>
                         </div>
                         </div>
                     </div>
@@ -110,6 +102,14 @@
                     </div>
                     
                     <div class="output-card">
+                        <div class="output-toolbar">
+                            <button class="generate-btn" id="generate-btn">
+                                <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
+                            </button>
+                            <button class="cancel-btn" id="cancel-btn" disabled>
+                                <i class="fas fa-stop-circle"></i> <span>생성 취소</span>
+                            </button>
+                        </div>
                         <div class="placeholder-section" id="placeholder-section">
                              <div class="placeholder-card">
                                 <h3 class="placeholder-title"><i class="fas fa-magic"></i> AI 이미지 생성 결과</h3>
@@ -131,6 +131,8 @@
                             </div>
                         </div>
                     </div>
+                </div>
+                <div class="gallery-panel">
                     <div class="gallery-section" id="gallery-section" data-skeleton-count="12">
                         <div class="gallery-card">
                             <h3 class="gallery-title"><i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지</h3>
@@ -361,9 +363,10 @@
         let nextCursor = null;
         let galleryLoading = false;
         let currentLightboxIndex = -1;
+        const PAGE_SIZE = (window.APP_CONFIG && window.APP_CONFIG.gallery && window.APP_CONFIG.gallery.pageSize) || 24;
 
         function renderSkeleton(count) {
-            const configured = parseInt(document.getElementById('gallery-section').dataset.skeletonCount || '12', 10);
+            const configured = parseInt(document.getElementById('gallery-section').dataset.skeletonCount || String((window.APP_CONFIG && window.APP_CONFIG.gallery && window.APP_CONFIG.gallery.skeletonCount) || 12), 10);
             const n = Number.isFinite(configured) ? configured : (Number.isFinite(count) ? count : 12);
             gallery.grid.innerHTML = '';
             const frag = document.createDocumentFragment();
@@ -382,7 +385,7 @@
             try {
                 const params = new URLSearchParams();
                 params.set('page', String(currentPage));
-                params.set('size', '24');
+                params.set('size', String(PAGE_SIZE));
                 const res = await fetch(`/api/v1/images?${params.toString()}`);
                 if (!res.ok) throw new Error(`Failed to fetch images (${res.status})`);
                 const data = await res.json();
@@ -618,6 +621,7 @@
         fetchGallery(true);
     });
     </script>
+    <script src="/static/js/app_config.js"></script>
     
     <!-- Lightbox (이미지 확대 보기) -->
     <div class="lightbox-overlay" id="image-lightbox" aria-hidden="true" role="dialog" aria-modal="true">

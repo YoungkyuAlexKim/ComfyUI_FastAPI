@@ -7,11 +7,12 @@
 ## 1) 현재 단계(파일시스템 기반)
 - 경로 스킴
   - outputs/users/{user_id}/YYYY/MM/DD/{ulid}.png
-  - 썸네일: outputs/users/{user_id}/YYYY/MM/DD/thumb/{ulid}.jpg
+  - 썸네일: outputs/users/{user_id}/YYYY/MM/DD/thumb/{ulid}.webp (환경에 따라 .jpg 폴백)
   - 메타(사이드카): outputs/users/{user_id}/YYYY/MM/DD/{ulid}.json
 - 파일명/키 규칙
   - user_id: 내부 UUID/ULID(PII 금지), 폴더명으로 사용
   - ulid: 시간 정렬 가능 키(중복 방지/정렬 용이)
+  - 현재 구현: 브라우저 익명 쿠키(anon_id) 네임스페이스 사용 → `users/anon-.../YYYY/MM/DD/...`
 - 메타데이터(예시)
   - { id, user_id, prompt, negative_prompt, seed, aspect_ratio, workflow_id,
       image_width, image_height, mime, file_bytes, sha256, created_at,
@@ -22,10 +23,10 @@
 - 캐시
   - 인메모리 최근 N개 링버퍼 + 디렉토리 감시로 자동 갱신
 - API(초기)
-  - GET /api/v1/images?limit=&cursor=  → 최근순 페이지네이션
-  - GET /api/v1/images/{id}           → 메타/파일 접근
-  - DELETE /api/v1/images/{id}        → 소프트삭제(status=trash, trash_until)
-  - POST /api/v1/images/{id}/restore  → 휴지통 복구
+  - 사용자 갤러리: GET /api/v1/images?page=&size=  → 최근순 페이지네이션(thumb_url 포함)
+  - 사용자 소프트삭제: POST /api/v1/images/{id}/delete → 휴지통 이동
+  - 관리자 목록: GET /api/v1/admin/users, GET /api/v1/admin/images?user_id=&page=&size=&include=&from_date=&to_date=
+  - 관리자 액션: POST /api/v1/admin/images/{id}/delete, POST /api/v1/admin/images/{id}/restore, POST /api/v1/admin/purge-trash
 - 삭제/정리 정책
   - 휴지통 보존기간(예: 30일) 이후 영구 삭제(정기 잡)
   - 썸네일/원본/메타 동시 관리(일관성 유지)
