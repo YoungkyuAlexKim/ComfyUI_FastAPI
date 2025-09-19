@@ -39,6 +39,20 @@ WORKFLOW_CONFIGS = {
             "square": {"width": 800, "height": 800},
             "landscape": {"width": 1024, "height": 576}, # 16:9 비율
             "portrait": {"width": 576, "height": 1024}  # 9:16 비율
+        },
+
+        # ControlNet mapping for scribble workflow integration
+        "controlnet": {
+            "enabled": True,
+            # Node IDs in the workflow JSON
+            "apply_node": "23",  # ControlNetApplyAdvanced
+            "image_node": "28",  # LoadImage
+            # Defaults reflect the workflow JSON; strength will be controlled by UI (0 or 1)
+            "defaults": {
+                "strength": 0,
+                "start_percent": 0.0,
+                "end_percent": 0.33,
+            },
         }
     },
     
@@ -77,6 +91,10 @@ SERVER_CONFIG = {
     "output_dir": os.getenv("OUTPUT_DIR", "./outputs/"),
     "server_address": os.getenv("COMFYUI_SERVER", "127.0.0.1:8188"),
 }
+
+# --- 3.0 ComfyUI local paths (optional) ---
+# Used for housekeeping, e.g., deleting uploaded control images after job completion
+COMFY_INPUT_DIR = os.getenv("COMFY_INPUT_DIR", None)
 
 # --- 3.1 큐/타임아웃 환경 설정 ---
 QUEUE_CONFIG = {
@@ -133,7 +151,8 @@ def get_prompt_overrides(
     user_prompt: str,
     aspect_ratio: str, # width, height 대신 aspect_ratio 사용
     workflow_name: str = "BasicWorkFlow_PixelArt",
-    seed: int = None
+    seed: int = None,
+    control: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """
     사용자 프롬프트와 시스템 스타일 프롬프트를 결합하여 최종 오버라이드를 생성합니다.
@@ -172,7 +191,35 @@ def get_prompt_overrides(
         overrides[config["latent_image_node"]] = {
             "inputs": {"width": width, "height": height}
         }
-        
+    
+    # --- Optional ControlNet overrides ---
+    try:
+        cn_cfg = config.get("controlnet") if isinstance(config, dict) else None
+        if control and cn_cfg and cn_cfg.get("enabled"):
+            apply_node = cn_cfg.get("apply_node")
+            image_node = cn_cfg.get("image_node")
+            defaults = cn_cfg.get("defaults", {})
+            # Strength: if provided, otherwise keep workflow default
+            strength = control.get("strength") if isinstance(control, dict) else None
+            if apply_node and (strength is not None):
+                # Merge with default start/end percent
+                start_pct = defaults.get("start_percent", 0.0)
+                end_pct = defaults.get("end_percent", 0.33)
+                overrides[apply_node] = {
+                    "inputs": {
+                        "strength": float(strength),
+                        "start_percent": float(start_pct),
+                        "end_percent": float(end_pct),
+                    }
+                }
+            # Image filename override when available (must exist in ComfyUI input storage)
+            image_filename = control.get("image_filename") if isinstance(control, dict) else None
+            if image_node and image_filename:
+                overrides[image_node] = {"inputs": {"image": image_filename}}
+    except Exception:
+        # Fail-safe: ignore controlnet override errors
+        pass
+
     return overrides
 
 def get_workflow_default_prompt(workflow_id: str) -> str:

@@ -121,7 +121,13 @@
                             <button class="cancel-btn" id="cancel-btn" disabled>
                                 <i class="fas fa-stop-circle"></i> <span>생성 취소</span>
                             </button>
-                                <div class="output-tools" style="margin-left:auto;">
+                                <div class="output-tools" style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+                                    <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; border:1px solid var(--neutral-300); padding:6px 10px; border-radius:8px; background:#fff;">
+                                        <input type="checkbox" id="control-enabled" />
+                                        <span>ControlNet 사용</span>
+                                    </label>
+                                    <button id="open-canvas-btn" type="button" class="chip-btn" title="캔버스 열기" aria-label="캔버스 열기"><i class="fas fa-pencil"></i> 캔버스 열기</button>
+                                    <img id="control-selected-thumb" alt="선택된 컨트롤" style="width:16px; height:16px; object-fit:cover; display:none; border:none; border-radius:0;" />
                                     <button id="open-btn" type="button" class="icon-btn" title="새 탭에서 열기" aria-label="새 탭에서 열기">
                                         <i class="fas fa-up-right-from-square" aria-hidden="true"></i>
                                     </button>
@@ -164,7 +170,20 @@
                 <div class="gallery-panel">
                     <div class="gallery-section" id="gallery-section" data-skeleton-count="12">
                         <div class="gallery-card">
-                            <h3 class="gallery-title"><i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지</h3>
+                            <div class="gallery-header" style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap: nowrap;">
+                                <div class="gallery-tabs" style="display:flex; gap:8px; flex-wrap: nowrap;">
+                                    <button id="tab-generated" type="button" class="chip-btn active"><i class="fas fa-images"></i> 생성 이미지</button>
+                                    <button id="tab-controls" type="button" class="chip-btn"><i class="fas fa-pen-ruler"></i> 내 컨트롤</button>
+                                </div>
+                                <div style="flex:1"></div>
+                            </div>
+                            <div class="gallery-title-row" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                                <h3 class="gallery-title" id="gallery-title" style="margin:0;"><i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지</h3>
+                                <div class="gallery-actions-right" style="display:flex; align-items:center; gap:6px;">
+                                    <button id="control-upload-icon" type="button" class="icon-btn" title="컨트롤 업로드" aria-label="컨트롤 업로드" style="display:none;"><i class="fas fa-upload"></i></button>
+                                    <input id="control-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+                                </div>
+                            </div>
                             <div class="gallery-actions" id="gallery-actions">
                                 <button class="chip-btn chip-btn--ghost icon-only" id="select-toggle-btn" type="button" aria-label="선택" title="선택">
                                     <i class="fas fa-list-check"></i>
@@ -505,6 +524,15 @@
                 workflow_id: currentWorkflow.id,
                 seed: ui.seedInput.value ? parseInt(ui.seedInput.value, 10) : null
             };
+
+            // ControlNet options
+            try {
+                const enabled = !!document.getElementById('control-enabled')?.checked;
+                // Remember last selected control image id (when user clicks in Controls gallery, later extension)
+                const lastSelectedControlId = (function(){ try { return localStorage.getItem('selectedControlId') || ''; } catch(_) { return ''; } })();
+                requestData.control_enabled = enabled;
+                if (enabled && lastSelectedControlId) requestData.control_image_id = lastSelectedControlId;
+            } catch(_) {}
 
             try {
                 const response = await fetch('/api/v1/generate', {
@@ -848,6 +876,54 @@
             gallery.grid.appendChild(frag);
         }
 
+        let gallerySource = 'generated'; // 'generated' | 'controls'
+        const tabGenerated = document.getElementById('tab-generated');
+        const tabControls = document.getElementById('tab-controls');
+        const galleryTitle = document.getElementById('gallery-title');
+        const controlUpload = document.getElementById('control-upload');
+        const controlUploadIcon = document.getElementById('control-upload-icon');
+
+        tabGenerated.addEventListener('click', () => switchGallery('generated'));
+        tabControls.addEventListener('click', () => switchGallery('controls'));
+
+        function switchGallery(src){
+            gallerySource = src;
+            tabGenerated.classList.toggle('active', src === 'generated');
+            tabControls.classList.toggle('active', src === 'controls');
+            if (src === 'controls') {
+                galleryTitle.innerHTML = '<i class="fas fa-pen-ruler"></i> 내 컨트롤';
+                if (controlUploadIcon) controlUploadIcon.style.display = '';
+                setSelectionMode(false);
+            } else {
+                galleryTitle.innerHTML = '<i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지';
+                if (controlUploadIcon) controlUploadIcon.style.display = 'none';
+            }
+            currentPage = 1;
+            fetchGallery(true);
+        }
+
+        async function uploadControlFile(file){
+            if (!file) return;
+            try {
+                const fd = new FormData();
+                fd.append('file', file);
+                const res = await fetch('/api/v1/controls/upload', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || '업로드 실패');
+                showStatus('컨트롤 이미지가 저장되었습니다.', 'success');
+                if (gallerySource === 'controls') fetchGallery(true);
+            } catch (e) {
+                showStatus(`업로드 실패: ${e.message}`, 'error');
+            } finally {
+                if (controlUpload) controlUpload.value = '';
+            }
+        }
+        if (controlUploadIcon) controlUploadIcon.addEventListener('click', () => controlUpload && controlUpload.click());
+        controlUpload.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (file) uploadControlFile(file);
+        });
+
         async function fetchGallery(initial = false) {
             if (galleryLoading) return;
             galleryLoading = true;
@@ -856,7 +932,8 @@
                 const params = new URLSearchParams();
                 params.set('page', String(currentPage));
                 params.set('size', String(PAGE_SIZE));
-                const res = await fetch(`/api/v1/images?${params.toString()}`);
+                const endpoint = (gallerySource === 'controls') ? '/api/v1/controls' : '/api/v1/images';
+                const res = await fetch(`${endpoint}?${params.toString()}`);
                 if (!res.ok) throw new Error(`Failed to fetch images (${res.status})`);
                 const data = await res.json();
                 const items = Array.isArray(data.items) ? data.items : [];
@@ -885,7 +962,7 @@
                 const img = document.createElement('img');
                 img.className = 'gallery-thumb';
                 img.src = it.thumb_url || it.url;
-                img.alt = it?.meta?.prompt ? it.meta.prompt : '생성 이미지';
+                img.alt = gallerySource === 'controls' ? '컨트롤 이미지' : (it?.meta?.prompt ? it.meta.prompt : '생성 이미지');
                 a.appendChild(img);
                 // selection overlay
                 const sel = document.createElement('div');
@@ -894,7 +971,21 @@
                 a.appendChild(sel);
 
                 if (selectionMode && selectedIds.has(it.id)) a.classList.add('selected');
-                a.addEventListener('click', () => openLightboxAt(i));
+                a.addEventListener('click', () => {
+                    if (gallerySource === 'controls') {
+                        // 컨트롤 선택 토글: 선택된 컨트롤 ID 저장/표시
+                        try {
+                            localStorage.setItem('selectedControlId', it.id);
+                        } catch(_) {}
+                        const badge = document.getElementById('control-selected-badge');
+                        const thumb = document.getElementById('control-selected-thumb');
+                        const txt = document.getElementById('control-selected-text');
+                        if (thumb) { thumb.style.display = ''; thumb.src = it.thumb_url || it.url; }
+                        showStatus('컨트롤이 선택되었습니다. ControlNet 토글을 켜면 적용됩니다.', 'info');
+                    } else {
+                        openLightboxAt(i);
+                    }
+                });
                 a.addEventListener('click', (ev) => {
                     if (!selectionMode) return; // 기본 라이트박스 동작은 위에서 처리
                     ev.preventDefault();
@@ -1160,8 +1251,8 @@
         });
 
         loadWorkflows();
-        // 초기 진입 시 갤러리 즉시 로드
-        fetchGallery(true);
+        // 초기 진입: 생성 탭 로드
+        switchGallery('generated');
     });
     </script>
     <script src="/static/js/app_config.js"></script>
@@ -1192,5 +1283,6 @@
         </div>
     </div>
     <script src="/static/js/prompt_translate.js"></script>
+    <script src="/static/js/control_canvas.js"></script>
 </body>
 </html>

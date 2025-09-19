@@ -73,6 +73,8 @@ class ComfyUIClient:
             else:
                 print(f"⚠️ 경고: 워크플로우에 노드 ID '{node_id}'가 없습니다. 이 오버라이드는 무시됩니다.")
         
+        # Note: 출력 노드(Preview/SaveImage)는 워크플로우에 직접 포함하는 정책으로 유지합니다.
+
         # 3. client_id와 prompt 데이터를 API 형식에 맞게 구성
         data = {
             "prompt": prompt,
@@ -99,12 +101,67 @@ class ComfyUIClient:
         except requests.exceptions.RequestException as e:
             print(f"❌ 에러: ComfyUI 서버에 요청을 보내는 중 문제가 발생했습니다.")
             print(f"    - URL: {url}")
+            try:
+                # If server responded with 4xx/5xx, include body for diagnostics
+                if hasattr(e, 'response') and e.response is not None:
+                    body = None
+                    try:
+                        body = e.response.text
+                    except Exception:
+                        body = None
+                    if body:
+                        print(f"    - 응답 본문: {body}")
+            except Exception:
+                pass
             print(f"    - 에러 내용: {e}")
             try:
-                self._logger.error({"event": "comfy_http_error", "stage": "queue_prompt", "url": url, "error": str(e)})
+                payload = {"event": "comfy_http_error", "stage": "queue_prompt", "url": url, "error": str(e)}
+                try:
+                    if hasattr(e, 'response') and e.response is not None:
+                        payload["status_code"] = e.response.status_code
+                        payload["body"] = e.response.text
+                except Exception:
+                    pass
+                self._logger.error(payload)
             except Exception:
                 pass
             return {}
+
+    def upload_image_to_input(self, filename: str, data: bytes, mime: str = "image/png") -> Optional[str]:
+        """Upload an image to ComfyUI input folder so LoadImage node can reference it.
+
+        Returns the stored filename on success, otherwise None.
+        """
+        url = f"http://{self.server_address}/upload/image"
+        try:
+            import requests
+            files = {"image": (filename, data, mime)}
+            form = {"type": "input"}
+            timeout_tuple = self._http_timeouts()
+            resp = requests.post(url, files=files, data=form, timeout=timeout_tuple)
+            resp.raise_for_status()
+            try:
+                j = resp.json()
+                # Common response: {"name": "filename.png"}
+                name = None
+                if isinstance(j, dict):
+                    name = j.get("name") or j.get("filename") or j.get("file")
+                    if not name:
+                        try:
+                            names = j.get("names")
+                            if isinstance(names, list) and names:
+                                name = names[0]
+                        except Exception:
+                            pass
+                return name or filename
+            except Exception:
+                return filename
+        except Exception as e:
+            try:
+                self._logger.error({"event": "comfy_http_error", "stage": "upload_image", "url": url, "error": str(e)})
+            except Exception:
+                pass
+            return None
         
     # 기존 get_images 메서드를 아래 코드로 완전히 교체해주세요.
     def get_images(self, prompt_id, on_progress: Optional[Callable[[float], None]] = None):

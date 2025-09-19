@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, BackgroundTasks, Form
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, BackgroundTasks, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +25,7 @@ from .comfy_client import ComfyUIClient
 from .config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, get_default_values, get_workflow_default_prompt
 from .config import QUEUE_CONFIG, JOB_DB_PATH
 from .config import HEALTHZ_CONFIG
+from .config import COMFY_INPUT_DIR
 from .job_manager import JobManager, Job
 from .job_store import JobStore
 from .logging_utils import setup_logging
@@ -45,6 +46,9 @@ class GenerateRequest(BaseModel):
     aspect_ratio: str  # 'width', 'height' 대신 'aspect_ratio' 사용
     workflow_id: str
     seed: Optional[int] = None
+    # ControlNet options
+    control_enabled: Optional[bool] = None  # True => strength 1.0, False/None => 0.0
+    control_image_id: Optional[str] = None  # previously saved control image id
 
 WORKFLOW_DIR = "./workflows/"
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
@@ -160,8 +164,66 @@ def _save_image_and_meta(anon_id: str, image_bytes: bytes, req: "GenerateRequest
 
     return image_path, meta_path
 
-def _gather_user_images(anon_id: str, include_trash: bool = False) -> List[dict]:
-    base = _user_base_dir(anon_id)
+def _control_base_dir(anon_id: str) -> str:
+    return os.path.join(_user_base_dir(anon_id), "controls")
+
+def _save_control_image_and_meta(anon_id: str, image_bytes: bytes, original_filename: str) -> Tuple[str, str]:
+    now = datetime.now(timezone.utc)
+    base_dir = _control_base_dir(anon_id)
+    dated_dir = _date_partition_path(base_dir, now)
+    os.makedirs(dated_dir, exist_ok=True)
+
+    control_id = uuid.uuid4().hex
+    filename = f"{control_id}.png"
+    image_path = os.path.join(dated_dir, filename)
+
+    with open(image_path, "wb") as f:
+        f.write(image_bytes)
+
+    # Thumbnail
+    thumb_rel_dir = os.path.join(dated_dir, "thumb")
+    os.makedirs(thumb_rel_dir, exist_ok=True)
+    thumb_webp_path = os.path.join(thumb_rel_dir, f"{control_id}.webp")
+    thumb_jpg_path = os.path.join(thumb_rel_dir, f"{control_id}.jpg")
+    thumb_path_written = None
+    if Image is not None:
+        try:
+            with Image.open(BytesIO(image_bytes)) as im:
+                im = im.convert("RGB")
+                max_side = 384
+                im.thumbnail((max_side, max_side))
+                try:
+                    im.save(thumb_webp_path, format="WEBP", quality=80, method=6)
+                    thumb_path_written = thumb_webp_path
+                except Exception:
+                    im.save(thumb_jpg_path, format="JPEG", quality=80)
+                    thumb_path_written = thumb_jpg_path
+        except Exception:
+            thumb_path_written = None
+
+    sha256 = hashlib.sha256(image_bytes).hexdigest()
+    meta = {
+        "id": control_id,
+        "owner": anon_id,
+        "workflow_id": None,
+        "kind": "control",
+        "original_filename": original_filename,
+        "mime": "image/png",
+        "bytes": len(image_bytes),
+        "sha256": sha256,
+        "created_at": now.isoformat(),
+        "status": "active",
+        "thumb": _build_web_path(thumb_path_written) if thumb_path_written else None,
+        "tags": [],
+    }
+    meta_path = os.path.join(dated_dir, f"{control_id}.json")
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+
+    return image_path, meta_path
+
+def _gather_user_controls(anon_id: str, include_trash: bool = False) -> List[dict]:
+    base = _control_base_dir(anon_id)
     if not os.path.isdir(base):
         return []
     items: List[dict] = []
@@ -182,6 +244,68 @@ def _gather_user_images(anon_id: str, include_trash: bool = False) -> List[dict]
                             meta = json.load(f)
                     except Exception:
                         meta = None
+                status = None
+                if meta and isinstance(meta, dict):
+                    status = meta.get("status")
+                if not include_trash and status and status != "active":
+                    continue
+                thumb_url = None
+                if meta and isinstance(meta, dict):
+                    thumb_url = meta.get("thumb")
+                else:
+                    t_webp = os.path.join(root, "thumb", f"{image_id}.webp")
+                    t_jpg = os.path.join(root, "thumb", f"{image_id}.jpg")
+                    if os.path.exists(t_webp): thumb_url = _build_web_path(t_webp)
+                    elif os.path.exists(t_jpg): thumb_url = _build_web_path(t_jpg)
+
+                items.append({
+                    "id": image_id,
+                    "url": _build_web_path(png_path),
+                    "thumb_url": thumb_url,
+                    "meta": meta,
+                    "status": status or "active",
+                    "mtime": created,
+                })
+            except Exception:
+                continue
+    items.sort(key=lambda x: x["mtime"], reverse=True)
+    return items
+
+def _gather_user_images(anon_id: str, include_trash: bool = False) -> List[dict]:
+    base = _user_base_dir(anon_id)
+    if not os.path.isdir(base):
+        return []
+    items: List[dict] = []
+    for root, _, files in os.walk(base):
+        # Skip control images directory entirely
+        try:
+            parts = os.path.normpath(root).split(os.sep)
+            if "controls" in parts:
+                continue
+        except Exception:
+            pass
+        for name in files:
+            if not name.lower().endswith(".png"):
+                continue
+            png_path = os.path.join(root, name)
+            try:
+                stat = os.stat(png_path)
+                created = stat.st_mtime
+                image_id = os.path.splitext(name)[0]
+                meta_path = os.path.join(root, f"{image_id}.json")
+                meta = None
+                if os.path.exists(meta_path):
+                    try:
+                        with open(meta_path, "r", encoding="utf-8") as f:
+                            meta = json.load(f)
+                    except Exception:
+                        meta = None
+                # Exclude control items based on meta.kind
+                try:
+                    if isinstance(meta, dict) and meta.get("kind") == "control":
+                        continue
+                except Exception:
+                    pass
                 status = None
                 if meta and isinstance(meta, dict):
                     status = meta.get("status")
@@ -211,6 +335,40 @@ def _gather_user_images(anon_id: str, include_trash: bool = False) -> List[dict]
     # Sort by mtime desc (newest first)
     items.sort(key=lambda x: x["mtime"], reverse=True)
     return items
+
+def _locate_control_meta_path(anon_id: str, image_id: str) -> Optional[str]:
+    base = _control_base_dir(anon_id)
+    if not os.path.isdir(base):
+        return None
+    target = f"{image_id}.json"
+    for root, _, files in os.walk(base):
+        if target in files:
+            return os.path.join(root, target)
+    return None
+
+def _locate_control_png_path(anon_id: str, image_id: str) -> Optional[str]:
+    base = _control_base_dir(anon_id)
+    if not os.path.isdir(base):
+        return None
+    target = f"{image_id}.png"
+    for root, _, files in os.walk(base):
+        if target in files:
+            return os.path.join(root, target)
+    return None
+
+def _update_control_status(anon_id: str, image_id: str, status: str) -> bool:
+    meta_path = _locate_control_meta_path(anon_id, image_id)
+    if not meta_path:
+        return False
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["status"] = status
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
 
 class ConnectionManager:
     def __init__(self):
@@ -305,11 +463,40 @@ def _processor_generate(job: Job, progress_cb):
     req_dict = job.payload
     request = GenerateRequest(**req_dict)
     workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
+    control = None
+    # Prepare ControlNet overrides if enabled
+    uploaded_input_filename: Optional[str] = None
+    try:
+        if getattr(request, "control_enabled", None):
+            # Default to disabled until we ensure an input image is available/uploaded
+            control = {"strength": 0.0}
+            # If a saved control image is specified, upload it to ComfyUI inputs and set filename
+            if isinstance(request.control_image_id, str) and len(request.control_image_id) > 0:
+                anon_id = job.owner_id
+                local_png = _locate_control_png_path(anon_id, request.control_image_id)
+                if local_png and os.path.exists(local_png):
+                    try:
+                        with open(local_png, "rb") as f:
+                            data = f.read()
+                        client_tmp = ComfyUIClient(SERVER_ADDRESS)
+                        stored = client_tmp.upload_image_to_input(f"{request.control_image_id}.png", data, "image/png")
+                        if isinstance(stored, str) and stored:
+                            uploaded_input_filename = stored
+                            control = {"strength": 1.0, "image_filename": stored}
+                    except Exception:
+                        # keep strength 0.0 on failure
+                        pass
+        else:
+            control = {"strength": 0.0}
+    except Exception:
+        control = None
+
     prompt_overrides = get_prompt_overrides(
         user_prompt=request.user_prompt,
         aspect_ratio=request.aspect_ratio,
         workflow_name=request.workflow_id,
-        seed=request.seed
+        seed=request.seed,
+        control=control,
     )
     client = ComfyUIClient(SERVER_ADDRESS)
     # Allow cancellation from job manager
@@ -332,6 +519,16 @@ def _processor_generate(job: Job, progress_cb):
     saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, filename)
     web_path = _build_web_path(saved_image_path)
     job.result["image_path"] = web_path
+
+    # Best-effort cleanup of uploaded input in ComfyUI input directory
+    try:
+        if uploaded_input_filename and isinstance(COMFY_INPUT_DIR, str) and COMFY_INPUT_DIR:
+            # ComfyUI may flatten or keep names; try direct match
+            candidate = os.path.join(COMFY_INPUT_DIR, uploaded_input_filename)
+            if os.path.exists(candidate):
+                os.remove(candidate)
+    except Exception:
+        pass
 
 @app.post("/api/v1/generate", tags=["Image Generation"])
 async def generate_image(request: GenerateRequest, http_request: Request):
@@ -375,6 +572,74 @@ async def list_images(page: int = 1, size: int = 24, request: Request = None):
         "total": total,
         "total_pages": total_pages
     }
+
+
+# -------------------- Controls (user) --------------------
+
+@app.post("/api/v1/controls/upload", tags=["Controls"])
+async def user_upload_control_image(request: Request, file: UploadFile = File(...)):
+    anon_id = _get_anon_id_from_request(request)
+    if not file or not isinstance(file.filename, str):
+        raise HTTPException(status_code=400, detail="Invalid upload")
+    # Basic validation
+    name = os.path.basename(file.filename)
+    if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+    data = await file.read()
+    # Convert to PNG if not png
+    png_bytes = data
+    if not name.lower().endswith(".png") and Image is not None:
+        try:
+            with Image.open(BytesIO(data)) as im:
+                im = im.convert("RGB")
+                out = BytesIO()
+                im.save(out, format="PNG")
+                png_bytes = out.getvalue()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Failed to decode image")
+    path, meta = _save_control_image_and_meta(anon_id, png_bytes, name)
+    return {"ok": True, "id": os.path.splitext(os.path.basename(path))[0], "url": _build_web_path(path)}
+
+
+@app.get("/api/v1/controls", tags=["Controls"])
+async def user_list_controls(page: int = 1, size: int = 24, request: Request = None):
+    anon_id = _get_anon_id_from_request(request)
+    items = _gather_user_controls(anon_id, include_trash=False)
+    size = max(1, min(100, size))
+    page = max(1, page)
+    start = (page - 1) * size
+    end = start + size
+    total = len(items)
+    slice_items = items[start:end]
+    response_items = []
+    for it in slice_items:
+        response_items.append({
+            "id": it["id"],
+            "url": it["url"],
+            "created_at": datetime.fromtimestamp(it["mtime"], tz=timezone.utc).isoformat(),
+            "meta": it.get("meta"),
+            "thumb_url": it.get("thumb_url"),
+        })
+    total_pages = (total + size - 1) // size
+    return {"items": response_items, "page": page, "size": size, "total": total, "total_pages": total_pages}
+
+
+@app.post("/api/v1/controls/{image_id}/delete", tags=["Controls"])
+async def user_soft_delete_control(image_id: str, request: Request):
+    anon_id = _get_anon_id_from_request(request)
+    ok = _update_control_status(anon_id, image_id, "trash")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Control not found")
+    return {"ok": True}
+
+
+@app.post("/api/v1/controls/{image_id}/restore", tags=["Controls"])
+async def user_restore_control(image_id: str, request: Request):
+    anon_id = _get_anon_id_from_request(request)
+    ok = _update_control_status(anon_id, image_id, "active")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Control not found")
+    return {"ok": True}
 
 
 @app.post("/api/v1/images/{image_id}/delete", tags=["Images"])
@@ -575,6 +840,86 @@ async def admin_images(user_id: str, page: int = 1, size: int = 24, include: str
         "total": total,
         "total_pages": total_pages
     }
+
+
+@app.get("/api/v1/admin/controls", tags=["Admin"])
+async def admin_controls(user_id: str, page: int = 1, size: int = 24, include: str = "all"):
+    include_trash = True
+    items = _gather_user_controls(user_id, include_trash=include_trash)
+    if include == "active":
+        items = [it for it in items if it.get("status") == "active"]
+    elif include == "trash":
+        items = [it for it in items if it.get("status") != "active"]
+
+    size = max(1, min(100, size))
+    page = max(1, page)
+    start = (page - 1) * size
+    end = start + size
+    total = len(items)
+    slice_items = items[start:end]
+    response_items = []
+    for it in slice_items:
+        response_items.append({
+            "id": it["id"],
+            "url": it["url"],
+            "thumb_url": it.get("thumb_url"),
+            "status": it.get("status"),
+            "created_at": datetime.fromtimestamp(it["mtime"], tz=timezone.utc).isoformat(),
+        })
+    total_pages = (total + size - 1) // size
+    return {"items": response_items, "page": page, "size": size, "total": total, "total_pages": total_pages}
+
+
+class AdminControlUpdateRequest(BaseModel):
+    user_id: str
+
+
+@app.post("/api/v1/admin/controls/{image_id}/delete", tags=["Admin"])
+async def admin_control_soft_delete(image_id: str, req: AdminControlUpdateRequest):
+    ok = _update_control_status(req.user_id, image_id, "trash")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Control not found")
+    return {"ok": True}
+
+
+@app.post("/api/v1/admin/controls/{image_id}/restore", tags=["Admin"])
+async def admin_control_restore(image_id: str, req: AdminControlUpdateRequest):
+    ok = _update_control_status(req.user_id, image_id, "active")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Control not found")
+    return {"ok": True}
+
+
+@app.post("/api/v1/admin/purge-controls", tags=["Admin"])
+async def admin_purge_controls(req: AdminControlUpdateRequest):
+    base = _control_base_dir(req.user_id)
+    if not os.path.isdir(base):
+        return {"deleted": 0}
+    deleted = 0
+    for root, _, files in os.walk(base):
+        for name in files:
+            if not name.endswith('.json'):
+                continue
+            meta_path = os.path.join(root, name)
+            try:
+                with open(meta_path, 'r', encoding='utf-8') as f:
+                    meta = json.load(f)
+                if meta.get('status') == 'active':
+                    continue
+                image_id = os.path.splitext(name)[0]
+                png_path = os.path.join(root, f"{image_id}.png")
+                t_webp = os.path.join(root, 'thumb', f"{image_id}.webp")
+                t_jpg = os.path.join(root, 'thumb', f"{image_id}.jpg")
+                for p in [png_path, t_webp, t_jpg, meta_path]:
+                    try:
+                        if os.path.exists(p):
+                            os.remove(p)
+                    except Exception:
+                        pass
+                deleted += 1
+            except Exception:
+                continue
+    return {"deleted": deleted}
 
 
 class AdminUpdateRequest(BaseModel):
