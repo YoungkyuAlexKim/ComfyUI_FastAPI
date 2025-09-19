@@ -4,6 +4,7 @@ import json
 import urllib.request
 import urllib.parse
 import asyncio
+from typing import Callable, Optional
 
 
 class ComfyUIClient:
@@ -75,10 +76,10 @@ class ComfyUIClient:
             return {}
         
     # 기존 get_images 메서드를 아래 코드로 완전히 교체해주세요.
-    def get_images(self, prompt_id):
+    def get_images(self, prompt_id, on_progress: Optional[Callable[[float], None]] = None):
         """
         웹소켓을 통해 이미지 생성 진행 상황을 수신하고,
-        ConnectionManager를 통해 연결된 모든 클라이언트에게 진행률을 브로드캐스팅합니다.
+        콜백을 통해 진행률을 보고합니다.
         """
         ws_url = f"ws://{self.server_address}/ws?clientId={self.client_id}"
 
@@ -93,9 +94,12 @@ class ComfyUIClient:
                     if message['type'] == 'executing':
                         node_data = message['data']
                         if node_data['node'] is None and node_data['prompt_id'] == prompt_id:
-                            # 최종 완료 상태 브로드캐스팅
-                            if self.manager:
-                                asyncio.run(self.manager.broadcast_json({"progress": 100.0, "status": "complete"}))
+                            # 최종 완료
+                            if on_progress:
+                                try:
+                                    on_progress(100.0)
+                                except Exception:
+                                    pass
                             print("\n✅ 작업 실행이 서버에서 완료되었습니다.")
                             break
 
@@ -104,10 +108,12 @@ class ComfyUIClient:
                         progress = (progress_data['value'] / progress_data['max']) * 100
                         print(f"⏳ 진행 중... {progress:.2f}%", end='\r', flush=True) # 터미널 로그는 유지
 
-                        # ⭐️⭐️⭐️ 웹소켓 클라이언트에게 진행률 브로드캐스팅 ⭐️⭐️⭐️
-                        if self.manager:
-                            # 비동기 함수를 동기 코드에서 실행하기 위해 asyncio.run 사용
-                            asyncio.run(self.manager.broadcast_json({"progress": progress, "status": "running"}))
+                        # 진행률 콜백
+                        if on_progress:
+                            try:
+                                on_progress(progress)
+                            except Exception:
+                                pass
 
                 elif opcode == 2:
                     pass # Pong frame, 무시

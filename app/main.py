@@ -20,6 +20,10 @@ except Exception:
 
 from .comfy_client import ComfyUIClient
 from .config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, get_default_values, get_workflow_default_prompt
+from .config import QUEUE_CONFIG, JOB_DB_PATH
+from .job_manager import JobManager, Job
+from .job_store import JobStore
+from .logging_utils import setup_logging
 from llm.prompt_translator import PromptTranslator
 
 try:
@@ -29,7 +33,7 @@ except FileNotFoundError as e:
     translator = None
 
 templates = Jinja2Templates(directory="templates")
-app = FastAPI(title="ComfyUI FastAPI Server", version="0.3.1 (Prompt Suggestion)")
+app = FastAPI(title="ComfyUI FastAPI Server", version="0.4.0 (Jobs & Queues)")
 
 # --- API 요청 모델 (v3.0 기준) ---
 class GenerateRequest(BaseModel):
@@ -71,6 +75,13 @@ def _get_anon_id_from_request(req: Request) -> str:
     # Fallback anonymous namespace when no cookie is present (should be rare for API calls)
     return ANON_COOKIE_PREFIX + "guest"
 
+
+# For WebSocket cookie access
+def _get_anon_id_from_ws(websocket: WebSocket) -> str:
+    value = websocket.cookies.get(ANON_COOKIE_NAME)
+    if value and isinstance(value, str) and value.startswith(ANON_COOKIE_PREFIX):
+        return value
+    return ANON_COOKIE_PREFIX + "guest"
 
 # --- Paths and saving helpers ---
 def _user_base_dir(anon_id: str) -> str:
@@ -200,25 +211,59 @@ def _gather_user_images(anon_id: str, include_trash: bool = False) -> List[dict]
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
-    async def connect(self, websocket: WebSocket):
+        self.user_to_conns: dict[str, list[WebSocket]] = {}
+        self.loop: asyncio.AbstractEventLoop | None = None
+    def set_loop(self, loop: asyncio.AbstractEventLoop):
+        self.loop = loop
+    async def connect(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
         self.active_connections.append(websocket)
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        self.user_to_conns.setdefault(user_id, []).append(websocket)
+    def disconnect(self, websocket: WebSocket, user_id: str):
+        try:
+            self.active_connections.remove(websocket)
+        except ValueError:
+            pass
+        lst = self.user_to_conns.get(user_id)
+        if lst and websocket in lst:
+            lst.remove(websocket)
+            if not lst:
+                self.user_to_conns.pop(user_id, None)
     async def broadcast_json(self, data: dict):
         tasks = [connection.send_json(data) for connection in self.active_connections]
         await asyncio.gather(*tasks, return_exceptions=True)
+    async def send_json_to_user(self, user_id: str, data: dict):
+        conns = self.user_to_conns.get(user_id, [])
+        if not conns:
+            return
+        tasks = [ws.send_json(data) for ws in list(conns)]
+        await asyncio.gather(*tasks, return_exceptions=True)
+    def send_from_worker(self, user_id: str, data: dict):
+        if not self.loop:
+            return
+        coro = self.send_json_to_user(user_id, data)
+        try:
+            asyncio.run_coroutine_threadsafe(coro, self.loop)
+        except Exception:
+            pass
 
 manager = ConnectionManager()
-
-# --- 이미지 생성 작업 상태 (단일 사용자 가정) ---
-ACTIVE_JOB: dict = {"client": None, "prompt_id": None, "cancelled": False}
+job_manager = JobManager()
+job_store = JobStore(JOB_DB_PATH)
+logger = setup_logging()
 
 @app.get("/", response_class=HTMLResponse, tags=["Page"])
 async def read_root(request: Request):
     default_values = get_default_values()
+    # Ensure anon id and pass it to template for WS query param alignment
+    existing = request.cookies.get(ANON_COOKIE_NAME)
+    if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
+        anon_id = existing
+    else:
+        anon_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
     response = templates.TemplateResponse("index.html", {
         "request": request,
+        "anon_id": anon_id,
         "default_user_prompt": "",  # 워크플로우별로 설정되므로 빈 값
         "default_style_prompt": default_values.get("style_prompt", ""),
         "default_negative_prompt": default_values.get("negative_prompt", ""),
@@ -252,61 +297,56 @@ async def get_workflows():
         })
     return {"workflows": workflows}
 
-def _run_generation(request: GenerateRequest, anon_id: str):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
-        prompt_overrides = get_prompt_overrides(
-            user_prompt=request.user_prompt,
-            aspect_ratio=request.aspect_ratio, # ✨ width, height 대신 aspect_ratio 사용
-            workflow_name=request.workflow_id,
-            seed=request.seed
-        )
-        client = ComfyUIClient(SERVER_ADDRESS, manager=manager)
-        # 활성 작업 등록
-        ACTIVE_JOB["client"] = client
-        ACTIVE_JOB["prompt_id"] = None
-        ACTIVE_JOB["cancelled"] = False
+def _processor_generate(job: Job, progress_cb):
+    req_dict = job.payload
+    request = GenerateRequest(**req_dict)
+    workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
+    prompt_overrides = get_prompt_overrides(
+        user_prompt=request.user_prompt,
+        aspect_ratio=request.aspect_ratio,
+        workflow_name=request.workflow_id,
+        seed=request.seed
+    )
+    client = ComfyUIClient(SERVER_ADDRESS)
+    # Allow cancellation from job manager
+    job_manager.set_active_cancel_handle(client.interrupt)
 
-        prompt_id = client.queue_prompt(workflow_path, prompt_overrides).get('prompt_id')
-        if not prompt_id: raise RuntimeError("Failed to get prompt_id.")
-        ACTIVE_JOB["prompt_id"] = prompt_id
-        images_data = client.get_images(prompt_id)
-        if not images_data: raise RuntimeError("Failed to receive generated images.")
+    resp = client.queue_prompt(workflow_path, prompt_overrides)
+    prompt_id = resp.get('prompt_id') if isinstance(resp, dict) else None
+    if not prompt_id:
+        raise RuntimeError("Failed to get prompt_id.")
 
-        filename = list(images_data.keys())[0]
-        image_bytes = list(images_data.values())[0]
-        # Save into user/date structured path + sidecar metadata
-        saved_image_path, _ = _save_image_and_meta(anon_id, image_bytes, request, filename)
-        print(f"✅ Image saved to '{saved_image_path}'")
-        web_path = _build_web_path(saved_image_path)
-        loop.run_until_complete(manager.broadcast_json({"status": "complete", "image_path": web_path}))
-    except Exception as e:
-        print(f"❌ Background task error: {e}")
-        # 사용자가 취소한 경우 'cancelled' 상태로 브로드캐스트
-        if ACTIVE_JOB.get("cancelled"):
-            loop.run_until_complete(manager.broadcast_json({"status": "cancelled"}))
-        else:
-            loop.run_until_complete(manager.broadcast_json({"error": str(e)}))
-    finally:
-        # 작업 상태 초기화
-        ACTIVE_JOB["client"] = None
-        ACTIVE_JOB["prompt_id"] = None
-        ACTIVE_JOB["cancelled"] = False
-        loop.close()
+    def on_progress(p: float):
+        progress_cb(p)
+
+    images_data = client.get_images(prompt_id, on_progress=on_progress)
+    if not images_data:
+        raise RuntimeError("Failed to receive generated images.")
+
+    filename = list(images_data.keys())[0]
+    image_bytes = list(images_data.values())[0]
+    saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, filename)
+    web_path = _build_web_path(saved_image_path)
+    job.result["image_path"] = web_path
 
 @app.post("/api/v1/generate", tags=["Image Generation"])
-async def generate_image(request: GenerateRequest, background_tasks: BackgroundTasks, http_request: Request):
-    # ✨ width, height 유효성 검사 로직 제거
+async def generate_image(request: GenerateRequest, http_request: Request):
     anon_id = _get_anon_id_from_request(http_request)
-    background_tasks.add_task(_run_generation, request, anon_id)
-    return {"message": "Image generation request received."}
+    try:
+        job = job_manager.enqueue(anon_id, "generate", request.model_dump())
+    except RuntimeError as e:
+        # Queue limit reached
+        logger.info({"event": "enqueue_rejected", "owner_id": anon_id, "reason": str(e), "path": "/api/v1/generate"})
+        raise HTTPException(status_code=429, detail=str(e))
+    position = job_manager.get_position(job.id)
+    logger.info({"event": "enqueue", "owner_id": anon_id, "job_id": job.id, "position": position})
+    return {"job_id": job.id, "status": "queued", "position": position}
 
 
 @app.get("/api/v1/images", tags=["Images"])
 async def list_images(page: int = 1, size: int = 24, request: Request = None):
     anon_id = _get_anon_id_from_request(request)
+    logger.info({"event": "list_images", "owner_id": anon_id, "page": page, "size": size})
     items = _gather_user_images(anon_id, include_trash=False)
     size = max(1, min(100, size))
     page = max(1, page)
@@ -336,6 +376,7 @@ async def list_images(page: int = 1, size: int = 24, request: Request = None):
 @app.post("/api/v1/images/{image_id}/delete", tags=["Images"])
 async def user_soft_delete_image(image_id: str, request: Request):
     anon_id = _get_anon_id_from_request(request)
+    logger.info({"event": "user_soft_delete", "owner_id": anon_id, "image_id": image_id})
     ok = _update_image_status(anon_id, image_id, "trash")
     if not ok:
         raise HTTPException(status_code=404, detail="Image not found")
@@ -386,8 +427,94 @@ async def admin_page(request: Request):
 
 
 @app.get("/api/v1/admin/users", tags=["Admin"])
-async def admin_users():
-    return {"users": _list_user_ids()}
+async def admin_users(page: int = 1, size: int = 50, q: Optional[str] = None):
+    # Paged + optional substring filter
+    users = _list_user_ids()
+    if q and isinstance(q, str):
+        ql = q.lower()
+        users = [u for u in users if ql in u.lower()]
+    size = max(1, min(200, size))
+    page = max(1, page)
+    total = len(users)
+    start = (page - 1) * size
+    end = start + size
+    slice_users = users[start:end]
+    total_pages = (total + size - 1) // size
+    return {"users": slice_users, "page": page, "size": size, "total": total, "total_pages": total_pages}
+
+
+@app.get("/api/v1/admin/jobs", tags=["Admin"])
+async def admin_jobs(limit: int = 100):
+    try:
+        jobs = job_store.fetch_recent(limit=limit)
+        if not jobs:
+            jobs = job_manager.list_jobs(limit=limit)
+        # If coming from DB, artifact_available is present; for in-memory fallback, compute lightweight availability
+        if jobs and 'artifact_available' not in jobs[0]:
+            def artifact_exists(web_path: str) -> bool:
+                try:
+                    if not isinstance(web_path, str) or not web_path:
+                        return False
+                    p = web_path
+                    if p.startswith('/outputs/'):
+                        rel = p[len('/outputs/') : ]
+                    elif p.startswith('outputs/'):
+                        rel = p[len('outputs/') : ]
+                    else:
+                        return False
+                    fs_path = os.path.join(OUTPUT_DIR, rel)
+                    return os.path.exists(fs_path)
+                except Exception:
+                    return False
+            for j in jobs:
+                res = j.get('result') if isinstance(j, dict) else None
+                img = res.get('image_path') if isinstance(res, dict) else None
+                j['artifact_available'] = artifact_exists(img)
+        return {"jobs": jobs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/admin/jobs/metrics", tags=["Admin"])
+async def admin_jobs_metrics(limit: int = 100):
+    try:
+        avg = job_manager.get_recent_averages(limit=limit)
+        return avg
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/admin/jobs/sweep", tags=["Admin"])
+async def admin_jobs_sweep(limit: int = 200):
+    """Sync artifact_available for recent N jobs. Manual, lightweight page-bounded."""
+    try:
+        limit = max(1, min(5000, int(limit)))
+        jobs = job_store.fetch_recent(limit=limit)
+        updated = 0
+        for j in jobs:
+            try:
+                res = j.get('result') if isinstance(j, dict) else None
+                img = res.get('image_path') if isinstance(res, dict) else None
+                avail = False
+                if isinstance(img, str) and img:
+                    p = img
+                    if p.startswith('/outputs/'):
+                        rel = p[len('/outputs/'):]
+                    elif p.startswith('outputs/'):
+                        rel = p[len('outputs/'):] 
+                    else:
+                        rel = None
+                    if rel:
+                        fs_path = os.path.join(OUTPUT_DIR, rel)
+                        avail = os.path.exists(fs_path)
+                j['artifact_available'] = avail
+                job_store.upsert_job(j)
+                updated += 1
+            except Exception:
+                continue
+        return {"updated": updated}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/v1/admin/images", tags=["Admin"])
@@ -499,26 +626,38 @@ async def admin_purge_trash(req: AdminUpdateRequest):
                 continue
     return {"deleted": deleted}
 
+@app.post("/api/v1/jobs/{job_id}/cancel", tags=["Image Generation"])
+async def cancel_generation_by_id(job_id: str):
+    ok = job_manager.cancel(job_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Job not found or not cancellable")
+    return {"ok": True}
+
+@app.get("/api/v1/jobs/{job_id}", tags=["Image Generation"])
+async def job_status(job_id: str):
+    j = job_manager.get(job_id)
+    if not j:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {
+        "id": j.id,
+        "status": j.status,
+        "progress": j.progress,
+        "position": job_manager.get_position(job_id),
+        "result": j.result,
+        "error": j.error_message,
+    }
+
 @app.post("/api/v1/cancel", tags=["Image Generation"])
-async def cancel_generation():
-    try:
-        client: ComfyUIClient | None = ACTIVE_JOB.get("client")
-        if client is None:
-            raise HTTPException(status_code=400, detail="No active generation to cancel.")
-
-        # 취소 플래그 설정 및 서버에 인터럽트 전송
-        ACTIVE_JOB["cancelled"] = True
-        ok = client.interrupt()
-        if not ok:
-            raise HTTPException(status_code=500, detail="Failed to send interrupt to ComfyUI.")
-
-        # UI에 'cancelling' 상태 브로드캐스트 (선택)
-        await manager.broadcast_json({"status": "cancelling"})
-        return {"message": "Cancel request sent."}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def cancel_active_for_user(request: Request):
+    anon_id = _get_anon_id_from_request(request)
+    j = job_manager.get_active_for_owner(anon_id)
+    if not j:
+        raise HTTPException(status_code=400, detail="No active generation to cancel.")
+    ok = job_manager.cancel(j.id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to cancel job.")
+    await manager.send_json_to_user(anon_id, {"status": "cancelling", "job_id": j.id})
+    return {"message": "Cancel request sent.", "job_id": j.id}
 
 @app.post("/api/v1/translate-prompt", tags=["Prompt Translation"])
 async def translate_prompt_endpoint(text: str = Form(...)):
@@ -530,14 +669,83 @@ async def translate_prompt_endpoint(text: str = Form(...)):
 
 @app.websocket("/ws/status")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    qp = websocket.query_params
+    user_id = qp.get("anon_id") or _get_anon_id_from_ws(websocket)
+    logger.info({"event": "ws_connect", "owner_id": user_id})
+    await manager.connect(websocket, user_id)
     try:
-        while True: await websocket.receive_text()
+        while True:
+            await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        logger.info({"event": "ws_disconnect", "owner_id": user_id})
+        manager.disconnect(websocket, user_id)
     except Exception as e:
         print(f"💥 WebSocket error: {e}")
-        manager.disconnect(websocket)
+        manager.disconnect(websocket, user_id)
 
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.on_event("startup")
+async def on_startup():
+    loop = asyncio.get_running_loop()
+    manager.set_loop(loop)
+
+    def notifier(owner_id: str, event: dict):
+        try:
+            jid = event.get("job_id")
+            if event.get("status") == "queued" and jid:
+                pos = job_manager.get_position(jid)
+                event = dict(event)
+                event["position"] = pos
+        except Exception:
+            pass
+        # Persist job snapshot if exists
+        try:
+            if jid:
+                j = job_manager.get(jid)
+                if j:
+                    # Detect artifact availability on completion (best-effort)
+                    artifact_available = False
+                    try:
+                        p = j.result.get("image_path") if isinstance(j.result, dict) else None
+                        if isinstance(p, str) and p:
+                            if p.startswith('/outputs/'):
+                                rel = p[len('/outputs/') : ]
+                            elif p.startswith('outputs/'):
+                                rel = p[len('outputs/') : ]
+                            else:
+                                rel = None
+                            if rel:
+                                fs_path = os.path.join(OUTPUT_DIR, rel)
+                                artifact_available = os.path.exists(fs_path)
+                    except Exception:
+                        pass
+                    job_store.upsert_job({
+                        "id": j.id,
+                        "owner_id": j.owner_id,
+                        "type": j.type,
+                        "status": j.status,
+                        "progress": j.progress,
+                        "created_at": j.created_at,
+                        "started_at": j.started_at,
+                        "ended_at": j.ended_at,
+                        "error": j.error_message,
+                        "result": j.result,
+                        "artifact_available": artifact_available,
+                    })
+        except Exception:
+            pass
+        manager.send_from_worker(owner_id, event)
+
+    job_manager.register_processor("generate", _processor_generate)
+    job_manager.set_notifier(notifier)
+    # Apply queue/timeouts from env
+    try:
+        job_manager.max_per_user_queue = int(QUEUE_CONFIG.get("max_per_user_queue", 5))
+        job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
+        job_manager.job_timeout_seconds = float(QUEUE_CONFIG.get("job_timeout_seconds", 180))
+    except Exception:
+        pass
+    job_manager.start()

@@ -4,6 +4,12 @@ ComfyUI FastAPI 애플리케이션 설정 파일 (리팩토링 v4.0 - 비율 기
 """
 from typing import Dict, Any
 import time
+import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 # --- 1. 워크플로우별 설정 ---
 WORKFLOW_CONFIGS = {
@@ -68,9 +74,27 @@ DEFAULT_VALUES = {
 
 # --- 3. 서버 설정 ---
 SERVER_CONFIG = {
-    "output_dir": "./outputs/",
-    "server_address": "127.0.0.1:8188"
+    "output_dir": os.getenv("OUTPUT_DIR", "./outputs/"),
+    "server_address": os.getenv("COMFYUI_SERVER", "127.0.0.1:8188"),
 }
+
+# --- 3.1 큐/타임아웃 환경 설정 ---
+QUEUE_CONFIG = {
+    "max_per_user_queue": int(os.getenv("MAX_PER_USER_QUEUE", "5")),
+    "max_per_user_concurrent": int(os.getenv("MAX_PER_USER_CONCURRENT", "1")),
+    "job_timeout_seconds": float(os.getenv("JOB_TIMEOUT_SECONDS", "180")),
+}
+
+# --- 3.2 작업 DB 경로 ---
+JOB_DB_PATH = os.getenv("JOB_DB_PATH", "db/app_data.db")
+
+# --- 3.3 Logging settings (via .env) ---
+# LOG_LEVEL: DEBUG|INFO|WARNING|ERROR (default INFO)
+# LOG_FORMAT: json|text (default json)
+# LOG_TO_FILE: true|false (default false)
+# LOG_FILE_PATH: logs/app.log (used when LOG_TO_FILE=true)
+# LOG_MAX_BYTES: integer bytes for rotation (default 1048576)
+# LOG_BACKUP_COUNT: integer number of rotated files (default 3)
 
 # --- 4. 관련 함수 ---
 def _clean_tags(tags_string: str) -> list[str]:

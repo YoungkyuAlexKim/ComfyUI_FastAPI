@@ -1,2 +1,6 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+COMFYUI_SERVER=127.0.0.1:8188
+OUTPUT_DIR=./outputs/
+JOB_DB_PATH=db/app_data.db
+MAX_PER_USER_QUEUE=5
+MAX_PER_USER_CONCURRENT=1
+JOB_TIMEOUT_SECONDS=180

@@ -6,3 +6,4 @@ jinja2
 llama-cpp-python
 python-multipart
 Pillow
+python-dotenv

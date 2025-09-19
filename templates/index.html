@@ -9,7 +9,7 @@
     <link href="/static/css/styles.css?v=20250918_01" rel="stylesheet">
 </head>
 <body>
-    <div class="app-container">
+    <div class="app-container" data-anon-id="{{ anon_id }}">
         <div class="app-layout">
             <aside class="sidebar">
                 <div class="sidebar-header">
@@ -99,6 +99,10 @@
                         <h3 class="progress-title"><i class="fas fa-clock"></i> 생성 진행률</h3>
                         <div class="progress-container"><div class="progress-bar" id="progress-bar"></div></div>
                         <div class="progress-text" id="progress-text">0%</div>
+                        <div class="queue-info" id="queue-info" style="display:none; margin-top:6px; font-size: 13px; color: var(--neutral-600); display:flex; gap:8px; align-items:center;">
+                            <span class="badge" id="queue-position" style="background: var(--neutral-100); border:1px solid var(--neutral-200); border-radius: 9999px; padding: 2px 8px; font-weight:600; color: var(--neutral-700);"></span>
+                            <span id="queue-eta" style="color: var(--neutral-500);"></span>
+                        </div>
                     </div>
                     
                     <div class="output-card">
@@ -185,13 +189,37 @@
             resultImage: document.getElementById('result-image'),
         };
 
-        const ws = new WebSocket(`ws://${window.location.host}/ws/status`);
-        ws.onopen = () => console.log("✅ WebSocket connected");
-        ws.onmessage = handleWebSocketMessage;
+        const anonId = document.querySelector('.app-container')?.getAttribute('data-anon-id') || '';
+        const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        let ws = null;
+        let wsRetry = 0;
+        function connectWS(){
+            try {
+                ws = new WebSocket(`${wsProto}://${window.location.host}/ws/status?anon_id=${encodeURIComponent(anonId)}`);
+                ws.onopen = () => { console.log('✅ WebSocket connected'); wsRetry = 0; };
+                ws.onmessage = handleWebSocketMessage;
+                ws.onclose = () => {
+                    // Exponential backoff up to ~10s
+                    const delay = Math.min(10000, 500 * Math.pow(2, wsRetry++));
+                    setTimeout(connectWS, delay);
+                };
+                ws.onerror = () => {
+                    try { ws.close(); } catch(_) {}
+                };
+            } catch (e) {
+                const delay = Math.min(10000, 500 * Math.pow(2, wsRetry++));
+                setTimeout(connectWS, delay);
+            }
+        }
+        connectWS();
         ui.generateBtn.addEventListener('click', handleGenerateClick);
         const cancelBtn = document.getElementById('cancel-btn');
         cancelBtn.addEventListener('click', handleCancelClick);
         ui.promptSuggestionText.addEventListener('click', handleSuggestionClick);
+
+        // Track the latest job started by this client
+        let currentJobId = null;
+        let queueTimer = null;
 
         ui.aspectRatioGroup.addEventListener('click', (e) => {
             const button = e.target.closest('.aspect-ratio-btn');
@@ -281,8 +309,23 @@
 
         function handleWebSocketMessage(event) {
             const data = JSON.parse(event.data);
-            if (data.progress !== undefined) updateProgress(data.progress);
-            if (data.status === 'running') setGenerationState(true, 'AI 생성 중...');
+            // Process only current job's events when job_id is present
+            if (data.job_id) {
+                if (!currentJobId) return; // no active job → ignore job-scoped events
+                if (data.job_id !== currentJobId) return;
+            }
+            if (data.status === 'queued') {
+                // Show queued info (position if present)
+                const pos = (typeof data.position === 'number') ? data.position + 1 : null;
+                const msg = pos ? `대기중... (${pos}번째)` : '대기중...';
+                showStatus(msg, 'info');
+                setGenerationState(true, '대기중...');
+                updateProgress(0);
+                if (pos) showQueueInfo(pos); else showQueueInfo();
+                return;
+            }
+            if (typeof data.progress === 'number') updateProgress(data.progress);
+            if (data.status === 'running') { setGenerationState(true, 'AI 생성 중...'); hideQueueInfo(); stopQueuePolling(); }
             if (data.status === 'complete') {
                 showStatus('🎉 이미지 생성 완료!', 'success');
                 updateProgress(0); // 완료 후 진행률을 0%로 리셋
@@ -299,6 +342,13 @@
                     const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && (window.APP_CONFIG.loading.overlayFadeOutMs || window.APP_CONFIG.loading.fadeMs)) || 300;
                     setTimeout(() => setGenerationState(false, '이미지 생성하기'), Math.max(50, fadeMs));
                 }
+                // Immediate safety unlock in case late events re-toggle state
+                setGenerationState(false, '이미지 생성하기');
+                currentJobId = null;
+                // Final watchdog to ensure overlay/buttons reset
+                setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, '이미지 생성하기'); }, 2500);
+                hideQueueInfo();
+                stopQueuePolling();
             }
             if (data.status === 'cancelling') {
                 showStatus('⏸️ 취소 요청 전송됨...', 'info');
@@ -310,12 +360,20 @@
                 // 버튼은 즉시 복구(취소 직후 재시도 가능하게)
                 hidePreviewOverlay();
                 setGenerationState(false, '이미지 생성하기');
+                currentJobId = null;
+                setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, '이미지 생성하기'); }, 1500);
+                hideQueueInfo();
+                stopQueuePolling();
             }
             if (data.error) {
                 showStatus(`❌ 오류: ${data.error}`, 'error');
                 setGenerationState(false, '이미지 생성하기');
                 updateProgress(0); // 에러 발생 시에도 진행률을 0%로 리셋
                 hidePreviewOverlay();
+                currentJobId = null;
+                setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, '이미지 생성하기'); }, 1500);
+                hideQueueInfo();
+                stopQueuePolling();
             }
         }
 
@@ -342,14 +400,84 @@
                     body: JSON.stringify(requestData)
                 });
                 const result = await response.json();
-                if (!response.ok) throw new Error(result.detail || 'Unknown error');
-                showStatus(result.message, 'info');
+                if (!response.ok) {
+                    if (response.status === 429) {
+                        showStatus(result.detail || '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.', 'error');
+                        setGenerationState(false, '이미지 생성하기');
+                        updateProgress(0);
+                        hidePreviewOverlay();
+                        return;
+                    }
+                    throw new Error(result.detail || 'Unknown error');
+                }
+                // Expect { job_id, status: 'queued', position }
+                currentJobId = result.job_id || null;
+                if (currentJobId) {
+                    const pos = (typeof result.position === 'number') ? result.position + 1 : null;
+                    const msg = pos ? `대기중... (${pos}번째)` : '대기중...';
+                    showStatus(msg, 'info');
+                    setGenerationState(true, '대기중...');
+                    updateProgress(0);
+                    if (pos) showQueueInfo(pos); else showQueueInfo();
+                    startQueuePolling();
+                } else {
+                    showStatus('요청이 접수되었습니다.', 'info');
+                }
             } catch (error) {
                 showStatus(`❌ 요청 실패: ${error.message}`, 'error');
                 setGenerationState(false, '이미지 생성하기');
                 updateProgress(0); // 요청 실패 시에도 진행률을 0%로 리셋
                 hidePreviewOverlay();
             }
+        }
+
+        // ---- Queue helpers ----
+        function showQueueInfo(position){
+            const box = document.getElementById('queue-info');
+            const posEl = document.getElementById('queue-position');
+            const etaEl = document.getElementById('queue-eta');
+            if (box) box.style.display = 'block';
+            if (posEl) posEl.textContent = (typeof position === 'number') ? `대기 ${position}번째` : '대기중';
+            if (etaEl) etaEl.textContent = '';
+        }
+        function hideQueueInfo(){
+            const box = document.getElementById('queue-info');
+            if (box) box.style.display = 'none';
+        }
+        async function pollQueueOnce(){
+            if (!currentJobId) return;
+            try {
+                const res = await fetch(`/api/v1/jobs/${currentJobId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.status === 'queued') {
+                    const pos = (typeof data.position === 'number') ? data.position + 1 : null;
+                    if (pos) showQueueInfo(pos); else showQueueInfo();
+                    // fetch metrics for ETA
+                    try {
+                        const mRes = await fetch('/api/v1/admin/jobs/metrics?limit=50');
+                        if (mRes.ok) {
+                            const m = await mRes.json();
+                            const etaEl = document.getElementById('queue-eta');
+                            const avg = (typeof m.overall_avg_sec === 'number') ? m.overall_avg_sec : null;
+                            if (etaEl && avg && pos) {
+                                const est = Math.max(1, Math.round(avg * (pos - 1)));
+                                etaEl.textContent = `예상 시작: ~${est}s 후`;
+                            }
+                        }
+                    } catch (_) {}
+                } else if (data.status === 'running') {
+                    hideQueueInfo();
+                    stopQueuePolling();
+                }
+            } catch (e) {}
+        }
+        function startQueuePolling(){
+            stopQueuePolling();
+            queueTimer = setInterval(pollQueueOnce, 2000);
+        }
+        function stopQueuePolling(){
+            if (queueTimer) { clearInterval(queueTimer); queueTimer = null; }
         }
 
         function setGenerationState(isGenerating, text) {
@@ -653,8 +781,8 @@
 
         // After image generation completes, refresh gallery head
         const _displayImageOriginal = displayImage;
-        displayImage = function(imagePath) {
-            _displayImageOriginal(imagePath);
+        displayImage = function(imagePath, onRevealDone) {
+            _displayImageOriginal(imagePath, onRevealDone);
             goToPage(1);
         };
 

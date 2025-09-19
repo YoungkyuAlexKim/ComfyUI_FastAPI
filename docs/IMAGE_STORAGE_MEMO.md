@@ -13,6 +13,7 @@
   - user_id: 내부 UUID/ULID(PII 금지), 폴더명으로 사용
   - ulid: 시간 정렬 가능 키(중복 방지/정렬 용이)
   - 현재 구현: 브라우저 익명 쿠키(anon_id) 네임스페이스 사용 → `users/anon-.../YYYY/MM/DD/...`
+  - 현행 JobManager 연계: 이미지 메타의 `owner`는 Job의 `owner_id(anon_id)`로 기록 → 갤러리/관리 API가 동일 키로 필터링
 - 메타데이터(예시)
   - { id, user_id, prompt, negative_prompt, seed, aspect_ratio, workflow_id,
       image_width, image_height, mime, file_bytes, sha256, created_at,
@@ -41,6 +42,11 @@
 - DB: Postgres에 메타 저장(인덱스: user_id, created_at desc, tags, workflow)
 - 접근: 프리사인 URL, CDN 캐싱 도입
 - 마이그레이션: outputs 스캔 → 업로드 → DB 적재 → 무중단 스위치
+
+### (게스트 → 회원 이관 시 고려)
+- 경로: `users/anon-.../` → `users/{user_id}/` 이동(서버 배치 스크립트)
+- 메타: `owner` 필드 값을 신규 `user_id`로 교체
+- 썸네일/원본/메타 동시 이동(참조 일관성)
 
 ## 3) 프론트엔드 UX 백로그
 - 갤러리 무한스크롤, 필터(날짜/비율/태그/워크플로우), 검색(프롬프트)

@@ -11,17 +11,20 @@
         .admin-grid { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
         .admin-card { background: #fff; border: 1px solid var(--neutral-200); border-radius: var(--radius-xl); padding: 16px; }
         .admin-users { max-height: 70vh; overflow: auto; }
-        .admin-user { padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+        .admin-user { padding: 8px 10px; border-radius: 8px; cursor: pointer; display:flex; align-items:center; }
         .admin-user:hover { background: var(--neutral-100); }
         .admin-user.active { background: var(--primary-50); border: 1px solid var(--primary-200); }
+        .admin-user::before { content: "\f007"; font-family: "Font Awesome 6 Free"; font-weight: 900; margin-right: 8px; color: var(--neutral-500); }
+        .admin-user { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .admin-toolbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-        .admin-gallery { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-        @media (max-width: 1024px){ .admin-gallery{ grid-template-columns: repeat(4,1fr);} }
-        @media (max-width: 768px){ .admin-gallery{ grid-template-columns: repeat(3,1fr);} }
-        @media (max-width: 480px){ .admin-gallery{ grid-template-columns: repeat(2,1fr);} }
-        .admin-thumb { position: relative; aspect-ratio: 1/1; border-radius: 10px; overflow: hidden; background: var(--neutral-100); display: flex; align-items: center; justify-content: center; }
+        .admin-gallery { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+        @media (max-width: 1280px){ .admin-gallery{ grid-template-columns: repeat(6,1fr);} }
+        @media (max-width: 1024px){ .admin-gallery{ grid-template-columns: repeat(5,1fr);} }
+        @media (max-width: 768px){ .admin-gallery{ grid-template-columns: repeat(4,1fr);} }
+        @media (max-width: 480px){ .admin-gallery{ grid-template-columns: repeat(3,1fr);} }
+        .admin-thumb { position: relative; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden; background: var(--neutral-100); display: flex; align-items: center; justify-content: center; }
         .admin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .admin-actions { display: flex; gap: 6px; margin-top: 6px; }
+        .admin-actions { display: flex; gap: 6px; margin-top: 4px; }
         .btn { padding: 6px 10px; border: 1px solid var(--neutral-300); background: #fff; border-radius: 8px; cursor: pointer; }
         .btn.danger { border-color: #ef4444; color: #ef4444; }
         .btn.success { border-color: #10b981; color: #10b981; }
@@ -29,15 +32,29 @@
         .status-badge { position:absolute; top:8px; left:8px; padding: 3px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700; color: #fff; box-shadow: var(--shadow-lg); letter-spacing: .2px; backdrop-filter: saturate(120%) blur(2px); }
         .badge-active { background: rgba(16, 185, 129, .9); border: 1px solid rgba(16, 185, 129, .3); }
         .badge-trash { background: rgba(239, 68, 68, .9); border: 1px solid rgba(239, 68, 68, .3); }
+        .jobs-card { margin-top: 16px; }
+        .jobs-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .jobs-table th, .jobs-table td { border-bottom: 1px solid var(--neutral-200); padding: 8px; text-align: left; }
+        .jobs-status { font-weight: 600; }
+        .jobs-meta { font-size: 12px; color: var(--neutral-500); }
     </style>
 </head>
 <body>
     <div class="admin-layout">
         <h1 style="margin-bottom:12px;">관리자 페이지</h1>
-        <div class="admin-grid">
+        <div class="admin-tabs" style="display:flex; gap:8px; margin-bottom:12px;">
+            <button class="tab-btn active" id="tab-images" type="button" style="padding:8px 12px; border:1px solid var(--neutral-300); border-radius: 9999px; background:#fff; cursor:pointer;">이미지</button>
+            <button class="tab-btn" id="tab-jobs" type="button" style="padding:8px 12px; border:1px solid var(--neutral-300); border-radius: 9999px; background:#fff; cursor:pointer;">작업 히스토리</button>
+        </div>
+        <div class="admin-grid" id="images-panel">
             <div class="admin-card admin-users">
                 <h3 style="margin-top:0;">사용자 목록</h3>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                    <input type="text" id="user-search" placeholder="이름 검색" style="flex:1;" />
+                    <button class="btn" id="user-search-btn">검색</button>
+                </div>
                 <div id="user-list"></div>
+                <div class="pagination" id="user-pagination" style="margin-top:8px;"></div>
             </div>
             <div class="admin-card">
                 <div class="admin-toolbar">
@@ -57,11 +74,47 @@
                     <label>To <input type="date" id="to-date"></label>
                     <button class="btn" id="apply-date">적용</button>
                     <div style="flex:1"></div>
+                    <label>페이지 크기
+                        <select id="page-size" style="margin-left:6px;">
+                            <option value="24">24</option>
+                            <option value="48">48</option>
+                            <option value="96">96</option>
+                        </select>
+                    </label>
                     <button class="btn danger" id="purge-trash">휴지통 비우기</button>
                 </div>
                 <div class="admin-gallery" id="admin-gallery"></div>
                 <div class="pagination" id="admin-pagination"></div>
             </div>
+        </div>
+        <div class="admin-card jobs-card" id="jobs-card" style="display:none;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <h3 style="margin:0;">작업 모니터링</h3>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <button class="btn" id="refresh-jobs">새로고침</button>
+                    <label>스위프 대상(최근)
+                        <input type="number" id="sweep-limit" value="200" min="1" max="5000" style="width:90px; margin-left:6px;" />
+                    </label>
+                    <button class="btn" id="run-sweep">스위프</button>
+                </div>
+            </div>
+            <table class="jobs-table" id="jobs-table">
+                <thead>
+                    <tr>
+                        <th>시간</th>
+                        <th>job_id</th>
+                        <th>사용자</th>
+                        <th>유형</th>
+                        <th>상태</th>
+                        <th>ETA</th>
+                        <th>진행률</th>
+                        <th>결과</th>
+                        <th>제어</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <div class="jobs-meta" id="jobs-meta"></div>
         </div>
     </div>
 
@@ -72,25 +125,67 @@
         const pager = document.getElementById('admin-pagination');
         const currentUserLabel = document.getElementById('current-user-label');
         const filterSelect = document.getElementById('filter-select');
+        const userPagination = document.getElementById('user-pagination');
+        const imagesPanel = document.getElementById('images-panel');
+        const jobsPanel = document.getElementById('jobs-card');
+        const tabImages = document.getElementById('tab-images');
+        const tabJobs = document.getElementById('tab-jobs');
 
         let currentUser = null;
+        let userPage = 1;
+        let userSize = 50;
+        let userQuery = '';
         let page = 1;
+        let pageSize = 24;
         let include = 'all';
         let fromDate = '';
         let toDate = '';
 
         async function loadUsers(){
-            const res = await fetch('/api/v1/admin/users');
+            const params = new URLSearchParams({ page: String(userPage), size: String(userSize) });
+            if (userQuery) params.set('q', userQuery);
+            const res = await fetch(`/api/v1/admin/users?${params.toString()}`);
             const data = await res.json();
             userList.innerHTML = '';
             data.users.forEach(u => {
                 const div = document.createElement('div');
                 div.className = 'admin-user';
+                div.title = u;
                 div.textContent = u;
                 div.addEventListener('click', () => selectUser(u, div));
                 userList.appendChild(div);
             });
+            renderUserPager(data.page, data.total_pages);
         }
+
+        function renderUserPager(page, totalPages){
+            userPagination.innerHTML = '';
+            const makeBtn = (label, disabled, onClick) => {
+                const b = document.createElement('button');
+                b.className = 'btn';
+                b.textContent = label;
+                b.disabled = disabled;
+                if (onClick) b.addEventListener('click', onClick);
+                return b;
+            };
+            userPagination.appendChild(makeBtn('처음', page===1, ()=>{userPage=1;loadUsers();}));
+            userPagination.appendChild(makeBtn('이전', page===1, ()=>{userPage=Math.max(1,page-1);loadUsers();}));
+            userPagination.appendChild(makeBtn('다음', page>=totalPages, ()=>{userPage=Math.min(totalPages,page+1);loadUsers();}));
+            userPagination.appendChild(makeBtn('마지막', page>=totalPages, ()=>{userPage=totalPages;loadUsers();}));
+        }
+
+        document.getElementById('user-search-btn').addEventListener('click', () => {
+            userQuery = (document.getElementById('user-search').value || '').trim();
+            userPage = 1;
+            loadUsers();
+        });
+        document.getElementById('user-search').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                userQuery = (document.getElementById('user-search').value || '').trim();
+                userPage = 1;
+                loadUsers();
+            }
+        });
 
         function selectUser(u, el){
             currentUser = u;
@@ -103,7 +198,7 @@
 
         async function loadImages(){
             if (!currentUser) { gallery.innerHTML = ''; pager.innerHTML=''; return; }
-            const params = new URLSearchParams({ user_id: currentUser, page: String(page), size: '24', include });
+            const params = new URLSearchParams({ user_id: currentUser, page: String(page), size: String(pageSize), include });
             if (fromDate) params.set('from_date', fromDate);
             if (toDate) params.set('to_date', toDate);
             const res = await fetch(`/api/v1/admin/images?${params.toString()}`);
@@ -180,6 +275,12 @@
             page = 1;
             loadImages();
         });
+        document.getElementById('page-size').addEventListener('change', (e) => {
+            const v = parseInt(e.target.value, 10);
+            pageSize = Number.isFinite(v) ? v : 24;
+            page = 1;
+            loadImages();
+        });
 
         document.getElementById('purge-trash').addEventListener('click', async () => {
             if (!currentUser) return;
@@ -188,7 +289,141 @@
             if (res.ok) { loadImages(); }
         });
 
-        loadUsers();
+        function activateTab(btn){
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+        function showImagesTab(){
+            imagesPanel.style.display = '';
+            jobsPanel.style.display = 'none';
+            activateTab(tabImages);
+            loadUsers();
+        }
+        function showJobsTab(){
+            imagesPanel.style.display = 'none';
+            jobsPanel.style.display = '';
+            activateTab(tabJobs);
+            loadJobs();
+            loadMetrics();
+        }
+        tabImages.addEventListener('click', showImagesTab);
+        tabJobs.addEventListener('click', showJobsTab);
+        showImagesTab();
+
+        // ---- Jobs monitor ----
+        const missingArtifacts = new Set();
+        const jobsTableBody = document.querySelector('#jobs-table tbody');
+        async function loadJobs(){
+            try {
+                const res = await fetch('/api/v1/admin/jobs?limit=100');
+                const data = await res.json();
+                renderJobs(Array.isArray(data.jobs) ? data.jobs : []);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        async function loadMetrics(){
+            try {
+                const res = await fetch('/api/v1/admin/jobs/metrics?limit=50');
+                const data = await res.json();
+                renderJobsMeta(data);
+                return data;
+            } catch (e) { return {}; }
+        }
+        function renderJobsMeta(m){
+            const el = document.getElementById('jobs-meta');
+            if (!el) return;
+            const overall = (typeof m.overall_avg_sec === 'number') ? `${Math.round(m.overall_avg_sec)}s` : '-';
+            el.textContent = `최근 평균 처리시간(전체): ${overall}`;
+        }
+        function renderJobs(jobs){
+            jobsTableBody.innerHTML = '';
+            let metricsCache = null;
+            const ensureMetrics = async () => { if (!metricsCache) metricsCache = await loadMetrics(); return metricsCache; };
+            jobs.forEach(async j => {
+                const tr = document.createElement('tr');
+                const dt = j.created_at ? new Date(j.created_at * 1000) : null;
+                const dtText = dt ? dt.toLocaleString() : '';
+                const metrics = await ensureMetrics();
+                const overall = (typeof metrics.overall_avg_sec === 'number') ? metrics.overall_avg_sec : null;
+                const perWf = (metrics.per_workflow_avg_sec && j?.result?.workflow_id) ? metrics.per_workflow_avg_sec[j.result.workflow_id] : null;
+                const avg = (typeof perWf === 'number') ? perWf : overall;
+                let etaStr = '-';
+                if (avg && j.status === 'queued') {
+                    etaStr = `~${Math.max(1, Math.round(avg))}s`;
+                } else if (avg && j.status === 'running' && j.started_at) {
+                    const elapsed = (Date.now()/1000 - j.started_at);
+                    const remain = Math.max(0, avg - elapsed);
+                    etaStr = `~${Math.max(0, Math.round(remain))}s`;
+                }
+                const imgUrl = j?.result?.image_path;
+                const avail = !!j?.artifact_available;
+                const resultCell = imgUrl ? (avail ? `<a href="${imgUrl}" data-result-link="true">결과보기</a>` : '삭제됨') : '';
+                tr.innerHTML = `
+                    <td>${dtText}</td>
+                    <td style="font-family:monospace;">${j.id}</td>
+                    <td>${j.owner_id}</td>
+                    <td>${j.type}</td>
+                    <td class="jobs-status">${j.status}</td>
+                    <td>${etaStr}</td>
+                    <td>${Math.round(j.progress || 0)}%</td>
+                    <td>${resultCell}</td>
+                    <td>${j.status === 'queued' || j.status === 'running' ? `<button class="btn danger" data-cancel="${j.id}">취소</button>` : ''}</td>
+                `;
+                jobsTableBody.appendChild(tr);
+            });
+            // Graceful handling for missing artifacts: bind once globally to avoid duplicate alerts on refresh
+            if (!window.__adminJobsLinkBound) {
+                jobsTableBody.addEventListener('click', async (e) => {
+                    const a = e.target.closest('a[data-result-link]');
+                    if (!a) return;
+                    e.preventDefault();
+                    const url = a.getAttribute('href');
+                    try {
+                        const res = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+                        if (res.ok) {
+                            window.open(url, '_blank');
+                        } else {
+                            try { missingArtifacts.add(url); } catch (_) {}
+                            a.replaceWith(document.createTextNode('삭제됨'));
+                            if (!a.__alertedOnce) { alert('파일이 삭제되었거나 만료되었습니다. (히스토리는 메타만 유지됨)'); a.__alertedOnce = true; }
+                        }
+                    } catch (err) {
+                        try { missingArtifacts.add(url); } catch (_) {}
+                        a.replaceWith(document.createTextNode('삭제됨'));
+                        if (!a.__alertedOnce) { alert('파일이 삭제되었거나 만료되었습니다. (히스토리는 메타만 유지됨)'); a.__alertedOnce = true; }
+                    }
+                });
+                window.__adminJobsLinkBound = true;
+            }
+            jobsTableBody.querySelectorAll('button[data-cancel]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.getAttribute('data-cancel');
+                    if (!id) return;
+                    try {
+                        await fetch(`/api/v1/jobs/${id}/cancel`, { method: 'POST' });
+                        loadJobs();
+                    } catch (e) {}
+                });
+            });
+        }
+        document.getElementById('refresh-jobs').addEventListener('click', () => { loadJobs(); loadMetrics(); });
+        document.getElementById('run-sweep').addEventListener('click', async () => {
+            const n = parseInt(document.getElementById('sweep-limit').value, 10);
+            const limit = Number.isFinite(n) ? n : 200;
+            try {
+                const res = await fetch(`/api/v1/admin/jobs/sweep?limit=${encodeURIComponent(limit)}`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(`스위프 완료: ${data.updated}건 동기화`);
+                    loadJobs();
+                } else {
+                    alert(data.detail || '스위프 실패');
+                }
+            } catch (e) {
+                alert('스위프 중 오류 발생');
+            }
+        });
     });
     </script>
 </body>
