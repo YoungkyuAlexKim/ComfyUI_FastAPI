@@ -483,7 +483,9 @@ def _processor_generate(job: Job, progress_cb):
                         if isinstance(stored, str) and stored:
                             uploaded_input_filename = stored
                             control = {"strength": 1.0, "image_filename": stored}
-                    except Exception:
+                    except Exception as e:
+                        # Explicitly log upload failure to aid diagnostics
+                        logger.info({"event": "controlnet_upload_failed", "job_id": job.id, "owner_id": job.owner_id, "error": str(e)})
                         # keep strength 0.0 on failure
                         pass
         else:
@@ -498,6 +500,23 @@ def _processor_generate(job: Job, progress_cb):
         seed=request.seed,
         control=control,
     )
+    # Debug logging for ControlNet application
+    try:
+        cn_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}).get("controlnet")
+        apply_node = cn_cfg.get("apply_node") if isinstance(cn_cfg, dict) else None
+        image_node = cn_cfg.get("image_node") if isinstance(cn_cfg, dict) else None
+        logger.info({
+            "event": "controlnet_overrides",
+            "owner_id": job.owner_id,
+            "job_id": job.id,
+            "control_enabled": bool(getattr(request, "control_enabled", False)),
+            "control_image_id": getattr(request, "control_image_id", None),
+            "uploaded_input_filename": uploaded_input_filename,
+            "apply_node_inputs": (prompt_overrides.get(apply_node, {}) if apply_node else {}),
+            "image_node_inputs": (prompt_overrides.get(image_node, {}) if image_node else {}),
+        })
+    except Exception:
+        pass
     client = ComfyUIClient(SERVER_ADDRESS)
     # Allow cancellation from job manager
     job_manager.set_active_cancel_handle(client.interrupt)

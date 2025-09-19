@@ -113,7 +113,7 @@
                         </div>
                     </div>
                     
-                        <div class="output-card">
+                        <div class="output-card" style="position:relative;">
                             <div class="output-toolbar">
                                 <button class="generate-btn" id="generate-btn">
                                 <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
@@ -121,13 +121,13 @@
                             <button class="cancel-btn" id="cancel-btn" disabled>
                                 <i class="fas fa-stop-circle"></i> <span>생성 취소</span>
                             </button>
+                                
                                 <div class="output-tools" style="margin-left:auto; display:flex; align-items:center; gap:8px;">
                                     <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; border:1px solid var(--neutral-300); padding:6px 10px; border-radius:8px; background:#fff;">
                                         <input type="checkbox" id="control-enabled" />
                                         <span>ControlNet 사용</span>
                                     </label>
                                     <button id="open-canvas-btn" type="button" class="chip-btn" title="캔버스 열기" aria-label="캔버스 열기"><i class="fas fa-pencil"></i> 캔버스 열기</button>
-                                    <img id="control-selected-thumb" alt="선택된 컨트롤" style="width:16px; height:16px; object-fit:cover; display:none; border:none; border-radius:0;" />
                                     <button id="open-btn" type="button" class="icon-btn" title="새 탭에서 열기" aria-label="새 탭에서 열기">
                                         <i class="fas fa-up-right-from-square" aria-hidden="true"></i>
                                     </button>
@@ -147,15 +147,19 @@
                                     <p class="placeholder-text">그리고 싶은 내용을 프롬프트에 입력하고<br>"이미지 생성하기" 버튼을 눌러보세요!</p>
                                 </div>
                             </div>
+                            <!-- Floating control thumb independent of result/placeholder sections -->
+                            <div id="control-floating" style="position:absolute; top:115px; right:8px; width:52px; height:52px; border-radius:12px; border:1px solid var(--neutral-300); background: rgba(255,255,255,0.92); box-shadow: var(--shadow-lg); backdrop-filter: saturate(120%) blur(4px); overflow:hidden; display:none; z-index:9999; display:flex; align-items:center; justify-content:center;">
+                                <img id="control-floating-img" alt="선택된 컨트롤" style="width:100%; height:100%; object-fit:cover; display:none;" />
+                            </div>
                         </div>
                         <div class="result-section" id="result-section" style="display: none;">
                              <div class="result-card">
                                 <div class="result-content">
                                     <h3 class="result-title"><i class="fas fa-image"></i> 생성된 이미지</h3>
-                                    <div class="image-container" id="result-image-container">
-                                        <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image">
+                                    <div class="image-container" id="result-image-container" style="position:relative;">
+                                        <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image" style="display:none;">
                                     </div>
-                                    <p class="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
+                                    <p class="result-hint" id="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
                                 </div>
                             </div>
                         </div>
@@ -298,9 +302,11 @@
             [openBtn, downloadBtn, copyLinkBtn].forEach((b)=>{ if (b) b.disabled = !enabled; });
         }
         setResultActionsEnabled(false);
-        if (openBtn) openBtn.addEventListener('click', () => { if (lastImageUrlOriginal) window.open(lastImageUrlOriginal, '_blank'); });
-        if (downloadBtn) downloadBtn.addEventListener('click', () => {
+        if (openBtn) openBtn.addEventListener('click', async () => { if (!lastImageUrlOriginal) return; const ok = await headOk(lastImageUrlOriginal); if (ok) window.open(lastImageUrlOriginal, '_blank'); else showStatus('파일이 삭제되었거나 만료되었습니다.', 'error'); });
+        if (downloadBtn) downloadBtn.addEventListener('click', async () => {
             if (!lastImageUrlOriginal) return;
+            const ok = await headOk(lastImageUrlOriginal);
+            if (!ok) { showStatus('파일이 삭제되었거나 만료되었습니다.', 'error'); return; }
             const a = document.createElement('a');
             a.href = lastImageUrlOriginal;
             a.download = (lastImageUrlOriginal.split('/').pop() || 'image.png');
@@ -310,12 +316,20 @@
         });
         if (copyLinkBtn) copyLinkBtn.addEventListener('click', async () => {
             if (!lastImageUrlOriginal) return;
+            const ok = await headOk(lastImageUrlOriginal);
+            if (!ok) { showStatus('파일이 삭제되었거나 만료되었습니다.', 'error'); return; }
             try { await navigator.clipboard.writeText(new URL(lastImageUrlOriginal, window.location.origin).toString()); showStatus('링크가 복사되었습니다.', 'info'); } catch(_) { showStatus('클립보드 복사 실패', 'error'); }
         });
 
         // Track the latest job started by this client
         let currentJobId = null;
         let queueTimer = null;
+        async function headOk(url){
+            try {
+                const res = await fetch(url, { method:'HEAD', cache:'no-store' });
+                return res.ok;
+            } catch (_) { return false; }
+        }
 
         ui.aspectRatioGroup.addEventListener('click', (e) => {
             const button = e.target.closest('.aspect-ratio-btn');
@@ -528,10 +542,18 @@
             // ControlNet options
             try {
                 const enabled = !!document.getElementById('control-enabled')?.checked;
-                // Remember last selected control image id (when user clicks in Controls gallery, later extension)
                 const lastSelectedControlId = (function(){ try { return localStorage.getItem('selectedControlId') || ''; } catch(_) { return ''; } })();
-                requestData.control_enabled = enabled;
-                if (enabled && lastSelectedControlId) requestData.control_image_id = lastSelectedControlId;
+                // 가드: 컨트롤넷 사용 체크가 켜져있는데 선택된 컨트롤이 없으면 요청 차단
+                if (enabled && !lastSelectedControlId) {
+                    showStatus('컨트롤 이미지를 먼저 선택해주세요. 내 컨트롤 탭에서 낙서를 선택하세요.', 'error');
+                    setGenerationState(false, '이미지 생성하기');
+                    hidePreviewOverlay();
+                    return;
+                }
+                // 선택이 있으면 자동 활성화(토글 실수 방지)
+                const forceEnable = !!lastSelectedControlId;
+                requestData.control_enabled = enabled || forceEnable;
+                if (requestData.control_enabled && lastSelectedControlId) requestData.control_image_id = lastSelectedControlId;
             } catch(_) {}
 
             try {
@@ -627,6 +649,7 @@
             cancelBtn.disabled = !isGenerating;
             ui.generateBtn.innerHTML = isGenerating ? `<div class="loading-spinner"></div><span>${text}</span>` : `<i class="fas fa-sparkles"></i><span>${text}</span>`;
             if (isGenerating) setResultActionsEnabled(false);
+            // 이전 방식: 오버레이 관련 로직 제거
         }
 
         function showStatus(message, type = 'info') {
@@ -680,6 +703,8 @@
             ui.resultImage.onload = () => {
                 ui.placeholderSection.style.display = 'none';
                 ui.resultSection.style.display = 'block';
+                // Ensure result image is visible (in case we hid it when overlay only)
+                ui.resultImage.style.display = 'block';
                 // Sync durations with CSS variable from config
                 const revealMs = (window.APP_CONFIG && window.APP_CONFIG.loading && window.APP_CONFIG.loading.revealMs) || 1000;
                 const hostCard = document.querySelector('.output-card');
@@ -698,6 +723,7 @@
                 setTimeout(() => {
                     ui.resultImage.classList.remove('reveal');
                     if (oldLayer && oldLayer.parentNode) oldLayer.parentNode.removeChild(oldLayer);
+                    // 이전 방식 유지: 오버레이 관련 로직 제거
                     if (typeof onRevealDone === 'function') onRevealDone();
                 }, Math.max(50, revealMs + 50));
                 setResultActionsEnabled(!!lastImageUrlOriginal);
@@ -977,10 +1003,23 @@
                         try {
                             localStorage.setItem('selectedControlId', it.id);
                         } catch(_) {}
-                        const badge = document.getElementById('control-selected-badge');
-                        const thumb = document.getElementById('control-selected-thumb');
-                        const txt = document.getElementById('control-selected-text');
-                        if (thumb) { thumb.style.display = ''; thumb.src = it.thumb_url || it.url; }
+                        // 이전 방식: 작은 썸네일만 갱신
+                        try {
+                            // remove inline thumb; use floating preview instead
+                            const thumb = document.getElementById('control-selected-thumb');
+                            if (thumb) { thumb.style.display='none'; }
+                            const floating = document.getElementById('control-floating');
+                            const floatingImg = document.getElementById('control-floating-img');
+                            if (floating) floating.style.display = 'flex';
+                            if (floatingImg) {
+                                floatingImg.style.display = 'block';
+                                floatingImg.src = '';
+                                floatingImg.src = it.thumb_url || it.url;
+                            }
+                            // 플레이스홀더는 유지 (독립 레이어이므로 가리지 않음)
+                            const chk = document.getElementById('control-enabled');
+                            if (chk) chk.checked = true;
+                        } catch(_) {}
                         showStatus('컨트롤이 선택되었습니다. ControlNet 토글을 켜면 적용됩니다.', 'info');
                     } else {
                         openLightboxAt(i);
@@ -1215,6 +1254,8 @@
             openLightbox(ui.resultImage.src, ui.resultImage.alt);
         });
 
+        // 이전 방식: 오버레이 관련 로직 제거
+
         lightboxCloseBtn.addEventListener('click', closeLightbox);
 
         lightbox.addEventListener('click', (e) => {
@@ -1235,6 +1276,7 @@
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.detail || 'Cancel failed');
                 showStatus(result.message, 'info');
+                // 컨트롤 코너는 유지(사용자 선택 상태가 남도록)
             } catch (error) {
                 showStatus(`❌ 취소 실패: ${error.message}`, 'error');
             }
