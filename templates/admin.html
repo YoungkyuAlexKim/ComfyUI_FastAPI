@@ -93,7 +93,7 @@
                     <button class="btn danger" id="purge-trash">휴지통 비우기</button>
                 </div>
                 <div class="admin-gallery" id="admin-gallery"></div>
-                <div class="pagination" id="admin-pagination"></div>
+                <div class="admin-pagination" id="admin-pagination"></div>
             </div>
         </div>
         <div class="admin-card jobs-card" id="jobs-card" style="display:none;">
@@ -202,18 +202,38 @@
 
         function renderUserPager(page, totalPages){
             userPagination.innerHTML = '';
+            const left = document.createElement('div'); left.className = 'admin-pagination-left';
+            const center = document.createElement('div'); center.className = 'admin-pagination-pages';
+            const right = document.createElement('div'); right.className = 'admin-pagination-right';
+
             const makeBtn = (label, disabled, onClick) => {
                 const b = document.createElement('button');
-                b.className = 'btn';
+                b.className = 'adm-page-btn';
                 b.textContent = label;
                 b.disabled = disabled;
                 if (onClick) b.addEventListener('click', onClick);
                 return b;
             };
-            userPagination.appendChild(makeBtn('처음', page===1, ()=>{userPage=1;loadUsers();}));
-            userPagination.appendChild(makeBtn('이전', page===1, ()=>{userPage=Math.max(1,page-1);loadUsers();}));
-            userPagination.appendChild(makeBtn('다음', page>=totalPages, ()=>{userPage=Math.min(totalPages,page+1);loadUsers();}));
-            userPagination.appendChild(makeBtn('마지막', page>=totalPages, ()=>{userPage=totalPages;loadUsers();}));
+            const makeIconBtn = (iconClass, disabled, onClick, aria) => {
+                const b = document.createElement('button');
+                b.className = 'adm-page-btn--icon';
+                b.disabled = disabled;
+                b.setAttribute('type','button');
+                b.setAttribute('aria-label', aria || '');
+                const i = document.createElement('i'); i.className = iconClass; b.appendChild(i);
+                if (onClick) b.addEventListener('click', onClick);
+                return b;
+            };
+
+            left.appendChild(makeIconBtn('fas fa-angles-left', page===1, ()=>{userPage=1;loadUsers();}, '처음'));
+            left.appendChild(makeIconBtn('fas fa-angle-left', page===1, ()=>{userPage=Math.max(1,page-1);loadUsers();}, '이전'));
+            // No numeric pages for user list (kept simple)
+            right.appendChild(makeIconBtn('fas fa-angle-right', page>=totalPages, ()=>{userPage=Math.min(totalPages,page+1);loadUsers();}, '다음'));
+            right.appendChild(makeIconBtn('fas fa-angles-right', page>=totalPages, ()=>{userPage=totalPages;loadUsers();}, '마지막'));
+
+            userPagination.appendChild(left);
+            userPagination.appendChild(center);
+            userPagination.appendChild(right);
         }
 
         document.getElementById('user-search-btn').addEventListener('click', () => {
@@ -288,18 +308,47 @@
 
         function renderPager(p, total){
             pager.innerHTML = '';
+            const left = document.createElement('div'); left.className = 'admin-pagination-left';
+            const center = document.createElement('div'); center.className = 'admin-pagination-pages';
+            const right = document.createElement('div'); right.className = 'admin-pagination-right';
+
             const makeBtn = (label, disabled, onClick) => {
                 const b = document.createElement('button');
-                b.className = 'btn';
+                b.className = 'adm-page-btn';
                 b.textContent = label;
                 b.disabled = disabled;
                 if (onClick) b.addEventListener('click', onClick);
                 return b;
             };
-            pager.appendChild(makeBtn('처음', p===1, ()=>{page=1;loadImages();}));
-            pager.appendChild(makeBtn('이전', p===1, ()=>{page=Math.max(1,p-1);loadImages();}));
-            pager.appendChild(makeBtn('다음', p===total, ()=>{page=Math.min(total,p+1);loadImages();}));
-            pager.appendChild(makeBtn('마지막', p===total, ()=>{page=total;loadImages();}));
+            const makeIconBtn = (iconClass, disabled, onClick, aria) => {
+                const b = document.createElement('button');
+                b.className = 'adm-page-btn--icon';
+                b.disabled = disabled;
+                b.setAttribute('type','button');
+                b.setAttribute('aria-label', aria || '');
+                const i = document.createElement('i'); i.className = iconClass; b.appendChild(i);
+                if (onClick) b.addEventListener('click', onClick);
+                return b;
+            };
+
+            left.appendChild(makeIconBtn('fas fa-angles-left', p===1, ()=>{page=1;loadImages();}, '처음'));
+            left.appendChild(makeIconBtn('fas fa-angle-left', p===1, ()=>{page=Math.max(1,p-1);loadImages();}, '이전'));
+
+            const windowSize = 5;
+            const start = Math.max(1, p - Math.floor(windowSize/2));
+            const end = Math.min(total, start + windowSize - 1);
+            for (let n = start; n <= end; n++) {
+                const num = makeBtn(String(n), n === p, () => { page = n; loadImages(); });
+                if (n === p) num.classList.add('active');
+                center.appendChild(num);
+            }
+
+            right.appendChild(makeIconBtn('fas fa-angle-right', p===total, ()=>{page=Math.min(total,p+1);loadImages();}, '다음'));
+            right.appendChild(makeIconBtn('fas fa-angles-right', p===total, ()=>{page=total;loadImages();}, '마지막'));
+
+            pager.appendChild(left);
+            pager.appendChild(center);
+            pager.appendChild(right);
         }
 
         async function updateImage(id, action){
