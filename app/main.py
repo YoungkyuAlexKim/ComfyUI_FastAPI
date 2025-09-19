@@ -49,6 +49,8 @@ class GenerateRequest(BaseModel):
     # ControlNet options
     control_enabled: Optional[bool] = None  # True => strength 1.0, False/None => 0.0
     control_image_id: Optional[str] = None  # previously saved control image id
+    # Forward-compatible: optional multi-slot controls (ignored when not configured)
+    controls: Optional[List[dict]] = None
 
 WORKFLOW_DIR = "./workflows/"
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
@@ -431,7 +433,8 @@ async def read_root(request: Request):
         "default_negative_prompt": default_values.get("negative_prompt", ""),
         "default_recommended_prompt": default_values.get("recommended_prompt", ""),
         "workflows_sizes_json": json.dumps(default_values.get("workflows_sizes", {})), # ✨ 사이즈 정보 추가
-        "workflow_default_prompts_json": json.dumps(default_values.get("workflow_default_prompts", {})) # 워크플로우별 기본 프롬프트
+        "workflow_default_prompts_json": json.dumps(default_values.get("workflow_default_prompts", {})), # 워크플로우별 기본 프롬프트
+        "workflow_control_slots_json": json.dumps(default_values.get("workflow_control_slots", {})),
     })
     _ensure_anon_id_cookie(request, response)
     return response
@@ -464,30 +467,91 @@ def _processor_generate(job: Job, progress_cb):
     request = GenerateRequest(**req_dict)
     workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
     control = None
+    multi_controls: List[dict] = []
     # Prepare ControlNet overrides if enabled
     uploaded_input_filename: Optional[str] = None
     try:
         if getattr(request, "control_enabled", None):
-            # Default to disabled until we ensure an input image is available/uploaded
-            control = {"strength": 0.0}
-            # If a saved control image is specified, upload it to ComfyUI inputs and set filename
-            if isinstance(request.control_image_id, str) and len(request.control_image_id) > 0:
+            # Prefer multi-controls if provided and mapping exists
+            wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+            slots_cfg = wf_cfg.get("control_slots") if isinstance(wf_cfg, dict) else None
+            provided_controls = []
+            try:
+                if isinstance(req_dict.get("controls"), list):
+                    provided_controls = [c for c in req_dict["controls"] if isinstance(c, dict) and c.get("slot") and c.get("image_id")]
+            except Exception:
+                provided_controls = []
+
+            if slots_cfg and provided_controls:
                 anon_id = job.owner_id
-                local_png = _locate_control_png_path(anon_id, request.control_image_id)
-                if local_png and os.path.exists(local_png):
+                client_tmp = ComfyUIClient(SERVER_ADDRESS)
+                for item in provided_controls:
+                    slot = str(item.get("slot"))
+                    image_id = str(item.get("image_id"))
+                    if slot not in slots_cfg:
+                        continue
+                    local_png = _locate_control_png_path(anon_id, image_id)
+                    if not local_png or not os.path.exists(local_png):
+                        continue
                     try:
                         with open(local_png, "rb") as f:
                             data = f.read()
-                        client_tmp = ComfyUIClient(SERVER_ADDRESS)
-                        stored = client_tmp.upload_image_to_input(f"{request.control_image_id}.png", data, "image/png")
+                        stored = None
+                        for _attempt in range(3):
+                            try:
+                                # Use a unique name per job to avoid collisions/stale caches
+                                stored = client_tmp.upload_image_to_input(f"{image_id}_{job.id}.png", data, "image/png")
+                                if isinstance(stored, str) and stored:
+                                    break
+                            except Exception:
+                                time.sleep(0.15)
                         if isinstance(stored, str) and stored:
-                            uploaded_input_filename = stored
-                            control = {"strength": 1.0, "image_filename": stored}
+                            multi_controls.append({
+                                "slot": slot,
+                                "image_filename": stored,
+                                "strength": 1.0,
+                            })
+                            try:
+                                time.sleep(0.05)
+                            except Exception:
+                                pass
+                        else:
+                            logger.info({"event": "controlnet_upload_failed_multi", "job_id": job.id, "owner_id": job.owner_id, "slot": slot, "error": "upload returned empty"})
                     except Exception as e:
-                        # Explicitly log upload failure to aid diagnostics
-                        logger.info({"event": "controlnet_upload_failed", "job_id": job.id, "owner_id": job.owner_id, "error": str(e)})
-                        # keep strength 0.0 on failure
-                        pass
+                        logger.info({"event": "controlnet_upload_failed_multi", "job_id": job.id, "owner_id": job.owner_id, "slot": slot, "error": str(e)})
+                control = None
+            else:
+                # Fallback to single control path
+                control = {"strength": 0.0}
+                if isinstance(request.control_image_id, str) and len(request.control_image_id) > 0:
+                    anon_id = job.owner_id
+                    local_png = _locate_control_png_path(anon_id, request.control_image_id)
+                    if local_png and os.path.exists(local_png):
+                        try:
+                            with open(local_png, "rb") as f:
+                                data = f.read()
+                            client_tmp = ComfyUIClient(SERVER_ADDRESS)
+                            stored = None
+                            for _attempt in range(3):
+                                try:
+                                    # Use a unique name per job to avoid collisions/stale caches
+                                    stored = client_tmp.upload_image_to_input(f"{request.control_image_id}_{job.id}.png", data, "image/png")
+                                    if isinstance(stored, str) and stored:
+                                        break
+                                except Exception:
+                                    time.sleep(0.15)
+                            if isinstance(stored, str) and stored:
+                                uploaded_input_filename = stored
+                                control = {"strength": 1.0, "image_filename": stored}
+                                try:
+                                    time.sleep(0.05)
+                                except Exception:
+                                    pass
+                            else:
+                                logger.info({"event": "controlnet_upload_failed", "job_id": job.id, "owner_id": job.owner_id, "error": "upload returned empty"})
+                        except Exception as e:
+                            logger.info({"event": "controlnet_upload_failed", "job_id": job.id, "owner_id": job.owner_id, "error": str(e)})
+                            pass
         else:
             control = {"strength": 0.0}
     except Exception:
@@ -500,6 +564,41 @@ def _processor_generate(job: Job, progress_cb):
         seed=request.seed,
         control=control,
     )
+
+    # Apply multi-control overrides when available
+    try:
+        if multi_controls:
+            wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+            slots_cfg = wf_cfg.get("control_slots") if isinstance(wf_cfg, dict) else None
+            defaults = {}
+            try:
+                defaults = wf_cfg.get("controlnet", {}).get("defaults", {}) or {}
+            except Exception:
+                defaults = {}
+            if slots_cfg and isinstance(prompt_overrides, dict):
+                start_pct = float(defaults.get("start_percent", 0.0))
+                end_pct = float(defaults.get("end_percent", 0.33))
+                for mc in multi_controls:
+                    slot = mc.get("slot")
+                    mapping = slots_cfg.get(slot) if isinstance(slots_cfg, dict) else None
+                    if not mapping:
+                        continue
+                    apply_node = mapping.get("apply_node")
+                    image_node = mapping.get("image_node")
+                    strength = float(mc.get("strength", 1.0))
+                    image_filename = mc.get("image_filename")
+                    if apply_node:
+                        prompt_overrides[apply_node] = {
+                            "inputs": {
+                                "strength": strength,
+                                "start_percent": start_pct,
+                                "end_percent": end_pct,
+                            }
+                        }
+                    if image_node and image_filename:
+                        prompt_overrides[image_node] = {"inputs": {"image": image_filename}}
+    except Exception:
+        pass
     # Debug logging for ControlNet application
     try:
         cn_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}).get("controlnet")

@@ -11,70 +11,7 @@ try:
 except Exception:
     pass
 
-# --- 1. 워크플로우별 설정 ---
-WORKFLOW_CONFIGS = {
-    "BasicWorkFlow_PixelArt": {
-        # 표시용 정보 (사용자가 수정 가능)
-        "display_name": "픽셀 아트",
-        "description": "레트로 감성의 픽셀 아트 스타일 이미지를 생성합니다",
-        
-        # 기본 사용자 프롬프트 (워크플로우별 고유)
-        "default_user_prompt": "a girl in a hanbok",
-        
-        # 노드 ID
-        "prompt_node": "6",
-        "negative_prompt_node": "7",
-        "seed_node": "3",
-        "latent_image_node": "5",
-
-        # 고정 프롬프트
-        "style_prompt": "masterpiece, best quality, amazing quality, pixel_art",
-        "negative_prompt": "bad quality, worst quality, worst detail, sketch, censor, blurry, ugly",
-
-        # 추천 프롬프트
-        "recommended_prompt": "1girl, solo, solid_oval_eyes, simple background",
-
-        # ✨ [4차] 사전 정의된 사이즈 (v4.0)
-        "sizes": {
-            "square": {"width": 800, "height": 800},
-            "landscape": {"width": 1024, "height": 576}, # 16:9 비율
-            "portrait": {"width": 576, "height": 1024}  # 9:16 비율
-        },
-
-        # ControlNet mapping for scribble workflow integration
-        "controlnet": {
-            "enabled": True,
-            # Node IDs in the workflow JSON
-            "apply_node": "23",  # ControlNetApplyAdvanced
-            "image_node": "28",  # LoadImage
-            # Defaults reflect the workflow JSON; strength will be controlled by UI (0 or 1)
-            "defaults": {
-                "strength": 0,
-                "start_percent": 0.0,
-                "end_percent": 0.33,
-            },
-        }
-    },
-    
-    # 새 워크플로우 추가 예시 (파일이 있을 때 활성화)
-    # "AnotherWorkflow": {
-    #     "display_name": "리얼리스틱 포트레이트",
-    #     "description": "사실적인 인물 사진을 생성합니다",
-    #     "default_user_prompt": "beautiful woman, professional portrait",  # 워크플로우별 기본 프롬프트
-    #     "prompt_node": "6",
-    #     "negative_prompt_node": "7", 
-    #     "seed_node": "3",
-    #     "latent_image_node": "5",
-    #     "style_prompt": "photorealistic, high quality, detailed",
-    #     "negative_prompt": "cartoon, anime, low quality",
-    #     "recommended_prompt": "portrait, professional lighting",
-    #     "sizes": {
-    #         "square": {"width": 1024, "height": 1024},
-    #         "landscape": {"width": 1344, "height": 768},
-    #         "portrait": {"width": 768, "height": 1344}
-    #     }
-    # }
-}
+from .workflow_configs import WORKFLOW_CONFIGS
 
 # --- 2. 기본 값 ---
 DEFAULT_VALUES = {
@@ -242,6 +179,11 @@ def get_default_values() -> Dict[str, Any]:
     # 워크플로우별 기본 프롬프트 정보 추가
     defaults["workflow_default_prompts"] = {
         wf_id: wf_config.get("default_user_prompt", "")
+        for wf_id, wf_config in WORKFLOW_CONFIGS.items()
+    }
+    # 워크플로우별 사용 가능한 ControlNet 슬롯 이름 배열(없으면 ["default"]) 추가
+    defaults["workflow_control_slots"] = {
+        wf_id: (list(wf_config.get("control_slots", {}).keys()) if isinstance(wf_config.get("control_slots", {}), dict) and wf_config.get("control_slots") else ["default"])
         for wf_id, wf_config in WORKFLOW_CONFIGS.items()
     }
     

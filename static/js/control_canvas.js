@@ -137,6 +137,13 @@
       return await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
     }
 
+    function getControlSlots(){
+      try { const raw = localStorage.getItem('controlSlots'); const obj = raw ? JSON.parse(raw) : {}; return (obj && typeof obj==='object')?obj:{}; } catch(_) { return {}; }
+    }
+    function setControlSlots(obj){ try { localStorage.setItem('controlSlots', JSON.stringify(obj||{})); } catch(_) {}
+    }
+    function setControlSlot(slotName, imageId){ const slots = getControlSlots(); if (imageId) slots[slotName]=imageId; else delete slots[slotName]; setControlSlots(slots); }
+
     async function upload(){
       try {
         const blob = await toPngBlob();
@@ -145,11 +152,20 @@
         const res = await fetch('/api/v1/controls/upload', { method: 'POST', body: fd });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || '업로드 실패');
-        try { localStorage.setItem('selectedControlId', data.id); } catch(_) {}
-        const thumb = document.getElementById('control-selected-thumb');
-        if (thumb) { thumb.style.display='';
-          // 업로드 응답에는 url 포함 → 없으면 목록 재조회로 대체 가능
-          if (data.url) thumb.src = data.url; }
+        try { setControlSlot('default', data.id); } catch(_) {}
+        // Update floating slot immediately
+        try {
+          const floatingImg = document.getElementById('control-floating-img');
+          const floatingEmpty = document.getElementById('control-floating-empty');
+          const floatingClear = document.getElementById('control-clear');
+          if (floatingImg) {
+            floatingImg.style.display = 'block';
+            floatingImg.src = '';
+            floatingImg.src = data.url || '';
+          }
+          if (floatingEmpty) floatingEmpty.style.display = 'none';
+          if (floatingClear) floatingClear.style.display = 'flex';
+        } catch(_) {}
         // ControlNet 토글 자동 켜기
         const chk = document.getElementById('control-enabled');
         if (chk) chk.checked = true;
