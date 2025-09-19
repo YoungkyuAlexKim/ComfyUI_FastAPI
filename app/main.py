@@ -416,6 +416,23 @@ job_manager = JobManager()
 job_store = JobStore(JOB_DB_PATH)
 logger = setup_logging()
 
+# --- Helpers ---
+def _wait_for_input_visibility(filename: str, timeout_sec: float = 1.5, poll_ms: int = 50) -> bool:
+    try:
+        if not isinstance(COMFY_INPUT_DIR, str) or not COMFY_INPUT_DIR or not isinstance(filename, str) or not filename:
+            return True
+        import time as _t
+        import os as _os
+        target = _os.path.join(COMFY_INPUT_DIR, filename)
+        deadline = _t.time() + max(0.05, timeout_sec)
+        while _t.time() < deadline:
+            if _os.path.exists(target):
+                return True
+            _t.sleep(max(0.01, poll_ms / 1000.0))
+        return _os.path.exists(target)
+    except Exception:
+        return True
+
 @app.get("/", response_class=HTMLResponse, tags=["Page"])
 async def read_root(request: Request):
     default_values = get_default_values()
@@ -505,14 +522,19 @@ def _processor_generate(job: Job, progress_cb):
                                     break
                             except Exception:
                                 time.sleep(0.15)
+                        # Ensure file visible before use (best-effort)
                         if isinstance(stored, str) and stored:
+                            try:
+                                _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
+                            except Exception:
+                                pass
                             multi_controls.append({
                                 "slot": slot,
                                 "image_filename": stored,
                                 "strength": 1.0,
                             })
                             try:
-                                time.sleep(0.05)
+                                time.sleep(0.1)
                             except Exception:
                                 pass
                         else:
@@ -540,11 +562,16 @@ def _processor_generate(job: Job, progress_cb):
                                         break
                                 except Exception:
                                     time.sleep(0.15)
+                            # Ensure file visible before use (best-effort)
                             if isinstance(stored, str) and stored:
+                                try:
+                                    _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
+                                except Exception:
+                                    pass
                                 uploaded_input_filename = stored
                                 control = {"strength": 1.0, "image_filename": stored}
                                 try:
-                                    time.sleep(0.05)
+                                    time.sleep(0.1)
                                 except Exception:
                                     pass
                             else:
@@ -564,6 +591,25 @@ def _processor_generate(job: Job, progress_cb):
         seed=request.seed,
         control=control,
     )
+
+    # Diagnostics: log final control application intent
+    try:
+        cn_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}).get("controlnet")
+        apply_node = cn_cfg.get("apply_node") if isinstance(cn_cfg, dict) else None
+        image_node = cn_cfg.get("image_node") if isinstance(cn_cfg, dict) else None
+        logger.info({
+            "event": "controlnet_final_overrides",
+            "owner_id": job.owner_id,
+            "job_id": job.id,
+            "control_enabled": bool(getattr(request, "control_enabled", False)),
+            "control_image_id": getattr(request, "control_image_id", None),
+            "single_image": (control or {}).get("image_filename") if isinstance(control, dict) else None,
+            "multi_count": len(multi_controls),
+            "apply_node_inputs": (prompt_overrides.get(apply_node, {}) if apply_node else {}),
+            "image_node_inputs": (prompt_overrides.get(image_node, {}) if image_node else {}),
+        })
+    except Exception:
+        pass
 
     # Apply multi-control overrides when available
     try:
@@ -598,6 +644,30 @@ def _processor_generate(job: Job, progress_cb):
                     if image_node and image_filename:
                         prompt_overrides[image_node] = {"inputs": {"image": image_filename}}
     except Exception:
+        pass
+
+    # Hard gate: if control is enabled, ensure an image override is present
+    try:
+        if getattr(request, "control_enabled", False):
+            wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+            cn_cfg = wf_cfg.get("controlnet") if isinstance(wf_cfg, dict) else None
+            image_node = cn_cfg.get("image_node") if isinstance(cn_cfg, dict) else None
+            has_single = bool(isinstance(control, dict) and control.get("image_filename"))
+            has_override = bool(image_node and isinstance(prompt_overrides, dict) and image_node in prompt_overrides and isinstance(prompt_overrides[image_node], dict) and isinstance(prompt_overrides[image_node].get("inputs"), dict) and prompt_overrides[image_node]["inputs"].get("image"))
+            has_multi = bool(multi_controls)
+            if not (has_single or has_override or has_multi):
+                logger.info({
+                    "event": "controlnet_gate_failed",
+                    "owner_id": job.owner_id,
+                    "job_id": job.id,
+                    "reason": "no image override present",
+                    "control_enabled": True,
+                    "image_node": image_node,
+                    "overrides_keys": list(prompt_overrides.keys()) if isinstance(prompt_overrides, dict) else None,
+                })
+                raise RuntimeError("ControlNet image not prepared. Please re-select the control image and try again.")
+    except Exception:
+        # If even gating fails unexpectedly, continue; queue may still succeed
         pass
     # Debug logging for ControlNet application
     try:

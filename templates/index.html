@@ -751,6 +751,7 @@
                 }
                 // Expect { job_id, status: 'queued', position }
                 currentJobId = result.job_id || null;
+                try { console.debug('ENQUEUED job_id', currentJobId); } catch(_) {}
                 if (currentJobId) {
                     const pos = (typeof result.position === 'number') ? result.position + 1 : null;
                     const msg = pos ? `대기중... (${pos}번째)` : '대기중...';
