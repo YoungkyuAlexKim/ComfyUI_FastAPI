@@ -96,6 +96,34 @@ JOB_DB_PATH = os.getenv("JOB_DB_PATH", "db/app_data.db")
 # LOG_MAX_BYTES: integer bytes for rotation (default 1048576)
 # LOG_BACKUP_COUNT: integer number of rotated files (default 3)
 
+# --- 3.4 Health/Timeouts (.env) ---
+# 건강검진에 사용되는 임계치 및 네트워크 타임아웃 설정
+HEALTHZ_CONFIG = {
+    "disk_min_free_mb": int(os.getenv("HEALTHZ_DISK_MIN_FREE_MB", "512")),
+}
+
+HTTP_TIMEOUTS = {
+    # requests 타임아웃 (초): (connect, read)
+    "comfy_http_connect": float(os.getenv("COMFY_HTTP_CONNECT_TIMEOUT", "3")),
+    "comfy_http_read": float(os.getenv("COMFY_HTTP_READ_TIMEOUT", "10")),
+}
+
+# WebSocket 타임아웃 (초)
+WS_TIMEOUTS = {
+    "comfy_ws_connect": float(os.getenv("COMFY_WS_CONNECT_TIMEOUT", "5")),
+    "comfy_ws_idle": float(os.getenv("COMFY_WS_IDLE_TIMEOUT", "120")),
+}
+
+# Progress logging controls
+PROGRESS_LOG_CONFIG = {
+    # Log every N percent (e.g., 10 => 0,10,20,...). Set to 0 to disable step gating.
+    "step_percent": int(os.getenv("PROGRESS_LOG_STEP", "10")),
+    # Minimum interval between logs per job in milliseconds
+    "min_interval_ms": int(os.getenv("PROGRESS_LOG_MIN_MS", "500")),
+    # Log level for progress messages: debug|info
+    "level": os.getenv("PROGRESS_LOG_LEVEL", "info").lower(),
+}
+
 # --- 4. 관련 함수 ---
 def _clean_tags(tags_string: str) -> list[str]:
     """콤마로 구분된 문자열을 태그 리스트로 변환하고 정리합니다."""

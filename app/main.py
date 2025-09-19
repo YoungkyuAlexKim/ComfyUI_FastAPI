@@ -12,6 +12,9 @@ import uuid
 from datetime import datetime, timezone
 import hashlib
 from io import BytesIO
+import sqlite3
+import shutil
+import requests
 
 try:
     from PIL import Image
@@ -21,6 +24,7 @@ except Exception:
 from .comfy_client import ComfyUIClient
 from .config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, get_default_values, get_workflow_default_prompt
 from .config import QUEUE_CONFIG, JOB_DB_PATH
+from .config import HEALTHZ_CONFIG
 from .job_manager import JobManager, Job
 from .job_store import JobStore
 from .logging_utils import setup_logging
@@ -685,6 +689,63 @@ async def websocket_endpoint(websocket: WebSocket):
 
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/healthz", tags=["Health"])
+async def healthz():
+	results = {
+		"comfyui": {"ok": False, "reason": None},
+		"db": {"ok": False, "reason": None},
+		"disk": {"ok": False, "reason": None},
+		"llm": {"ok": False, "reason": None},
+	}
+	status_code = 200
+	# ComfyUI HTTP ping (lightweight)
+	try:
+		url = f"http://{SERVER_ADDRESS}/"
+		resp = requests.get(url, timeout=(3.0, 5.0))
+		results["comfyui"]["ok"] = (resp.status_code >= 200 and resp.status_code < 500)
+		if not results["comfyui"]["ok"]:
+			results["comfyui"]["reason"] = f"HTTP {resp.status_code}"
+	except Exception as e:
+		results["comfyui"]["reason"] = str(e)
+		status_code = 503
+	# DB writeability (temp table insert)
+	try:
+		conn = sqlite3.connect(JOB_DB_PATH)
+		conn.execute("CREATE TABLE IF NOT EXISTS __healthz (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER)")
+		conn.execute("INSERT INTO __healthz (ts) VALUES (?)", (int(time.time()),))
+		conn.execute("DELETE FROM __healthz WHERE id IN (SELECT id FROM __healthz ORDER BY id DESC LIMIT 1 OFFSET 50)")
+		conn.commit()
+		conn.close()
+		results["db"]["ok"] = True
+	except Exception as e:
+		results["db"]["reason"] = str(e)
+		status_code = 503
+	# Disk free space
+	try:
+		total, used, free = shutil.disk_usage(OUTPUT_DIR)
+		free_mb = int(free / (1024 * 1024))
+		min_mb = int(HEALTHZ_CONFIG.get("disk_min_free_mb", 512))
+		results["disk"]["ok"] = (free_mb >= min_mb)
+		if not results["disk"]["ok"]:
+			results["disk"]["reason"] = f"free {free_mb}MB < min {min_mb}MB"
+	except Exception as e:
+		results["disk"]["reason"] = str(e)
+		status_code = 503
+	# LLM readiness (optional)
+	try:
+		results["llm"]["ok"] = (translator is not None)
+		if translator is None:
+			results["llm"]["reason"] = "model not loaded"
+	except Exception as e:
+		results["llm"]["reason"] = str(e)
+		# LLM 실패만으로는 전체 5xx로 올리지 않음
+	# Overall ok?
+	overall_ok = results["comfyui"]["ok"] and results["db"]["ok"] and results["disk"]["ok"]
+	payload = {"ok": overall_ok, "components": results}
+	if not overall_ok and status_code == 200:
+		status_code = 503
+	return JSONResponse(content=payload, status_code=status_code)
 
 
 @app.on_event("startup")

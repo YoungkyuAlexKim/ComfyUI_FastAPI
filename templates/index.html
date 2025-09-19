@@ -377,9 +377,40 @@
             }
         }
 
+        async function preflightHealthCheck(){
+            const ac = new AbortController();
+            const timer = setTimeout(() => { try { ac.abort(); } catch(_) {} }, 1500);
+            try {
+                const res = await fetch('/healthz', { cache: 'no-store', signal: ac.signal });
+                if (!res.ok) return false;
+                const data = await res.json();
+                return !!(data && data.ok === true);
+            } catch (_) {
+                return false;
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
         async function handleGenerateClick() {
             if (!currentWorkflow) return showStatus('워크플로우를 먼저 선택해주세요.', 'error');
             if (!ui.userPromptInput.value.trim()) return showStatus('그리고 싶은 내용을 프롬프트에 입력해주세요.', 'error');
+
+            // Preflight health check (silent guard)
+            try {
+                const ok = await preflightHealthCheck();
+                if (!ok) {
+                    showStatus('지금은 준비 중입니다. 잠시 후 다시 시도해주세요.', 'error');
+                    try { document.getElementById('status-container')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(_) {}
+                    try { alert('지금은 준비 중입니다. 잠시 후 다시 시도해주세요.'); } catch(_) {}
+                    return;
+                }
+            } catch (_) {
+                showStatus('지금은 준비 중입니다. 잠시 후 다시 시도해주세요.', 'error');
+                try { document.getElementById('status-container')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(_) {}
+                try { alert('지금은 준비 중입니다. 잠시 후 다시 시도해주세요.'); } catch(_) {}
+                return;
+            }
 
             setGenerationState(true, '요청 처리 중...');
             showStatus('서버에 생성 요청을 보냅니다...', 'info');

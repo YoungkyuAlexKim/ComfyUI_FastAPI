@@ -42,6 +42,15 @@
 <body>
     <div class="admin-layout">
         <h1 style="margin-bottom:12px;">관리자 페이지</h1>
+        <div id="health-banner" class="admin-card" style="margin-bottom:12px; display:flex; align-items:center; gap:12px;">
+            <strong>상태</strong>
+            <span id="hb-comfy" style="padding:2px 8px; border-radius:9999px; font-size:12px;">ComfyUI: -</span>
+            <span id="hb-db" style="padding:2px 8px; border-radius:9999px; font-size:12px;">DB: -</span>
+            <span id="hb-disk" style="padding:2px 8px; border-radius:9999px; font-size:12px;">Disk: -</span>
+            <span id="hb-llm" style="padding:2px 8px; border-radius:9999px; font-size:12px;">LLM: -</span>
+            <div style="flex:1"></div>
+            <button class="btn" id="hb-refresh">새로고침</button>
+        </div>
         <div class="admin-tabs" style="display:flex; gap:8px; margin-bottom:12px;">
             <button class="tab-btn active" id="tab-images" type="button" style="padding:8px 12px; border:1px solid var(--neutral-300); border-radius: 9999px; background:#fff; cursor:pointer;">이미지</button>
             <button class="tab-btn" id="tab-jobs" type="button" style="padding:8px 12px; border:1px solid var(--neutral-300); border-radius: 9999px; background:#fff; cursor:pointer;">작업 히스토리</button>
@@ -140,6 +149,39 @@
         let include = 'all';
         let fromDate = '';
         let toDate = '';
+
+        const hb = {
+            wrap: document.getElementById('health-banner'),
+            comfy: document.getElementById('hb-comfy'),
+            db: document.getElementById('hb-db'),
+            disk: document.getElementById('hb-disk'),
+            llm: document.getElementById('hb-llm'),
+            refresh: document.getElementById('hb-refresh')
+        };
+        function pill(el, ok, label, reason){
+            el.textContent = label + (reason ? ` (${reason})` : '');
+            el.style.background = ok ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)';
+            el.style.border = ok ? '1px solid rgba(16,185,129,.35)' : '1px solid rgba(239,68,68,.35)';
+            el.style.color = ok ? '#065f46' : '#991b1b';
+        }
+        async function loadHealth(){
+            try {
+                const res = await fetch('/healthz', { cache: 'no-store' });
+                const data = await res.json();
+                const c = data.components || {};
+                pill(hb.comfy, !!c?.comfyui?.ok, 'ComfyUI: ' + (c?.comfyui?.ok ? 'OK' : 'FAIL'), c?.comfyui?.reason);
+                pill(hb.db, !!c?.db?.ok, 'DB: ' + (c?.db?.ok ? 'OK' : 'FAIL'), c?.db?.reason);
+                pill(hb.disk, !!c?.disk?.ok, 'Disk: ' + (c?.disk?.ok ? 'OK' : 'FAIL'), c?.disk?.reason);
+                pill(hb.llm, !!c?.llm?.ok, 'LLM: ' + (c?.llm?.ok ? 'OK' : 'FAIL'), c?.llm?.reason);
+            } catch (e) {
+                pill(hb.comfy, false, 'ComfyUI: FAIL', 'fetch error');
+                pill(hb.db, false, 'DB: FAIL', 'fetch error');
+                pill(hb.disk, false, 'Disk: FAIL', 'fetch error');
+                pill(hb.llm, false, 'LLM: FAIL', 'fetch error');
+            }
+        }
+        hb.refresh.addEventListener('click', loadHealth);
+        loadHealth();
 
         async function loadUsers(){
             const params = new URLSearchParams({ page: String(userPage), size: String(userSize) });

@@ -5,6 +5,9 @@ import urllib.request
 import urllib.parse
 import asyncio
 from typing import Callable, Optional
+import logging
+
+from .config import HTTP_TIMEOUTS, WS_TIMEOUTS
 
 
 class ComfyUIClient:
@@ -21,6 +24,28 @@ class ComfyUIClient:
         self.server_address = server_address
         self.client_id = client_id if client_id else str(uuid.uuid4())
         self.manager = manager
+        self._logger = logging.getLogger("comfyui_app")
+
+    def _http_timeouts(self) -> tuple[float, float]:
+        try:
+            return (
+                float(HTTP_TIMEOUTS.get("comfy_http_connect", 3.0)),
+                float(HTTP_TIMEOUTS.get("comfy_http_read", 10.0)),
+            )
+        except Exception:
+            return (3.0, 10.0)
+
+    def _ws_connect_timeout(self) -> float:
+        try:
+            return float(WS_TIMEOUTS.get("comfy_ws_connect", 5.0))
+        except Exception:
+            return 5.0
+
+    def _ws_idle_timeout(self) -> float:
+        try:
+            return float(WS_TIMEOUTS.get("comfy_ws_idle", 120.0))
+        except Exception:
+            return 120.0
 
     def queue_prompt(self, workflow_json_path, prompt_overrides):
         """
@@ -57,22 +82,28 @@ class ComfyUIClient:
         # 4. HTTP POST 요청 보내기 (requests 라이브러리 사용)
         url = f"http://{self.server_address}/prompt"
         try:
-            # requests 라이브러리를 사용하여 POST 요청을 보냅니다.
             import requests
-            response = requests.post(url, json=data)
+            timeout_tuple = self._http_timeouts()
+            response = requests.post(url, json=data, timeout=timeout_tuple)
             response.raise_for_status() # 2xx 상태 코드가 아니면 에러를 발생시킴
             return response.json()
         except ImportError:
             print("❌ 에러: 'requests' 라이브러리가 설치되지 않았습니다. 'pip install requests'를 실행해주세요.")
             return {}
+        except requests.exceptions.Timeout as e:
+            try:
+                self._logger.error({"event": "comfy_timeout", "stage": "queue_prompt", "url": url, "error": str(e)})
+            except Exception:
+                pass
+            return {}
         except requests.exceptions.RequestException as e:
             print(f"❌ 에러: ComfyUI 서버에 요청을 보내는 중 문제가 발생했습니다.")
             print(f"    - URL: {url}")
             print(f"    - 에러 내용: {e}")
-            # 서버가 받은 데이터가 궁금할 경우 아래 주석을 해제하여 디버깅할 수 있습니다.
-            # print("\n--- 전송된 데이터 (JSON) ---")
-            # print(json.dumps(data, indent=2))
-            # print("--------------------------\n")
+            try:
+                self._logger.error({"event": "comfy_http_error", "stage": "queue_prompt", "url": url, "error": str(e)})
+            except Exception:
+                pass
             return {}
         
     # 기존 get_images 메서드를 아래 코드로 완전히 교체해주세요.
@@ -83,10 +114,22 @@ class ComfyUIClient:
         """
         ws_url = f"ws://{self.server_address}/ws?clientId={self.client_id}"
 
-        ws = websocket.create_connection(ws_url)
+        ws = None
         try:
+            ws = websocket.create_connection(ws_url, timeout=self._ws_connect_timeout())
+            try:
+                ws.settimeout(self._ws_idle_timeout())
+            except Exception:
+                pass
             while True:
-                opcode, data = ws.recv_data()
+                try:
+                    opcode, data = ws.recv_data()
+                except websocket.WebSocketTimeoutException as e:
+                    try:
+                        self._logger.error({"event": "comfy_timeout", "stage": "ws_idle", "url": ws_url, "error": str(e)})
+                    except Exception:
+                        pass
+                    raise
 
                 if opcode == 1:
                     message = json.loads(data.decode('utf-8'))
@@ -122,10 +165,18 @@ class ComfyUIClient:
             print("웹소켓 연결이 정상적으로 닫혔습니다.")
         except Exception as e:
             print(f"메시지 수신 중 오류 발생: {e}")
+            try:
+                self._logger.error({"event": "comfy_ws_error", "stage": "get_images", "url": ws_url, "error": str(e)})
+            except Exception:
+                pass
             # 오류 브로드캐스트는 상위 레벨에서 일괄 처리합니다.
             raise
         finally:
-            ws.close()
+            if ws is not None:
+                try:
+                    ws.close()
+                except Exception:
+                    pass
 
         # --- 아래 부분은 기존과 동일합니다 ---
         history = self.get_history(prompt_id).get(prompt_id, {})
@@ -148,24 +199,68 @@ class ComfyUIClient:
         url = f"http://{self.server_address}/interrupt"
         try:
             import requests
-            response = requests.post(url, json={"client_id": self.client_id})
+            timeout_tuple = self._http_timeouts()
+            response = requests.post(url, json={"client_id": self.client_id}, timeout=timeout_tuple)
             response.raise_for_status()
             return True
         except ImportError:
             print("❌ 에러: 'requests' 라이브러리가 설치되지 않았습니다. 'pip install requests'를 실행해주세요.")
             return False
+        except requests.exceptions.Timeout as e:
+            try:
+                self._logger.error({"event": "comfy_timeout", "stage": "interrupt", "url": url, "error": str(e)})
+            except Exception:
+                pass
+            return False
         except Exception as e:
             print(f"❌ 인터럽트 전송 실패: {e}")
+            try:
+                self._logger.error({"event": "comfy_http_error", "stage": "interrupt", "url": url, "error": str(e)})
+            except Exception:
+                pass
             return False
 
     def get_history(self, prompt_id):
         """HTTP를 통해 특정 prompt_id의 히스토리를 가져옵니다."""
-        with urllib.request.urlopen(f"http://{self.server_address}/history/{prompt_id}") as response:
-            return json.loads(response.read())
+        import requests
+        url = f"http://{self.server_address}/history/{prompt_id}"
+        try:
+            timeout_tuple = self._http_timeouts()
+            response = requests.get(url, timeout=timeout_tuple)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.Timeout as e:
+            try:
+                self._logger.error({"event": "comfy_timeout", "stage": "get_history", "url": url, "error": str(e)})
+            except Exception:
+                pass
+            return {}
+        except Exception as e:
+            try:
+                self._logger.error({"event": "comfy_http_error", "stage": "get_history", "url": url, "error": str(e)})
+            except Exception:
+                pass
+            return {}
 
     def get_image(self, filename, subfolder, folder_type):
         """HTTP를 통해 특정 이미지를 가져옵니다."""
-        data = {"filename": filename, "subfolder": subfolder, "type": folder_type}
-        url_values = urllib.parse.urlencode(data)
-        with urllib.request.urlopen(f"http://{self.server_address}/view?{url_values}") as response:
-            return response.read() 
+        import requests
+        params = {"filename": filename, "subfolder": subfolder, "type": folder_type}
+        url = f"http://{self.server_address}/view"
+        try:
+            timeout_tuple = self._http_timeouts()
+            response = requests.get(url, params=params, timeout=timeout_tuple)
+            response.raise_for_status()
+            return response.content
+        except requests.exceptions.Timeout as e:
+            try:
+                self._logger.error({"event": "comfy_timeout", "stage": "get_image", "url": url, "error": str(e)})
+            except Exception:
+                pass
+            return None
+        except Exception as e:
+            try:
+                self._logger.error({"event": "comfy_http_error", "stage": "get_image", "url": url, "error": str(e)})
+            except Exception:
+                pass
+            return None 

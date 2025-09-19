@@ -4,6 +4,7 @@ import uuid
 from collections import deque, defaultdict
 from typing import Any, Callable, Deque, Dict, Optional
 import logging
+from .config import PROGRESS_LOG_CONFIG
 
 
 JobStatus = str  # queued | running | complete | error | cancelled
@@ -161,15 +162,49 @@ class JobManager:
                 self._mark_error(job, "No processor for job type")
                 continue
 
+            # Throttled/stepped progress logger state
+            _last_logged_pct = -1.0
+            _last_logged_ts = 0.0
+
             def progress_cb(p: float):
+                nonlocal _last_logged_pct, _last_logged_ts
                 with self._lock:
                     job.progress = max(0.0, min(100.0, float(p)))
                 if self._notify:
                     self._notify(job.owner_id, {"status": "running", "job_id": job.id, "progress": job.progress})
+                # Step/interval gating for logs
                 try:
-                    self._logger.info({"event": "job_progress", "job_id": job.id, "owner_id": job.owner_id, "progress": round(job.progress, 2)})
+                    step = int(PROGRESS_LOG_CONFIG.get("step_percent", 10) or 0)
+                    min_ms = int(PROGRESS_LOG_CONFIG.get("min_interval_ms", 500))
                 except Exception:
-                    pass
+                    step = 10
+                    min_ms = 500
+                now = time.time()
+                should_log = True
+                if step > 0:
+                    # Only log when crossing multiples of 'step'
+                    rounded = int(round(job.progress))
+                    if rounded % max(1, step) != 0 and rounded != 100:
+                        should_log = False
+                    # Avoid duplicate logs at the same step
+                    if should_log and _last_logged_pct == rounded:
+                        should_log = False
+                    if should_log:
+                        _last_logged_pct = rounded
+                # Interval throttle
+                if should_log and min_ms > 0 and (now - _last_logged_ts) * 1000.0 < min_ms:
+                    should_log = False
+                if should_log:
+                    _last_logged_ts = now
+                    payload = {"event": "job_progress", "job_id": job.id, "owner_id": job.owner_id, "progress": round(job.progress, 2)}
+                    try:
+                        level = (PROGRESS_LOG_CONFIG.get("level") or "info").lower()
+                    except Exception:
+                        level = "info"
+                    if level == "debug":
+                        self._logger.debug(payload)
+                    else:
+                        self._logger.info(payload)
 
             with self._lock:
                 self._active_job_id = job.id
