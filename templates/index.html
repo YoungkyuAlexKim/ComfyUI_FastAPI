@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ComfyUI FastAPI - AI 이미지 생성</title>
+    <title>LC AI Canvas - AI 이미지 생성</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="/static/css/styles.css?v=20250919_02" rel="stylesheet">
@@ -13,7 +13,7 @@
         <div class="app-layout">
             <aside class="sidebar">
                 <div class="sidebar-header">
-                    <h1 class="app-title"><i class="fas fa-palette"></i> ComfyUI AI 생성기</h1>
+                    <h1 class="app-title"><i class="fas fa-palette"></i> LC AI Canvas</h1>
                 </div>
                 <div class="workflow-section">
                     <div class="workflow-section-header">
@@ -31,6 +31,7 @@
             </aside>
 
             <main class="main-content">
+                <!-- Input Panel -->
                 <div class="input-panel">
                     <div class="input-card">
                         <div class="card-header">
@@ -42,172 +43,213 @@
                         <div class="card-content">
                             <div class="form-grid">
                                 <div class="form-group">
-                                    <label class="form-label" for="user_prompt"><i class="fas fa-comment-dots"></i> 프롬프트 (내용)</label>
+                                    <label class="form-label" for="user_prompt">
+                                        <i class="fas fa-comment-dots"></i> 프롬프트 (내용)
+                                    </label>
                                     <p class="prompt-suggestion" id="prompt-suggestion-text" style="display: none;"></p>
                                     <div class="input-with-action">
                                         <textarea class="form-input" id="user_prompt" placeholder="그리고 싶은 내용을 입력하세요 (예: 한복을 입은 소녀)..." rows="5">{{ default_user_prompt }}</textarea>
-                                        <button class="translate-btn translate-btn--icon" data-target="user_prompt" data-tooltip="Danbooru 태그로 변환" aria-label="Danbooru 태그로 변환">
+                                        <button class="translate-btn--icon" data-target="user_prompt" data-tooltip="Danbooru 태그로 변환" aria-label="Danbooru 태그로 변환">
                                             <i class="fas fa-pencil-alt"></i>
                                         </button>
                                     </div>
                                 </div>
+
                                 <div class="form-group">
-                                    <label class="form-label" for="style_prompt"><i class="fas fa-palette"></i> 시스템 프롬프트 (스타일 & 품질)</label>
+                                    <label class="form-label" for="style_prompt">
+                                        <i class="fas fa-palette"></i> 시스템 프롬프트 (스타일 & 품질)
+                                    </label>
                                     <textarea class="form-input" id="style_prompt" rows="2" readonly>{{ default_style_prompt }}</textarea>
                                 </div>
+
                                 <div class="form-group" id="negative-prompt-wrap">
-                                    <label class="form-label" for="negative_prompt"><i class="fas fa-ban"></i> 시스템 부정 프롬프트</label>
+                                    <label class="form-label" for="negative_prompt">
+                                        <i class="fas fa-ban"></i> 시스템 부정 프롬프트
+                                    </label>
                                     <textarea class="form-input" id="negative_prompt" rows="2" readonly>{{ default_negative_prompt }}</textarea>
                                 </div>
-                                
+
                                 <div class="form-group">
-                                    <label class="form-label"><i class="fas fa-crop-alt"></i> 이미지 비율</label>
+                                    <label class="form-label">
+                                        <i class="fas fa-crop-alt"></i> 이미지 비율
+                                    </label>
                                     <div class="aspect-ratio-group" id="aspect-ratio-group">
                                         <button class="aspect-ratio-btn selected" data-ratio="square">
-                                            <i class="icon fas fa-square"></i>
+                                            <i class="fas fa-square"></i>
                                             <span class="label">Square</span>
                                         </button>
                                         <button class="aspect-ratio-btn" data-ratio="landscape">
-                                            <i class="icon fas fa-window-maximize"></i>
+                                            <i class="fas fa-window-maximize"></i>
                                             <span class="label">Landscape</span>
                                         </button>
                                         <button class="aspect-ratio-btn" data-ratio="portrait">
-                                            <i class="icon fas fa-mobile-screen-button"></i>
+                                            <i class="fas fa-mobile-screen-button"></i>
                                             <span class="label">Portrait</span>
                                         </button>
                                     </div>
                                 </div>
                             </div>
-                            <!-- Moved toolbar and ControlNet strip under prompts/ratio -->
+
+                            <!-- Generator Toolbar -->
                             <div class="generator-toolbar">
                                 <div class="output-toolbar">
                                     <button class="generate-btn" id="generate-btn">
-                                        <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
+                                        <i class="fas fa-sparkles"></i> 이미지 생성하기
                                     </button>
                                     <button class="cancel-btn" id="cancel-btn" disabled>
-                                        <i class="fas fa-stop-circle"></i> <span>생성 취소</span>
+                                        <i class="fas fa-stop-circle"></i> 생성 취소
                                     </button>
-                                    <div class="output-tools" style="margin-left:auto; display:flex; align-items:center; gap:8px;">
-                                        <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; border:1px solid var(--neutral-300); padding:6px 10px; border-radius:8px; background:#fff;">
+                                    <div class="output-tools">
+                                        <label class="control-toggle">
                                             <input type="checkbox" id="control-enabled" />
                                             <span>ControlNet 사용</span>
                                         </label>
-                                        <button id="open-canvas-btn" type="button" class="chip-btn" title="캔버스 열기" aria-label="캔버스 열기"><i class="fas fa-pencil"></i> 캔버스 열기</button>
+                                        <button id="open-canvas-btn" type="button" class="chip-btn" title="캔버스 열기" aria-label="캔버스 열기">
+                                            <i class="fas fa-pencil"></i> 캔버스 열기
+                                        </button>
                                         <button id="open-btn" type="button" class="icon-btn" title="새 탭에서 열기" aria-label="새 탭에서 열기">
-                                            <i class="fas fa-up-right-from-square" aria-hidden="true"></i>
+                                            <i class="fas fa-up-right-from-square"></i>
                                         </button>
                                         <button id="download-btn" type="button" class="icon-btn" title="다운로드" aria-label="다운로드">
-                                            <i class="fas fa-download" aria-hidden="true"></i>
+                                            <i class="fas fa-download"></i>
                                         </button>
                                         <button id="copylink-btn" type="button" class="icon-btn" title="링크 복사" aria-label="링크 복사">
-                                            <i class="fas fa-link" aria-hidden="true"></i>
+                                            <i class="fas fa-link"></i>
                                         </button>
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- ControlNet Strip -->
                             <div class="controlnet-strip">
                                 <div id="control-floating" title="컨트롤 이미지(클릭하여 캔버스 열기)">
                                     <div id="control-slot-inner">
                                         <img id="control-floating-img" alt="선택된 컨트롤" />
                                         <div id="control-floating-empty">
-                                            <i class="fas fa-pen" aria-hidden="true"></i>
+                                            <i class="fas fa-pen"></i>
                                         </div>
                                     </div>
                                     <button id="control-clear" type="button" title="컨트롤 제거" aria-label="컨트롤 제거">
-                                        <i class="fas fa-xmark" aria-hidden="true"></i>
+                                        <i class="fas fa-xmark"></i>
                                     </button>
                                 </div>
                             </div>
 
-                            <div class="status-container" id="status-container"><p id="status-message"></p></div>
+                            <div class="status-container" id="status-container">
+                                <p id="status-message"></p>
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Output Panel -->
                 <div class="output-panel">
                     <div class="control-section">
                         <div class="seed-section">
-                        <div class="seed-input-group">
-                            <div class="seed-input-wrapper">
-                                <label class="seed-label" for="seed"><i class="fas fa-dice"></i> 시드값</label>
-                                <div style="display:flex; gap:8px; align-items:center;">
-                                    <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0">
-                                    <button id="seed-random-btn" type="button" title="랜덤 시드" style="border:1px solid var(--neutral-300); background:#fff; border-radius:8px; padding:6px 10px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
-                                        <i class="fas fa-dice"></i><span style="font-size:12px;">랜덤</span>
-                                    </button>
+                            <div class="seed-input-group">
+                                <div class="seed-input-wrapper">
+                                    <label class="seed-label" for="seed">
+                                        <i class="fas fa-dice"></i> 시드값
+                                    </label>
+                                    <div>
+                                        <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0">
+                                        <button id="seed-random-btn" type="button" title="랜덤 시드">
+                                            <i class="fas fa-dice"></i> 랜덤
+                                        </button>
+                                    </div>
+                                    <small class="seed-hint">동일 이미지 재생성용</small>
                                 </div>
-                                <small class="seed-hint">동일 이미지 재생성용</small>
                             </div>
                         </div>
-                        </div>
                     </div>
-                    <!-- 로딩바를 독립적으로 분리 -->
+
+                    <!-- Progress Section -->
                     <div class="progress-section" id="progress-section">
-                        <h3 class="progress-title"><i class="fas fa-clock"></i> 생성 진행률</h3>
                         <div class="progress-container">
                             <div class="progress-bar" id="progress-bar"></div>
                         </div>
-                        <div class="progress-text" id="progress-text">0%</div>
-                        <div class="progress-right-label" id="progress-right" style="display:none;">0%</div>
-                        <div class="queue-info" id="queue-info" style="display:none; margin-top:6px; font-size: 13px; color: var(--neutral-600); display:flex; gap:8px; align-items:center;">
-                            <span class="badge" id="queue-position" style="background: var(--neutral-100); border:1px solid var(--neutral-200); border-radius: 9999px; padding: 2px 8px; font-weight:600; color: var(--neutral-700);"></span>
-                            <span id="queue-eta" style="color: var(--neutral-500);"></span>
+                        <div class="queue-info" id="queue-info" style="display:none;">
+                            <span class="badge" id="queue-position"></span>
+                            <span id="queue-eta"></span>
                         </div>
                     </div>
-                        <div class="output-card" style="position:relative;">
+
+                    <!-- Output Card -->
+                    <div class="output-card">
                         <div class="placeholder-section" id="placeholder-section">
-                             <div class="placeholder-card">
+                            <div class="placeholder-card">
                                 <div class="placeholder-container">
-                                    <div class="placeholder-icon"><i class="fas fa-image"></i></div>
-                                    <p class="placeholder-text">그리고 싶은 내용을 프롬프트에 입력하고<br>"이미지 생성하기" 버튼을 눌러보세요!</p>
+                                    <div class="placeholder-icon">
+                                        <i class="fas fa-image"></i>
+                                    </div>
+                                    <p class="placeholder-text">
+                                        그리고 싶은 내용을 프롬프트에 입력하고<br>"이미지 생성하기" 버튼을 눌러보세요!
+                                    </p>
                                 </div>
                             </div>
                         </div>
                         <div class="result-section" id="result-section" style="display: none;">
-                             <div class="result-card">
+                            <div class="result-card">
                                 <div class="result-content">
-                                    <div class="image-container" id="result-image-container" style="position:relative; height: var(--result-height, 512px);">
-                                        <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image" style="display:none;">
+                                    <div class="image-container" id="result-image-container">
+                                        <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image">
                                     </div>
                                     <p class="result-hint" id="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
                                 </div>
                             </div>
                         </div>
-                        <div class="preview-overlay" id="preview-overlay" aria-live="polite" aria-atomic="true">
+                        <div class="preview-overlay" id="preview-overlay">
                             <div class="preview-overlay-content">
-                                <div class="loading-spinner" style="margin: 0 auto var(--space-sm);"></div>
+                                <div class="loading-spinner"></div>
                                 <div class="preview-overlay-tip typing-caret" id="preview-tip"></div>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Gallery Panel -->
                 <div class="gallery-panel">
                     <div class="gallery-section" id="gallery-section" data-skeleton-count="12">
                         <div class="gallery-card">
-                            <div class="gallery-header" style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap: nowrap;">
-                                <div class="gallery-tabs" style="display:flex; gap:8px; flex-wrap: nowrap;">
-                                    <button id="tab-generated" type="button" class="chip-btn active"><i class="fas fa-images"></i> 생성 이미지</button>
-                                    <button id="tab-controls" type="button" class="chip-btn"><i class="fas fa-pen-ruler"></i> 내 컨트롤 이미지</button>
+                            <div class="gallery-header">
+                                <div class="gallery-tabs">
+                                    <button id="tab-generated" type="button" class="chip-btn active">
+                                        <i class="fas fa-images"></i> 생성 이미지
+                                    </button>
+                                    <button id="tab-controls" type="button" class="chip-btn">
+                                        <i class="fas fa-pen-ruler"></i> 내 컨트롤 이미지
+                                    </button>
                                 </div>
-                                <div style="flex:1"></div>
+                                <button id="control-upload-icon" type="button" class="icon-btn" title="컨트롤 업로드" aria-label="컨트롤 업로드" style="display:none;">
+                                    <i class="fas fa-upload"></i>
+                                </button>
+                                <input id="control-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
                             </div>
-                            <div class="gallery-title-row" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                                <h3 class="gallery-title" id="gallery-title" style="margin:0;"><i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지</h3>
-                                <div class="gallery-actions-right" style="display:flex; align-items:center; gap:6px;">
-                                    <button id="control-upload-icon" type="button" class="icon-btn" title="컨트롤 업로드" aria-label="컨트롤 업로드" style="display:none;"><i class="fas fa-upload"></i></button>
-                                    <input id="control-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
-                                </div>
+
+                            <div class="gallery-title-row">
+                                <h3 class="gallery-title" id="gallery-title">
+                                    <i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지
+                                </h3>
                             </div>
+
                             <div class="gallery-actions" id="gallery-actions">
                                 <button class="chip-btn chip-btn--ghost icon-only" id="select-toggle-btn" type="button" aria-label="선택" title="선택">
                                     <i class="fas fa-list-check"></i>
                                 </button>
-                                <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
-                                    <span id="selected-count" style="font-size:12px; color: var(--neutral-600); display:none;">0개 선택됨</span>
-                                    <button class="chip-btn icon-only" id="select-all-btn" type="button" style="display:none;" aria-label="모두선택" title="모두선택"><i class="fas fa-check-double"></i></button>
-                                    <button class="chip-btn chip-btn--ghost icon-only" id="clear-selection-btn" type="button" style="display:none;" aria-label="선택해제" title="선택해제"><i class="fas fa-circle-xmark"></i></button>
-                                    <button class="chip-btn chip-btn--danger icon-only" id="delete-selected-btn" type="button" style="display:none;" aria-label="선택 삭제" title="선택 삭제" disabled><i class="fas fa-trash"></i></button>
+                                <div>
+                                    <span id="selected-count" style="display:none;">0개 선택됨</span>
+                                    <button class="chip-btn icon-only" id="select-all-btn" type="button" style="display:none;" aria-label="모두선택" title="모두선택">
+                                        <i class="fas fa-check-double"></i>
+                                    </button>
+                                    <button class="chip-btn chip-btn--ghost icon-only" id="clear-selection-btn" type="button" style="display:none;" aria-label="선택해제" title="선택해제">
+                                        <i class="fas fa-circle-xmark"></i>
+                                    </button>
+                                    <button class="chip-btn chip-btn--danger icon-only" id="delete-selected-btn" type="button" style="display:none;" aria-label="선택 삭제" title="선택 삭제" disabled>
+                                        <i class="fas fa-trash"></i>
+                                    </button>
                                 </div>
                             </div>
+
                             <div class="gallery-grid" id="gallery-grid"></div>
                             <button class="gallery-load-more" id="gallery-load-more" style="display:none;">
                                 <i class="fas fa-chevron-down"></i> 더 보기

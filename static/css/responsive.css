@@ -1,255 +1,461 @@
-/* Responsive */
-@media (max-width: 768px) {
-    .main-content { padding: var(--space-lg); }
-    .card-title { font-size: 1.5rem; }
-    .card-content { padding: var(--space-lg); }
-    .form-grid { gap: var(--space-lg); }
-}
+/* Modern Responsive Design */
 
-/* Tablet Responsive */
-@media (max-width: 1200px) {
-    .input-panel {
-        flex: 0 0 42%;
-        max-width: 550px;
-        min-width: 400px;
-    }
-
-    .output-panel {
-        flex: 0 0 58%;
-        max-width: 650px;
-        min-width: 450px;
+/* Large Desktop - 1200px and up */
+@media (min-width: 1200px) {
+    .app-container {
+        padding: var(--space-4xl) var(--space-3xl);
+        gap: var(--space-4xl);
     }
 
     .main-content {
-        gap: var(--space-md);
+        grid-template-columns: 1.2fr 1fr;
+        gap: var(--space-4xl);
+    }
+
+    .gallery-grid {
+        grid-template-columns: repeat(4, 1fr);
     }
 }
 
-@media (max-width: 1024px) {
+/* Tablet - 768px to 1199px */
+@media (max-width: 1199px) {
+    .app-container {
+        padding: var(--space-3xl) var(--space-xl);
+        gap: var(--space-2xl);
+    }
+
     .sidebar {
         width: 260px;
     }
 
     .main-content {
-        width: calc(100% - 260px);
-        padding: var(--space-md);
-        gap: var(--space-md);
+        grid-template-columns: 1fr 1fr 350px; /* 갤러리 영역을 조금 작게 */
+        gap: var(--space-2xl);
+        /* 태블릿에서도 전체 높이 확보 */
+        height: calc(100vh - var(--space-4xl));
+        min-height: calc(100vh - var(--space-4xl));
     }
 
-    .input-panel {
-        flex: 0 0 40%;
-        max-width: 500px;
-        min-width: 350px;
+    .gallery-panel {
+        max-width: 350px;
     }
 
-    .output-panel {
-        flex: 0 0 60%;
-        max-width: 600px;
-        min-width: 400px;
+    .input-card,
+    .output-card,
+    .gallery-card {
+        border-radius: var(--radius-xl);
     }
 
-    .output-card {
-        height: 500px; /* 고정 높이 유지 */
-    }
-
-    .image-container {
-        min-height: 0;
-        max-height: none;
-    }
-
-    .result-card {
-        height: 100%;
-        padding: var(--space-lg);
+    .gallery-grid {
+        grid-template-columns: repeat(3, 1fr);
     }
 }
 
-@media (max-width: 768px) {
+/* Mobile First - Base styles for mobile */
+@media (max-width: 767px) {
+    .app-container {
+        padding: var(--space-xl) var(--space-lg);
+        gap: var(--space-xl);
+    }
+
     .app-layout {
         flex-direction: column;
+        gap: var(--space-xl);
     }
 
     .sidebar {
         width: 100%;
-        max-height: 320px;
-        border-right: none;
-        border-bottom: 1px solid var(--neutral-200);
-    }
-
-    .sidebar-header {
-        padding: var(--space-lg);
-    }
-
-    .workflow-section-header {
-        padding: var(--space-md) var(--space-lg) var(--space-sm);
-    }
-
-    .workflow-list {
-        padding: 0 var(--space-lg) var(--space-sm);
-    }
-
-    .app-title {
-        font-size: 1.125rem;
-        margin-bottom: 0;
+        max-height: none;
+        position: static;
+        border-radius: var(--radius-xl);
+        margin-bottom: var(--space-lg);
+        /* 모바일에서도 적절한 높이 유지 */
+        height: auto;
+        min-height: 300px;
     }
 
     .main-content {
-        width: 100%;
-        padding: var(--space-lg);
+        display: flex;
         flex-direction: column;
-        gap: var(--space-lg);
-    }
-
-    .input-panel {
-        flex: none;
-        max-width: 100%;
-        min-width: auto;
-    }
-
-    .output-panel {
-        flex: none;
+        gap: var(--space-xl);
         width: 100%;
-        max-width: 100%;
-        min-width: auto;
+        /* 모바일에서도 적절한 높이 확보 */
+        height: auto;
+        min-height: calc(100vh - 200px);
+    }
+
+    .input-panel,
+    .output-panel {
+        width: 100%;
+    }
+
+    /* Mobile에서 갤러리를 최상단에 배치하여 바로 볼 수 있도록 */
+    .gallery-panel {
+        order: -1; /* 갤러리를 가장 먼저 배치 */
+        max-width: none;
+        position: static;
+        height: auto;
+        max-height: 500px;
+    }
+
+    .gallery-card {
+        height: auto;
+        max-height: 500px;
+    }
+
+    .gallery-section {
+        height: auto;
+    }
+
+    .gallery-grid {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .input-card,
+    .output-card,
+    .gallery-card {
+        position: static;
+        height: auto;
     }
 
     .output-card {
-        height: 450px; /* 고정 높이 유지 */
+        min-height: 400px;
+    }
+
+    .gallery-panel {
         position: static;
+        height: auto;
+        max-height: 600px;
     }
 
-    .image-container {
-        min-height: 0;
-        max-height: none;
-        margin: var(--space-sm) 0;
+    .gallery-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-md);
     }
 
-    .result-card {
-        height: 100%;
-        padding: var(--space-lg);
-    }
-}
-
-@media (max-width: 600px) {
+    /* Mobile Navigation */
     .workflow-list {
-        padding: var(--space-md);
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: var(--space-sm);
+        padding: 0 var(--space-lg) var(--space-lg);
     }
 
     .workflow-item {
         padding: var(--space-md);
+        text-align: center;
+        border-radius: var(--radius-lg);
     }
 
     .workflow-item-header {
+        flex-direction: column;
         gap: var(--space-sm);
+        text-align: center;
     }
 
     .workflow-icon {
-        width: 32px;
-        height: 32px;
-        font-size: 1rem;
-    }
-}
-
-@media (max-width: 480px) {
-    .sidebar-header {
-        padding: var(--space-md);
+        width: 40px;
+        height: 40px;
+        font-size: 16px;
     }
 
-    .workflow-section-header {
-        padding: var(--space-sm) var(--space-md) var(--space-xs);
+    .workflow-name {
+        font-size: var(--font-size-sm);
     }
 
-    .workflow-list {
-        padding: 0 var(--space-md) var(--space-sm);
-    }
-
-    .app-title {
-        font-size: 1rem;
-    }
-
-    .sidebar-title {
-        font-size: 0.9rem;
-    }
-
-    .workflow-meta {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-xs);
-    }
-
-    .main-content {
-        padding: var(--space-md);
-        gap: var(--space-md);
-    }
-
-    .card-header {
-        padding: var(--space-lg);
-    }
-
-    .card-content {
-        padding: var(--space-lg);
-    }
-
-    .output-card {
-        height: 400px; /* 고정 높이 유지 */
-    }
-
-    .image-container {
-        min-height: 0;
-        max-height: none;
-    }
-
-    .result-card {
-        height: 100%;
-        padding: var(--space-lg);
+    /* Mobile Form */
+    .form-grid {
+        gap: var(--space-lg);
     }
 
     .form-input {
         min-height: 100px;
     }
-}
 
-/* Responsive adjustments for control section */
-@media (max-width: 768px) {
-    .seed-input-group {
+    /* Mobile Buttons */
+    .generate-btn,
+    .cancel-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .output-toolbar {
         flex-direction: column;
-        align-items: flex-start;
         gap: var(--space-sm);
-        justify-content: flex-start;
+        align-items: stretch;
     }
 
-    .seed-input-wrapper {
+    .output-tools {
+        margin-left: 0;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .icon-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    /* Mobile Control */
+    .controlnet-strip {
         flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-sm);
-        width: 100%;
-    }
-
-    .seed-input {
-        max-width: 100%;
-        width: 100%;
-    }
-
-    .seed-hint {
-        align-self: flex-start;
-    }
-
-    .generate-btn {
-        margin-top: var(--space-sm);
-        width: 100%;
-    }
-
-    /* 모바일에서 로딩바 스타일 조정 */
-    .progress-section {
+        align-items: center;
+        gap: var(--space-md);
         padding: var(--space-md);
     }
 
-    .progress-title {
-        font-size: 0.9rem;
+    #control-floating {
+        width: 60px;
+        height: 60px;
+    }
+
+    /* Mobile Seed */
+    .seed-input-group {
+        flex-direction: column;
+        gap: var(--space-md);
+        align-items: stretch;
+    }
+
+    .seed-input-wrapper {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .seed-input {
+        flex: 1;
+        max-width: none;
+        min-width: 120px;
+    }
+
+    /* Mobile Progress */
+    .progress-section {
+        padding: var(--space-lg);
+    }
+
+    /* Mobile Gallery */
+    .gallery-actions {
+        flex-direction: column;
+        gap: var(--space-sm);
+    }
+
+    .gallery-actions-right {
+        margin-left: 0;
+        justify-content: center;
+    }
+
+    .gallery-title-row {
+        flex-direction: column;
+        gap: var(--space-md);
+        align-items: stretch;
+    }
+
+    .gallery-title {
+        text-align: center;
+    }
+
+    .gallery-actions-right {
+        justify-content: center;
+    }
+
+    /* Mobile Aspect Ratio */
+    .aspect-ratio-group {
+        grid-template-columns: 1fr;
+        gap: var(--space-md);
+    }
+
+    .aspect-ratio-btn {
+        min-height: 60px;
+        padding: var(--space-md);
     }
 }
 
-@media (max-width: 480px) {
-    .seed-section {
+/* Small Mobile - 480px and down */
+@media (max-width: 479px) {
+    .app-container {
+        padding: var(--space-lg) var(--space-md);
+        gap: var(--space-lg);
+    }
+
+    .sidebar {
+        margin-bottom: var(--space-md);
+        /* 작은 모바일에서도 최소 높이 유지 */
+        min-height: 250px;
+    }
+
+    .main-content {
+        gap: var(--space-lg);
+        /* 작은 모바일에서도 적절한 높이 확보 */
+        min-height: calc(100vh - 150px);
+    }
+
+    .card-header,
+    .card-content {
+        padding: var(--space-lg);
+    }
+
+    .workflow-list {
+        grid-template-columns: 1fr;
+        padding: 0 var(--space-md) var(--space-md);
+    }
+
+    .workflow-item {
         padding: var(--space-sm);
+    }
+
+    .form-input {
+        min-height: 80px;
+        font-size: var(--font-size-sm);
+    }
+
+    .form-input[readonly] {
+        min-height: 60px;
+    }
+
+    .aspect-ratio-btn {
+        min-height: 50px;
+        padding: var(--space-sm);
+    }
+
+    .aspect-ratio-btn .icon {
+        font-size: 20px;
+    }
+
+    .aspect-ratio-btn .label {
+        font-size: var(--font-size-xs);
+    }
+
+    .gallery-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-sm);
+        max-height: 350px;
+    }
+
+    .gallery-panel {
+        max-height: 400px;
+    }
+
+    .gallery-card {
+        max-height: 400px;
+    }
+
+    .icon-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    .icon-btn i {
+        font-size: 14px;
+    }
+
+    .chip-btn {
+        padding: var(--space-xs) var(--space-sm);
+        font-size: var(--font-size-xs);
+    }
+
+    .chip-btn.icon-only {
+        width: 28px;
+        height: 28px;
+    }
+
+    .chip-btn.icon-only i {
+        font-size: 12px;
+    }
+
+    .seed-section {
+        padding: var(--space-md);
+    }
+
+    .seed-input {
+        min-width: 100px;
+    }
+
+    .progress-section {
+        padding: var(--space-md);
+    }
+}
+
+/* Touch Device Optimizations */
+@media (hover: none) and (pointer: coarse) {
+    .workflow-item,
+    .gallery-item,
+    .icon-btn,
+    .chip-btn,
+    .aspect-ratio-btn,
+    #control-floating {
+        cursor: default;
+    }
+
+    .workflow-item:active,
+    .gallery-item:active,
+    .icon-btn:active,
+    .chip-btn:active,
+    .aspect-ratio-btn:active,
+    #control-floating:active {
+        transform: scale(0.98);
+    }
+
+    .generate-btn:active,
+    .cancel-btn:active {
+        transform: translateY(0);
+    }
+}
+
+/* High DPI / Retina Display */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .form-input,
+    .seed-input {
+        -webkit-appearance: none;
+        border-width: 0.5px;
+    }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    .loading-spinner {
+        animation: none;
+        border-top-color: var(--neutral-300);
+    }
+
+    .skeleton-item {
+        animation: none;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .app-container {
+        padding: 0;
+    }
+
+    .sidebar,
+    .gallery-panel,
+    .output-toolbar,
+    .controlnet-strip,
+    .generate-btn,
+    .cancel-btn {
+        display: none;
+    }
+
+    .main-content {
+        display: block;
+    }
+
+    .input-panel,
+    .output-panel {
+        width: 100%;
+        margin-bottom: var(--space-xl);
+    }
+
+    .input-card,
+    .output-card {
+        box-shadow: none;
+        border: 1px solid var(--neutral-300);
     }
 }
