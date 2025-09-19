@@ -55,7 +55,7 @@
                                     <label class="form-label" for="style_prompt"><i class="fas fa-palette"></i> 시스템 프롬프트 (스타일 & 품질)</label>
                                     <textarea class="form-input" id="style_prompt" rows="2" readonly>{{ default_style_prompt }}</textarea>
                                 </div>
-                                <div class="form-group">
+                                <div class="form-group" id="negative-prompt-wrap">
                                     <label class="form-label" for="negative_prompt"><i class="fas fa-ban"></i> 시스템 부정 프롬프트</label>
                                     <textarea class="form-input" id="negative_prompt" rows="2" readonly>{{ default_negative_prompt }}</textarea>
                                 </div>
@@ -78,7 +78,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="status-container" id="status-container" style="display: none;"><p id="status-message"></p></div>
+                            <div class="status-container" id="status-container"><p id="status-message"></p></div>
                         </div>
                     </div>
                 </div>
@@ -102,8 +102,11 @@
                     <!-- 로딩바를 독립적으로 분리 -->
                     <div class="progress-section" id="progress-section">
                         <h3 class="progress-title"><i class="fas fa-clock"></i> 생성 진행률</h3>
-                        <div class="progress-container"><div class="progress-bar" id="progress-bar"></div></div>
+                        <div class="progress-container">
+                            <div class="progress-bar" id="progress-bar"></div>
+                        </div>
                         <div class="progress-text" id="progress-text">0%</div>
+                        <div class="progress-right-label" id="progress-right" style="display:none;">0%</div>
                         <div class="queue-info" id="queue-info" style="display:none; margin-top:6px; font-size: 13px; color: var(--neutral-600); display:flex; gap:8px; align-items:center;">
                             <span class="badge" id="queue-position" style="background: var(--neutral-100); border:1px solid var(--neutral-200); border-radius: 9999px; padding: 2px 8px; font-weight:600; color: var(--neutral-700);"></span>
                             <span id="queue-eta" style="color: var(--neutral-500);"></span>
@@ -209,6 +212,8 @@
             progressSection: document.getElementById('progress-section'),
             progressBar: document.getElementById('progress-bar'),
             progressText: document.getElementById('progress-text'),
+            progressBubble: document.getElementById('progress-bubble'),
+            progressRight: document.getElementById('progress-right'),
             statusContainer: document.getElementById('status-container'),
             statusMessage: document.getElementById('status-message'),
             placeholderSection: document.getElementById('placeholder-section'),
@@ -247,6 +252,12 @@
         } catch(_) {}
 
         ui.generateBtn.addEventListener('click', handleGenerateClick);
+        // 부정 프롬프트 영역 표시 여부 설정값 반영
+        try {
+            const showNeg = !!(window.APP_CONFIG && window.APP_CONFIG.ui && window.APP_CONFIG.ui.showNegativePrompt);
+            const negWrap = document.getElementById('negative-prompt-wrap');
+            if (negWrap) negWrap.style.display = showNeg ? '' : 'none';
+        } catch (_) {}
         const cancelBtn = document.getElementById('cancel-btn');
         cancelBtn.addEventListener('click', handleCancelClick);
         ui.promptSuggestionText.addEventListener('click', handleSuggestionClick);
@@ -597,8 +608,29 @@
         }
 
         function updateProgress(percent) {
-            ui.progressBar.style.width = `${percent}%`;
-            ui.progressText.textContent = `${Math.round(percent)}%`;
+            const p = Math.max(0, Math.min(100, percent));
+            ui.progressBar.style.width = `${p}%`;
+            const cfg = (window.APP_CONFIG && window.APP_CONFIG.progress) || {};
+            // Title visibility
+            try { document.querySelector('.progress-title').style.display = (cfg.showTitle ? '' : 'none'); } catch(_) {}
+            // Height
+            try { document.querySelector('.progress-container').style.setProperty('--cfg-progress-height', `${cfg.height || 4}px`); } catch(_) {}
+            // Percent display modes
+            const mode = cfg.percentMode || 'right';
+            if (mode === 'none') {
+                if (ui.progressText) ui.progressText.style.display = 'none';
+                if (ui.progressBubble) ui.progressBubble.style.display = 'none';
+                if (ui.progressRight) ui.progressRight.style.display = 'none';
+            } else if (mode === 'text') {
+                if (ui.progressText) { ui.progressText.style.display = 'block'; ui.progressText.textContent = `${Math.round(p)}%`; }
+                if (ui.progressBubble) ui.progressBubble.style.display = 'none';
+                if (ui.progressRight) ui.progressRight.style.display = 'none';
+            } else {
+                // right fixed label
+                if (ui.progressText) ui.progressText.style.display = 'none';
+                if (ui.progressBubble) ui.progressBubble.style.display = 'none';
+                if (ui.progressRight) { ui.progressRight.style.display = 'block'; ui.progressRight.textContent = `${Math.round(p)}%`; }
+            }
         }
 
         function displayImage(imagePath, onRevealDone) {
@@ -1063,6 +1095,22 @@
                 if (ctEl) ctEl.value = createdText || '';
                 if (prEl) prEl.value = prompt || '';
             } catch (_) {}
+            // ensure fade-in restarts
+            const bodyEl = document.querySelector('.lightbox-body');
+            if (bodyEl) {
+                // Apply configurable CSS variables from APP_CONFIG.lightbox if present
+                try {
+                    const lc = (window.APP_CONFIG && window.APP_CONFIG.lightbox) || {};
+                    if (lc.metaWidth) bodyEl.style.setProperty('--lb-meta-width', `${lc.metaWidth}px`);
+                    if (lc.fadeMs) bodyEl.style.setProperty('--lb-fade', `${lc.fadeMs}ms`);
+                    const media = document.querySelector('.lightbox-media');
+                    const meta = document.getElementById('lightbox-meta');
+                    if (media && lc.mediaBg) media.style.setProperty('--lb-media-bg', lc.mediaBg);
+                    if (meta && lc.metaBg) meta.style.setProperty('--lb-meta-bg', lc.metaBg);
+                } catch (_) {}
+                bodyEl.style.opacity = '0';
+                requestAnimationFrame(() => { bodyEl.style.opacity = ''; });
+            }
         }
 
         function closeLightbox() {

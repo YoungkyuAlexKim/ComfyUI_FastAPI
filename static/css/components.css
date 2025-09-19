@@ -1,8 +1,8 @@
 /* Form Styles */
 .form-grid {
     display: grid;
-    gap: var(--space-xl);
-    margin-bottom: var(--space-2xl);
+    gap: var(--space-lg);
+    margin-bottom: var(--space-md);
 }
 
 .form-group { display: flex; flex-direction: column; }
@@ -229,6 +229,7 @@
     flex-wrap: wrap;
     justify-content: flex-start;
 }
+.output-card { margin-top: var(--space-xs, 6px); }
 
 .output-tools {
     display: inline-flex;
@@ -263,30 +264,23 @@
 
 /* Progress - 독립적으로 분리된 로딩바 */
 .progress-section {
-    margin-bottom: var(--space-md);
-    padding: var(--space-md);
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--neutral-200);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-lg);
+    margin-bottom: 6px; /* 픽셀 퍼펙트하게 위 영역과 정렬 */
+    padding: var(--space-sm);
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
 }
 
-.progress-title {
-    margin: 0 0 var(--space-sm) 0;
-    color: var(--neutral-700);
-    font-size: 0.9rem;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-}
+.progress-title { display: none; }
 .progress-container {
+    --progress-height: var(--cfg-progress-height, 4px);
+    position: relative;
     background: var(--neutral-200);
-    border-radius: var(--radius-xl);
+    border-radius: 9999px;
     overflow: hidden;
-    height: 6px;
-    margin-bottom: var(--space-sm);
+    height: var(--progress-height);
+    margin-bottom: 0;
 }
 
 
@@ -297,40 +291,38 @@
     transition: width var(--transition-normal);
 }
 
-.progress-text {
-    text-align: center;
+.progress-text { display: none; }
+
+/* Percent bubble (optional) */
+/* Remove moving bubble; replaced by fixed right label */
+.progress-bubble { display: none !important; }
+
+.progress-right-label {
+    margin-top: 4px;
+    text-align: right;
+    font-size: 12px;
+    color: var(--neutral-500);
     font-weight: 600;
-    color: var(--neutral-600);
-    font-size: 0.75rem;
 }
 
 /* Status & Result */
 .status-container {
-    margin-top: var(--space-xl);
-    padding: var(--space-lg);
-    border-radius: var(--radius-lg);
-    text-align: center;
-    font-weight: 500;
-    display: none;
+    margin-top: var(--space-sm);
+    padding: 0;
+    border-radius: 0;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.82rem;
+    line-height: 1.25;
+    min-height: 20px; /* 메시지 유무와 상관없이 고정 높이 확보 */
 }
+.status-container p { margin: 0; }
 
-.status-info {
-    background: var(--primary-50);
-    border: 1px solid var(--primary-200);
-    color: var(--primary-700);
-}
+.status-info { color: var(--primary-700); background: transparent; border: none; }
 
-.status-success {
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    color: var(--success);
-}
+.status-success { color: var(--success); background: transparent; border: none; }
 
-.status-error {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.2);
-    color: var(--error);
-}
+.status-error { color: var(--error); background: transparent; border: none; }
 
 .result-image {
     width: 100%;
@@ -426,11 +418,12 @@
     animation: lightboxIn var(--transition-normal) ease;
 }
 
-.lightbox-body { display: grid; grid-template-columns: 1fr 320px; gap: 0; width: 86vw; max-width: 1200px; height: 86vh; max-height: 820px; background: transparent; }
-.lightbox-media { display:flex; align-items:center; justify-content:center; background: rgba(17, 24, 39, 0.55); }
+.lightbox-body { display: grid; grid-template-columns: 1fr var(--lb-meta-width, 320px); gap: 0; width: 86vw; max-width: 1200px; height: 86vh; max-height: 820px; background: transparent; opacity: 0; transition: opacity var(--lb-fade, 300ms); will-change: opacity; }
+.lightbox-overlay.open .lightbox-body { opacity: 1; }
+.lightbox-media { display:flex; align-items:center; justify-content:center; background: var(--lb-media-bg, rgba(17, 24, 39, 0.55)); }
 .lightbox-content img { display:block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: transparent; }
 .lightbox-meta {
-    background: rgba(17, 24, 39, 0.55);
+    background: var(--lb-meta-bg, rgba(17, 24, 39, 0.55));
     border-left: none;
     padding: 12px;
     overflow: auto;
@@ -484,6 +477,8 @@
 
 /* Gallery */
 .gallery-section { padding: var(--space-lg); }
+/* Align gallery block vertically with left panels: tighten bottom padding */
+.gallery-section { padding-bottom: var(--space-sm); }
 
 .gallery-card {
     background: rgba(255,255,255,0.9);
@@ -491,7 +486,10 @@
     border-radius: var(--radius-xl);
     padding: var(--space-lg);
     position: relative;
+    display: block; /* 자연 높이 복구 */
 }
+/* Slightly reduce bottom padding to match left column spacing */
+.gallery-card { padding-bottom: var(--space-md); }
 
 .gallery-title {
     margin: 0 0 var(--space-md) 0;
@@ -666,7 +664,7 @@
     align-items: center;
     justify-content: center; /* center all groups together */
     gap: 8px; /* tighter spacing between groups */
-    margin-top: var(--space-md);
+    margin-top: var(--space-sm);
     width: 66.6667%; /* visually narrower than the image area */
     margin-left: auto;
     margin-right: auto; /* center the whole pagination row */
@@ -965,7 +963,7 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: var(--space-md); /* 간격 축소 */
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--space-sm);
 }
 
 .aspect-ratio-btn {

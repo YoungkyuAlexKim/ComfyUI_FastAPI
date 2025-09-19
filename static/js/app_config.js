@@ -40,4 +40,39 @@
     // 오버레이 페이드 이징(CSS easing 함수)
     overlayEasing: 'ease',
   };
+
+  // UI 표시/숨김 설정
+  window.APP_CONFIG.ui = window.APP_CONFIG.ui || {
+    // 부정 프롬프트 영역 표시 여부 (기본: 숨김)
+    showNegativePrompt: false,
+  };
+
+  // 생성 진행률(프로그레스) 설정
+  window.APP_CONFIG.progress = window.APP_CONFIG.progress || {
+    // 제목(아이콘 포함) 표시 여부
+    showTitle: false,
+    // 바 높이(px)
+    height: 4,
+    // 퍼센트 표시 방식: 'none' | 'right' | 'bubble'
+    percentMode: 'right',
+    // 버블 세부
+    bubble: {
+      // 진행 바 위 상대 위치(px, 음수면 위로)
+      offsetY: -14,
+      // 말풍선 최소/최대 위치 보정(px)
+      clampPadding: 6,
+    },
+  };
+
+  // 라이트박스(갤러리 상세) 설정
+  window.APP_CONFIG.lightbox = window.APP_CONFIG.lightbox || {
+    // 우측 메타 패널 너비(px)
+    metaWidth: 320,
+    // 페이드인 시간(ms)
+    fadeMs: 300,
+    // 미디어 영역 배경색(예: 'rgba(17,24,39,0.55)' 또는 '#00000088')
+    mediaBg: 'rgba(34, 34, 34, 0.55)',
+    // 메타 패널 배경색
+    metaBg: 'rgba(34, 34, 34, 0.55)'
+  };
 })();
