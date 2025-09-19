@@ -33,9 +33,9 @@
 .form-input {
     width: 100%;
     padding: var(--space-lg);
-    border: 2px solid var(--neutral-300);
+    border: 2px solid var(--primary-300);
     border-radius: var(--radius-lg);
-    background: white;
+    background: rgba(255, 248, 225, 0.95); /* Very Light Orange */
     color: var(--neutral-800);
     font-size: var(--font-size-base);
     font-family: var(--font-family-sans);
@@ -47,26 +47,27 @@
 
 .form-input:focus {
     outline: none;
-    border-color: var(--primary-500);
-    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
-    background: white;
+    border-color: var(--lc-primary);
+    box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+    background: rgba(255, 248, 225, 0.98); /* Very Light Orange - slightly more opaque */
 }
 
 .form-input:hover {
-    border-color: var(--neutral-400);
+    border-color: var(--primary-400);
 }
 
 .form-input::placeholder {
     color: var(--neutral-500);
 }
 
-/* Readonly Input */
+/* Readonly Input - 시스템 프롬프트용 */
 .form-input[readonly] {
-    background: var(--neutral-100);
+    background: var(--neutral-200);
     color: var(--neutral-500);
     cursor: not-allowed;
     min-height: 80px;
     resize: none;
+    border-color: var(--neutral-300);
 }
 
 .form-input[readonly]:focus,
@@ -74,6 +75,7 @@
     border-color: var(--neutral-300);
     box-shadow: none;
     transform: none;
+    background: var(--neutral-200);
 }
 
 /* Input with Action */
@@ -95,15 +97,15 @@
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-md);
-    background: var(--neutral-100);
-    color: var(--neutral-600);
+    background: var(--primary-100);
+    color: var(--primary-600);
     transition: all var(--transition-fast);
     z-index: var(--z-dropdown);
 }
 
 .translate-btn--icon:hover {
-    background: var(--primary-100);
-    color: var(--primary-600);
+    background: var(--primary-200);
+    color: var(--lc-primary);
 }
 
 .translate-btn--icon i {
@@ -155,7 +157,7 @@
 
 /* Button Components */
 .generate-btn {
-    /* LC 브랜드 색상 사용 */
+    /* LOADCOMPLETE 브랜드 색상 사용 - 갈색 테마 */
     background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
     color: white;
     border: none;
@@ -170,6 +172,7 @@
     justify-content: center;
     gap: var(--space-sm);
     min-height: 48px;
+    box-shadow: 0 4px 14px 0 rgba(139, 69, 19, 0.3); /* Saddle Brown 그림자 */
 }
 
 .generate-btn:hover:not(:disabled) {
@@ -330,7 +333,7 @@
 
 .aspect-ratio-btn .icon {
     font-size: 24px;
-    /* LC 브랜드 색상 사용 */
+    /* LOADCOMPLETE 브랜드 색상 사용 */
     color: var(--lc-primary);
 }
 
@@ -356,7 +359,7 @@
 
 .progress-bar {
     height: 100%;
-    /* LC 브랜드 색상 사용 */
+    /* LOADCOMPLETE 브랜드 색상 사용 */
     background: linear-gradient(90deg, var(--lc-primary), var(--lc-secondary));
     border-radius: var(--radius-full);
     transition: width var(--transition-normal);
@@ -493,23 +496,22 @@
 .workflow-item {
     background: transparent;
     border: none;
-    border-radius: var(--radius-lg);
-    padding: var(--space-lg);
-    margin-bottom: var(--space-sm);
+    border-radius: var(--radius-md);
+    padding: var(--space-md) var(--space-lg);
+    margin-bottom: var(--space-xs);
     cursor: pointer;
     transition: all var(--transition-fast);
     position: relative;
-    border-left: 3px solid transparent;
 }
 
 .workflow-item:hover {
-    background: var(--neutral-100);
-    border-left-color: var(--primary-300);
+    background: var(--primary-50);
+    transform: translateX(var(--space-xs));
 }
 
 .workflow-item.selected {
-    background: var(--primary-50);
-    border-left-color: var(--primary-500);
+    background: var(--primary-100);
+    border-left: 2px solid var(--lc-primary);
 }
 
 .workflow-item-header {
@@ -519,21 +521,27 @@
 }
 
 .workflow-icon {
-    width: 32px;
-    height: 32px;
-    /* LC 브랜드 색상 사용 */
-    background: var(--lc-primary);
-    border-radius: var(--radius-full);
+    width: 28px;
+    height: 28px;
+    background: var(--neutral-200);
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    font-size: 14px;
+    color: var(--neutral-600);
+    font-size: 12px;
     flex-shrink: 0;
+    transition: all var(--transition-fast);
+}
+
+.workflow-item:hover .workflow-icon {
+    background: var(--lc-primary);
+    color: white;
 }
 
 .workflow-item.selected .workflow-icon {
-    background: var(--success);
+    background: var(--lc-primary);
+    color: white;
 }
 
 .workflow-item-info {
@@ -544,24 +552,30 @@
 .workflow-name {
     font-weight: 500;
     font-size: var(--font-size-sm);
-    color: var(--neutral-800);
+    color: var(--neutral-700);
     margin: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.4;
+    transition: all var(--transition-fast);
+}
+
+.workflow-item:hover .workflow-name {
+    color: var(--lc-primary);
+    font-weight: 600;
 }
 
 .workflow-item.selected .workflow-name {
-    color: var(--primary-700);
+    color: var(--lc-primary);
     font-weight: 600;
 }
 
 /* Seed Input Section */
 .seed-section {
     padding: var(--space-lg);
-    background: var(--neutral-50);
-    border: 1px solid var(--neutral-200);
+    background: var(--primary-100);
+    border: 1px solid var(--primary-200);
     border-radius: var(--radius-lg);
 }
 
@@ -661,7 +675,7 @@
 .placeholder-icon {
     width: 80px;
     height: 80px;
-    /* LC 브랜드 색상 사용 */
+    /* LOADCOMPLETE 브랜드 색상 사용 */
     background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
     border-radius: var(--radius-full);
     display: flex;
@@ -669,6 +683,7 @@
     justify-content: center;
     font-size: 32px;
     color: white;
+    box-shadow: 0 8px 32px rgba(255, 140, 0, 0.3);
 }
 
 .placeholder-text {
@@ -929,27 +944,29 @@
 
 /* --- 🎨 읽기 전용 입력창 스타일 (명시적 높이 제어) --- */
 .form-input[readonly] {
-    background: var(--neutral-100) !important;
+    background: var(--neutral-200) !important;
     color: var(--neutral-500) !important;
     cursor: not-allowed;
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.04) !important;
-    border-color: var(--neutral-200) !important;
+    border-color: var(--neutral-300) !important;
     min-height: 70px; /* 기본 최소 높이를 무시하고 더 작은 값으로 설정 */
     resize: none; /* 사용자가 크기를 조절할 수 없도록 비활성화 */
 }
 
 .form-input[readonly]:focus,
 .form-input[readonly]:hover {
-    border-color: var(--neutral-200) !important;
+    border-color: var(--neutral-300) !important;
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.04) !important;
     transform: none;
+    background: var(--neutral-200) !important;
 }
 /* --- 🎨 스타일 수정 끝 --- */
 
 
 /* Button */
 .generate-btn {
-    background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+    /* LOADCOMPLETE 갈색 테마 적용 */
+    background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
     color: white;
     border: none;
     border-radius: var(--radius-lg);
@@ -964,6 +981,7 @@
     gap: var(--space-sm);
     flex-shrink: 0;
     white-space: nowrap;
+    box-shadow: 0 4px 14px 0 rgba(139, 69, 19, 0.3); /* Saddle Brown 그림자 */
 }
 
 .generate-actions {
@@ -1274,8 +1292,8 @@
 .gallery-section { padding-bottom: var(--space-sm); }
 
 .gallery-card {
-    background: rgba(255,255,255,0.9);
-    border: 1px solid var(--neutral-200);
+    background: rgba(255, 248, 225, 0.95); /* Very Light Orange */
+    border: 1px solid var(--primary-200);
     border-radius: var(--radius-xl);
     padding: var(--space-lg);
     position: relative;
@@ -1549,23 +1567,22 @@
 .workflow-item {
     background: transparent;
     border: none;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     padding: var(--space-md) var(--space-lg);
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-xs);
     cursor: pointer;
     transition: all var(--transition-fast);
     position: relative;
-    border-left: 3px solid transparent;
 }
 
 .workflow-item:hover {
-    background: var(--neutral-100);
-    border-left-color: var(--primary-300);
+    background: var(--primary-50);
+    transform: translateX(var(--space-xs));
 }
 
 .workflow-item.selected {
-    background: var(--primary-50);
-    border-left-color: var(--primary-500);
+    background: var(--primary-100);
+    border-left: 2px solid var(--lc-primary);
 }
 
 .workflow-item-header {
@@ -1576,20 +1593,27 @@
 }
 
 .workflow-icon {
-    width: 24px;
-    height: 24px;
-    background: var(--primary-500);
-    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    background: var(--neutral-200);
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    font-size: 0.75rem;
+    color: var(--neutral-600);
+    font-size: 12px;
     flex-shrink: 0;
+    transition: all var(--transition-fast);
+}
+
+.workflow-item:hover .workflow-icon {
+    background: var(--lc-primary);
+    color: white;
 }
 
 .workflow-item.selected .workflow-icon {
-    background: var(--success);
+    background: var(--lc-primary);
+    color: white;
 }
 
 .workflow-item-info {
@@ -1600,16 +1624,22 @@
 .workflow-name {
     font-weight: 500;
     font-size: 0.875rem;
-    color: var(--neutral-800);
+    color: var(--neutral-700);
     margin: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.4;
+    transition: all var(--transition-fast);
+}
+
+.workflow-item:hover .workflow-name {
+    color: var(--lc-primary);
+    font-weight: 600;
 }
 
 .workflow-item.selected .workflow-name {
-    color: var(--primary-700);
+    color: var(--lc-primary);
     font-weight: 600;
 }
 
@@ -1640,8 +1670,8 @@
 
 .seed-section {
     padding: var(--space-sm);
-    background: rgba(245, 245, 245, 0.8);
-    border: 1px solid var(--neutral-200);
+    background: var(--primary-100);
+    border: 1px solid var(--primary-200);
     border-radius: var(--radius-lg);
     backdrop-filter: blur(10px);
 }
