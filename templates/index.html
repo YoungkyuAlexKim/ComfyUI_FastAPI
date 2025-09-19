@@ -78,6 +78,47 @@
                                     </div>
                                 </div>
                             </div>
+                            <!-- Moved toolbar and ControlNet strip under prompts/ratio -->
+                            <div class="generator-toolbar">
+                                <div class="output-toolbar">
+                                    <button class="generate-btn" id="generate-btn">
+                                        <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
+                                    </button>
+                                    <button class="cancel-btn" id="cancel-btn" disabled>
+                                        <i class="fas fa-stop-circle"></i> <span>생성 취소</span>
+                                    </button>
+                                    <div class="output-tools" style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+                                        <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; border:1px solid var(--neutral-300); padding:6px 10px; border-radius:8px; background:#fff;">
+                                            <input type="checkbox" id="control-enabled" />
+                                            <span>ControlNet 사용</span>
+                                        </label>
+                                        <button id="open-canvas-btn" type="button" class="chip-btn" title="캔버스 열기" aria-label="캔버스 열기"><i class="fas fa-pencil"></i> 캔버스 열기</button>
+                                        <button id="open-btn" type="button" class="icon-btn" title="새 탭에서 열기" aria-label="새 탭에서 열기">
+                                            <i class="fas fa-up-right-from-square" aria-hidden="true"></i>
+                                        </button>
+                                        <button id="download-btn" type="button" class="icon-btn" title="다운로드" aria-label="다운로드">
+                                            <i class="fas fa-download" aria-hidden="true"></i>
+                                        </button>
+                                        <button id="copylink-btn" type="button" class="icon-btn" title="링크 복사" aria-label="링크 복사">
+                                            <i class="fas fa-link" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="controlnet-strip">
+                                <div id="control-floating" title="컨트롤 이미지(클릭하여 캔버스 열기)">
+                                    <div id="control-slot-inner">
+                                        <img id="control-floating-img" alt="선택된 컨트롤" />
+                                        <div id="control-floating-empty">
+                                            <i class="fas fa-pen" aria-hidden="true"></i>
+                                        </div>
+                                    </div>
+                                    <button id="control-clear" type="button" title="컨트롤 제거" aria-label="컨트롤 제거">
+                                        <i class="fas fa-xmark" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </div>
+
                             <div class="status-container" id="status-container"><p id="status-message"></p></div>
                         </div>
                     </div>
@@ -112,45 +153,7 @@
                             <span id="queue-eta" style="color: var(--neutral-500);"></span>
                         </div>
                     </div>
-                    
                         <div class="output-card" style="position:relative;">
-                            <div class="output-toolbar">
-                                <button class="generate-btn" id="generate-btn">
-                                <i class="fas fa-sparkles"></i> <span>이미지 생성하기</span>
-                            </button>
-                            <button class="cancel-btn" id="cancel-btn" disabled>
-                                <i class="fas fa-stop-circle"></i> <span>생성 취소</span>
-                            </button>
-                                
-                                <div class="output-tools" style="margin-left:auto; display:flex; align-items:center; gap:8px;">
-                                    <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; border:1px solid var(--neutral-300); padding:6px 10px; border-radius:8px; background:#fff;">
-                                        <input type="checkbox" id="control-enabled" />
-                                        <span>ControlNet 사용</span>
-                                    </label>
-                                    <button id="open-canvas-btn" type="button" class="chip-btn" title="캔버스 열기" aria-label="캔버스 열기"><i class="fas fa-pencil"></i> 캔버스 열기</button>
-                                    <button id="open-btn" type="button" class="icon-btn" title="새 탭에서 열기" aria-label="새 탭에서 열기">
-                                        <i class="fas fa-up-right-from-square" aria-hidden="true"></i>
-                                    </button>
-                                    <button id="download-btn" type="button" class="icon-btn" title="다운로드" aria-label="다운로드">
-                                        <i class="fas fa-download" aria-hidden="true"></i>
-                                    </button>
-                                    <button id="copylink-btn" type="button" class="icon-btn" title="링크 복사" aria-label="링크 복사">
-                                        <i class="fas fa-link" aria-hidden="true"></i>
-                                    </button>
-                                </div>
-                        </div>
-                        <!-- Floating control thumb top-center within image area -->
-                        <div id="control-floating" style="position:absolute; top:120px; left:50%; transform: translateX(-50%); width:56px; height:56px; border-radius:12px; border:1px solid var(--neutral-300); background: rgba(255,255,255,0.92); box-shadow: var(--shadow-lg); backdrop-filter: saturate(120%) blur(4px); z-index:9; display:flex; align-items:center; justify-content:center; transition: filter var(--overlay-fade, 300ms) var(--overlay-easing, ease);" title="컨트롤 이미지(클릭하여 캔버스 열기)">
-                            <div id="control-slot-inner" style="width:100%; height:100%; border-radius:12px; overflow:hidden; display:flex; align-items:center; justify-content:center;">
-                                <img id="control-floating-img" alt="선택된 컨트롤" style="width:100%; height:100%; object-fit:cover; display:none;" />
-                                <div id="control-floating-empty" style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; color: var(--neutral-400); cursor:pointer;">
-                                    <i class="fas fa-pen" aria-hidden="true"></i>
-                                </div>
-                            </div>
-                            <button id="control-clear" type="button" title="컨트롤 제거" aria-label="컨트롤 제거" style="position:absolute; top:-3px; right:-3px; width:14px; height:14px; border:none; background: rgba(0,0,0,0.55); color:#fff; border-radius:4px; display:none; align-items:center; justify-content:center; cursor:pointer;">
-                                <i class="fas fa-xmark" style="font-size:10px; line-height:1;" aria-hidden="true"></i>
-                            </button>
-                        </div>
                         <div class="placeholder-section" id="placeholder-section">
                              <div class="placeholder-card">
                                 <div class="placeholder-container">

@@ -264,7 +264,7 @@
 
 /* Progress - 독립적으로 분리된 로딩바 */
 .progress-section {
-    margin-bottom: 6px; /* 픽셀 퍼펙트하게 위 영역과 정렬 */
+    margin-bottom: 4px; /* 상단 여백 축소로 빈 공간 최소화 */
     padding: var(--space-sm);
     background: transparent;
     border: none;
