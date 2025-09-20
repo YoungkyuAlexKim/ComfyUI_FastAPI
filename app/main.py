@@ -47,6 +47,7 @@ from .services.media_store import (
     _locate_image_meta_path,
     _update_image_status,
 )
+from .routers.admin import router as admin_router
 
 logger = setup_logging()
 try:
@@ -61,6 +62,7 @@ except Exception as e:
 
 templates = Jinja2Templates(directory="templates")
 app = FastAPI(title="ComfyUI FastAPI Server", version="0.4.0 (Jobs & Queues)")
+app.include_router(admin_router)
 
 # --- HTTP request logging middleware ---
 @app.middleware("http")
@@ -187,6 +189,12 @@ class ConnectionManager:
 manager = ConnectionManager()
 job_manager = JobManager()
 job_store = JobStore(JOB_DB_PATH)
+try:
+    app.state.connection_manager = manager
+    app.state.job_manager = job_manager
+    app.state.job_store = job_store
+except Exception:
+    pass
 
 # --- Helpers ---
 def _wait_for_input_visibility(filename: str, timeout_sec: float = 1.5, poll_ms: int = 50) -> bool:
@@ -661,328 +669,6 @@ async def user_soft_delete_image(image_id: str, request: Request):
     return {"ok": True}
 
 
-# -------------------- Admin (no auth yet) --------------------
-
-def _list_user_ids() -> List[str]:
-    users_root = os.path.join(OUTPUT_DIR, "users")
-    if not os.path.isdir(users_root):
-        return []
-    entries = []
-    for name in os.listdir(users_root):
-        full = os.path.join(users_root, name)
-        if os.path.isdir(full):
-            entries.append(name)
-    return sorted(entries)
-
-def _locate_image_meta_path(anon_id: str, image_id: str) -> Optional[str]:
-    base = _user_base_dir(anon_id)
-    if not os.path.isdir(base):
-        return None
-    target = f"{image_id}.json"
-    for root, _, files in os.walk(base):
-        if target in files:
-            return os.path.join(root, target)
-    return None
-
-def _update_image_status(anon_id: str, image_id: str, status: str) -> bool:
-    meta_path = _locate_image_meta_path(anon_id, image_id)
-    if not meta_path:
-        return False
-    try:
-        with open(meta_path, "r", encoding="utf-8") as f:
-            meta = json.load(f)
-        meta["status"] = status
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception:
-        return False
-
-
-@app.get("/admin", response_class=HTMLResponse, tags=["Admin"])
-async def admin_page(request: Request):
-    return templates.TemplateResponse("admin.html", {"request": request})
-
-
-@app.get("/api/v1/admin/users", tags=["Admin"])
-async def admin_users(page: int = 1, size: int = 50, q: Optional[str] = None):
-    # Paged + optional substring filter
-    users = _list_user_ids()
-    if q and isinstance(q, str):
-        ql = q.lower()
-        users = [u for u in users if ql in u.lower()]
-    size = max(1, min(200, size))
-    page = max(1, page)
-    total = len(users)
-    start = (page - 1) * size
-    end = start + size
-    slice_users = users[start:end]
-    total_pages = (total + size - 1) // size
-    return {"users": slice_users, "page": page, "size": size, "total": total, "total_pages": total_pages}
-
-
-@app.get("/api/v1/admin/jobs", tags=["Admin"])
-async def admin_jobs(limit: int = 100):
-    try:
-        jobs = job_store.fetch_recent(limit=limit)
-        if not jobs:
-            jobs = job_manager.list_jobs(limit=limit)
-        # If coming from DB, artifact_available is present; for in-memory fallback, compute lightweight availability
-        if jobs and 'artifact_available' not in jobs[0]:
-            def artifact_exists(web_path: str) -> bool:
-                try:
-                    if not isinstance(web_path, str) or not web_path:
-                        return False
-                    p = web_path
-                    if p.startswith('/outputs/'):
-                        rel = p[len('/outputs/') : ]
-                    elif p.startswith('outputs/'):
-                        rel = p[len('outputs/') : ]
-                    else:
-                        return False
-                    fs_path = os.path.join(OUTPUT_DIR, rel)
-                    return os.path.exists(fs_path)
-                except Exception:
-                    return False
-            for j in jobs:
-                res = j.get('result') if isinstance(j, dict) else None
-                img = res.get('image_path') if isinstance(res, dict) else None
-                j['artifact_available'] = artifact_exists(img)
-        return {"jobs": jobs}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/v1/admin/jobs/metrics", tags=["Admin"])
-async def admin_jobs_metrics(limit: int = 100):
-    try:
-        avg = job_manager.get_recent_averages(limit=limit)
-        return avg
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/v1/admin/jobs/sweep", tags=["Admin"])
-async def admin_jobs_sweep(limit: int = 200):
-    """Sync artifact_available for recent N jobs. Manual, lightweight page-bounded."""
-    try:
-        limit = max(1, min(5000, int(limit)))
-        jobs = job_store.fetch_recent(limit=limit)
-        updated = 0
-        for j in jobs:
-            try:
-                res = j.get('result') if isinstance(j, dict) else None
-                img = res.get('image_path') if isinstance(res, dict) else None
-                avail = False
-                if isinstance(img, str) and img:
-                    p = img
-                    if p.startswith('/outputs/'):
-                        rel = p[len('/outputs/'):]
-                    elif p.startswith('outputs/'):
-                        rel = p[len('outputs/'):] 
-                    else:
-                        rel = None
-                    if rel:
-                        fs_path = os.path.join(OUTPUT_DIR, rel)
-                        avail = os.path.exists(fs_path)
-                j['artifact_available'] = avail
-                job_store.upsert_job(j)
-                updated += 1
-            except Exception:
-                continue
-        return {"updated": updated}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/v1/admin/images", tags=["Admin"])
-async def admin_images(user_id: str, page: int = 1, size: int = 24, include: str = "all", from_date: Optional[str] = None, to_date: Optional[str] = None):
-    include_trash = True
-    items = _gather_user_images(user_id, include_trash=include_trash)
-    if include == "active":
-        items = [it for it in items if it.get("status") == "active"]
-    elif include == "trash":
-        items = [it for it in items if it.get("status") != "active"]
-
-    # Date range filter (ISO8601 date or datetime strings)
-    def parse_iso(s: str) -> Optional[float]:
-        try:
-            # try full datetime
-            return datetime.fromisoformat(s.replace('Z','+00:00')).timestamp()
-        except Exception:
-            try:
-                # try date only
-                d = datetime.fromisoformat(s)
-                return d.timestamp()
-            except Exception:
-                return None
-
-    if from_date:
-        ts = parse_iso(from_date)
-        if ts is not None:
-            items = [it for it in items if it.get("mtime", 0) >= ts]
-    if to_date:
-        ts = parse_iso(to_date)
-        if ts is not None:
-            items = [it for it in items if it.get("mtime", 0) <= ts]
-
-    size = max(1, min(100, size))
-    page = max(1, page)
-    start = (page - 1) * size
-    end = start + size
-    total = len(items)
-    slice_items = items[start:end]
-    response_items = []
-    for it in slice_items:
-        response_items.append({
-            "id": it["id"],
-            "url": it["url"],
-            "thumb_url": it.get("thumb_url"),
-            "status": it.get("status"),
-            "created_at": datetime.fromtimestamp(it["mtime"], tz=timezone.utc).isoformat(),
-        })
-    total_pages = (total + size - 1) // size
-    return {
-        "items": response_items,
-        "page": page,
-        "size": size,
-        "total": total,
-        "total_pages": total_pages
-    }
-
-
-@app.get("/api/v1/admin/controls", tags=["Admin"])
-async def admin_controls(user_id: str, page: int = 1, size: int = 24, include: str = "all"):
-    include_trash = True
-    items = _gather_user_controls(user_id, include_trash=include_trash)
-    if include == "active":
-        items = [it for it in items if it.get("status") == "active"]
-    elif include == "trash":
-        items = [it for it in items if it.get("status") != "active"]
-
-    size = max(1, min(100, size))
-    page = max(1, page)
-    start = (page - 1) * size
-    end = start + size
-    total = len(items)
-    slice_items = items[start:end]
-    response_items = []
-    for it in slice_items:
-        response_items.append({
-            "id": it["id"],
-            "url": it["url"],
-            "thumb_url": it.get("thumb_url"),
-            "status": it.get("status"),
-            "created_at": datetime.fromtimestamp(it["mtime"], tz=timezone.utc).isoformat(),
-        })
-    total_pages = (total + size - 1) // size
-    return {"items": response_items, "page": page, "size": size, "total": total, "total_pages": total_pages}
-
-
-class AdminControlUpdateRequest(BaseModel):
-    user_id: str
-
-
-@app.post("/api/v1/admin/controls/{image_id}/delete", tags=["Admin"])
-async def admin_control_soft_delete(image_id: str, req: AdminControlUpdateRequest):
-    ok = _update_control_status(req.user_id, image_id, "trash")
-    if not ok:
-        raise HTTPException(status_code=404, detail="Control not found")
-    return {"ok": True}
-
-
-@app.post("/api/v1/admin/controls/{image_id}/restore", tags=["Admin"])
-async def admin_control_restore(image_id: str, req: AdminControlUpdateRequest):
-    ok = _update_control_status(req.user_id, image_id, "active")
-    if not ok:
-        raise HTTPException(status_code=404, detail="Control not found")
-    return {"ok": True}
-
-
-@app.post("/api/v1/admin/purge-controls", tags=["Admin"])
-async def admin_purge_controls(req: AdminControlUpdateRequest):
-    base = _control_base_dir(req.user_id)
-    if not os.path.isdir(base):
-        return {"deleted": 0}
-    deleted = 0
-    for root, _, files in os.walk(base):
-        for name in files:
-            if not name.endswith('.json'):
-                continue
-            meta_path = os.path.join(root, name)
-            try:
-                with open(meta_path, 'r', encoding='utf-8') as f:
-                    meta = json.load(f)
-                if meta.get('status') == 'active':
-                    continue
-                image_id = os.path.splitext(name)[0]
-                png_path = os.path.join(root, f"{image_id}.png")
-                t_webp = os.path.join(root, 'thumb', f"{image_id}.webp")
-                t_jpg = os.path.join(root, 'thumb', f"{image_id}.jpg")
-                for p in [png_path, t_webp, t_jpg, meta_path]:
-                    try:
-                        if os.path.exists(p):
-                            os.remove(p)
-                    except Exception:
-                        pass
-                deleted += 1
-            except Exception:
-                continue
-    return {"deleted": deleted}
-
-
-class AdminUpdateRequest(BaseModel):
-    user_id: str
-
-
-@app.post("/api/v1/admin/images/{image_id}/delete", tags=["Admin"])
-async def admin_soft_delete(image_id: str, req: AdminUpdateRequest):
-    ok = _update_image_status(req.user_id, image_id, "trash")
-    if not ok:
-        raise HTTPException(status_code=404, detail="Image not found")
-    return {"ok": True}
-
-
-@app.post("/api/v1/admin/images/{image_id}/restore", tags=["Admin"])
-async def admin_restore(image_id: str, req: AdminUpdateRequest):
-    ok = _update_image_status(req.user_id, image_id, "active")
-    if not ok:
-        raise HTTPException(status_code=404, detail="Image not found")
-    return {"ok": True}
-
-
-@app.post("/api/v1/admin/purge-trash", tags=["Admin"])
-async def admin_purge_trash(req: AdminUpdateRequest):
-    # Iterate all images of user and permanently delete those with status != active
-    base = _user_base_dir(req.user_id)
-    if not os.path.isdir(base):
-        return {"deleted": 0}
-    deleted = 0
-    for root, _, files in os.walk(base):
-        for name in files:
-            if not name.endswith('.json'):
-                continue
-            meta_path = os.path.join(root, name)
-            try:
-                with open(meta_path, 'r', encoding='utf-8') as f:
-                    meta = json.load(f)
-                if meta.get('status') == 'active':
-                    continue
-                image_id = os.path.splitext(name)[0]
-                # Delete image, thumb(s), meta
-                png_path = os.path.join(root, f"{image_id}.png")
-                t_webp = os.path.join(root, 'thumb', f"{image_id}.webp")
-                t_jpg = os.path.join(root, 'thumb', f"{image_id}.jpg")
-                for p in [png_path, t_webp, t_jpg, meta_path]:
-                    try:
-                        if os.path.exists(p):
-                            os.remove(p)
-                    except Exception:
-                        pass
-                deleted += 1
-            except Exception:
-                continue
-    return {"deleted": deleted}
 
 @app.post("/api/v1/jobs/{job_id}/cancel", tags=["Image Generation"])
 async def cancel_generation_by_id(job_id: str):
