@@ -183,8 +183,8 @@ class ConnectionManager:
         coro = self.send_json_to_user(user_id, data)
         try:
             asyncio.run_coroutine_threadsafe(coro, self.loop)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug({"event": "ws_send_from_worker_failed", "owner_id": user_id, "error": str(e)})
 
 manager = ConnectionManager()
 job_manager = JobManager()
@@ -193,8 +193,8 @@ try:
     app.state.connection_manager = manager
     app.state.job_manager = job_manager
     app.state.job_store = job_store
-except Exception:
-    pass
+except Exception as e:
+    logger.debug({"event": "app_state_init_failed", "error": str(e)})
 
 # --- Helpers ---
 def _wait_for_input_visibility(filename: str, timeout_sec: float = 1.5, poll_ms: int = 50) -> bool:
@@ -210,8 +210,27 @@ def _wait_for_input_visibility(filename: str, timeout_sec: float = 1.5, poll_ms:
                 return True
             _t.sleep(max(0.01, poll_ms / 1000.0))
         return _os.path.exists(target)
-    except Exception:
+    except Exception as e:
+        logger.debug({"event": "wait_input_visibility_failed", "file": filename, "error": str(e)})
         return True
+
+def _paginate(items: list, page: int, size: int):
+    try:
+        size_val = int(size)
+    except Exception:
+        size_val = 24
+    try:
+        page_val = int(page)
+    except Exception:
+        page_val = 1
+    size_val = max(1, min(100, size_val))
+    page_val = max(1, page_val)
+    total = len(items)
+    start = (page_val - 1) * size_val
+    end = start + size_val
+    slice_items = items[start:end]
+    total_pages = (total + size_val - 1) // size_val
+    return slice_items, {"page": page_val, "size": size_val, "total": total, "total_pages": total_pages}
 
 @app.get("/", response_class=HTMLResponse, tags=["Page"])
 async def read_root(request: Request):
@@ -393,8 +412,8 @@ def _processor_generate(job: Job, progress_cb):
             "apply_node_inputs": (prompt_overrides.get(apply_node, {}) if apply_node else {}),
             "image_node_inputs": (prompt_overrides.get(image_node, {}) if image_node else {}),
         })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug({"event": "job_notifier_position_calc_failed", "error": str(e)})
 
     # Apply multi-control overrides when available
     try:
@@ -503,8 +522,8 @@ def _processor_generate(job: Job, progress_cb):
                         candidate = os.path.join(COMFY_INPUT_DIR, uploaded_input_filename)
                         if os.path.exists(candidate):
                             os.remove(candidate)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug({"event": "cleanup_uploaded_input_single_failed", "file": uploaded_input_filename, "error": str(e)})
                 # Multi-control temp files
                 try:
                     for fname in list(uploaded_multi_filenames):
@@ -514,12 +533,13 @@ def _processor_generate(job: Job, progress_cb):
                             candidate = os.path.join(COMFY_INPUT_DIR, fname)
                             if os.path.exists(candidate):
                                 os.remove(candidate)
-                        except Exception:
+                        except Exception as e:
+                            logger.debug({"event": "cleanup_uploaded_input_multi_failed", "fname": fname, "error": str(e)})
                             continue
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as e:
+                    logger.debug({"event": "cleanup_multi_loop_failed", "error": str(e)})
+        except Exception as e:
+            logger.debug({"event": "cleanup_uploaded_inputs_failed", "error": str(e)})
 
 @app.post("/api/v1/generate", tags=["Image Generation"])
 async def generate_image(request: GenerateRequest, http_request: Request):
@@ -540,12 +560,7 @@ async def list_images(page: int = 1, size: int = 24, request: Request = None):
     anon_id = _get_anon_id_from_request(request)
     logger.info({"event": "list_images", "owner_id": anon_id, "page": page, "size": size})
     items = _gather_user_images(anon_id, include_trash=False)
-    size = max(1, min(100, size))
-    page = max(1, page)
-    start = (page - 1) * size
-    end = start + size
-    total = len(items)
-    slice_items = items[start:end]
+    slice_items, meta = _paginate(items, page, size)
     response_items = []
     for it in slice_items:
         response_items.append({
@@ -555,14 +570,7 @@ async def list_images(page: int = 1, size: int = 24, request: Request = None):
             "meta": it.get("meta"),
             "thumb_url": it.get("thumb_url"),
         })
-    total_pages = (total + size - 1) // size
-    return {
-        "items": response_items,
-        "page": page,
-        "size": size,
-        "total": total,
-        "total_pages": total_pages
-    }
+    return {"items": response_items, **meta}
 
 
 # -------------------- Controls (user) --------------------
@@ -618,16 +626,11 @@ async def user_upload_control_image(request: Request, file: UploadFile = File(..
     return {"ok": True, "id": os.path.splitext(os.path.basename(path))[0], "url": _build_web_path(path)}
 
 
-@app.get("/api/v1/controls", tags=["Controls"])
+@app.get("/api/v1/controls", tags=["Controls"]) 
 async def user_list_controls(page: int = 1, size: int = 24, request: Request = None):
     anon_id = _get_anon_id_from_request(request)
     items = _gather_user_controls(anon_id, include_trash=False)
-    size = max(1, min(100, size))
-    page = max(1, page)
-    start = (page - 1) * size
-    end = start + size
-    total = len(items)
-    slice_items = items[start:end]
+    slice_items, meta = _paginate(items, page, size)
     response_items = []
     for it in slice_items:
         response_items.append({
@@ -637,8 +640,7 @@ async def user_list_controls(page: int = 1, size: int = 24, request: Request = N
             "meta": it.get("meta"),
             "thumb_url": it.get("thumb_url"),
         })
-    total_pages = (total + size - 1) // size
-    return {"items": response_items, "page": page, "size": size, "total": total, "total_pages": total_pages}
+    return {"items": response_items, **meta}
 
 
 @app.post("/api/v1/controls/{image_id}/delete", tags=["Controls"])
@@ -731,61 +733,61 @@ app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/healthz", tags=["Health"])
-async def healthz():
-	results = {
-		"comfyui": {"ok": False, "reason": None},
-		"db": {"ok": False, "reason": None},
-		"disk": {"ok": False, "reason": None},
-		"llm": {"ok": False, "reason": None},
-	}
-	status_code = 200
-	# ComfyUI HTTP ping (lightweight)
-	try:
-		url = f"http://{SERVER_ADDRESS}/"
-		resp = requests.get(url, timeout=(3.0, 5.0))
-		results["comfyui"]["ok"] = (resp.status_code >= 200 and resp.status_code < 500)
-		if not results["comfyui"]["ok"]:
-			results["comfyui"]["reason"] = f"HTTP {resp.status_code}"
-	except Exception as e:
-		results["comfyui"]["reason"] = str(e)
-		status_code = 503
-	# DB writeability (temp table insert)
-	try:
-		conn = sqlite3.connect(JOB_DB_PATH)
-		conn.execute("CREATE TABLE IF NOT EXISTS __healthz (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER)")
-		conn.execute("INSERT INTO __healthz (ts) VALUES (?)", (int(time.time()),))
-		conn.execute("DELETE FROM __healthz WHERE id IN (SELECT id FROM __healthz ORDER BY id DESC LIMIT 1 OFFSET 50)")
-		conn.commit()
-		conn.close()
-		results["db"]["ok"] = True
-	except Exception as e:
-		results["db"]["reason"] = str(e)
-		status_code = 503
-	# Disk free space
-	try:
-		total, used, free = shutil.disk_usage(OUTPUT_DIR)
-		free_mb = int(free / (1024 * 1024))
-		min_mb = int(HEALTHZ_CONFIG.get("disk_min_free_mb", 512))
-		results["disk"]["ok"] = (free_mb >= min_mb)
-		if not results["disk"]["ok"]:
-			results["disk"]["reason"] = f"free {free_mb}MB < min {min_mb}MB"
-	except Exception as e:
-		results["disk"]["reason"] = str(e)
-		status_code = 503
-	# LLM readiness (optional)
-	try:
-		results["llm"]["ok"] = (translator is not None)
-		if translator is None:
-			results["llm"]["reason"] = "model not loaded"
-	except Exception as e:
-		results["llm"]["reason"] = str(e)
-		# LLM 실패만으로는 전체 5xx로 올리지 않음
-	# Overall ok?
-	overall_ok = results["comfyui"]["ok"] and results["db"]["ok"] and results["disk"]["ok"]
-	payload = {"ok": overall_ok, "components": results}
-	if not overall_ok and status_code == 200:
-		status_code = 503
-	return JSONResponse(content=payload, status_code=status_code)
+def healthz():
+    results = {
+        "comfyui": {"ok": False, "reason": None},
+        "db": {"ok": False, "reason": None},
+        "disk": {"ok": False, "reason": None},
+        "llm": {"ok": False, "reason": None},
+    }
+    status_code = 200
+    # ComfyUI HTTP ping (lightweight)
+    try:
+        url = f"http://{SERVER_ADDRESS}/"
+        resp = requests.get(url, timeout=(3.0, 5.0))
+        results["comfyui"]["ok"] = (resp.status_code >= 200 and resp.status_code < 500)
+        if not results["comfyui"]["ok"]:
+            results["comfyui"]["reason"] = f"HTTP {resp.status_code}"
+    except Exception as e:
+        results["comfyui"]["reason"] = str(e)
+        status_code = 503
+    # DB writeability (temp table insert)
+    try:
+        conn = sqlite3.connect(JOB_DB_PATH)
+        conn.execute("CREATE TABLE IF NOT EXISTS __healthz (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER)")
+        conn.execute("INSERT INTO __healthz (ts) VALUES (?)", (int(time.time()),))
+        conn.execute("DELETE FROM __healthz WHERE id IN (SELECT id FROM __healthz ORDER BY id DESC LIMIT 1 OFFSET 50)")
+        conn.commit()
+        conn.close()
+        results["db"]["ok"] = True
+    except Exception as e:
+        results["db"]["reason"] = str(e)
+        status_code = 503
+    # Disk free space
+    try:
+        total, used, free = shutil.disk_usage(OUTPUT_DIR)
+        free_mb = int(free / (1024 * 1024))
+        min_mb = int(HEALTHZ_CONFIG.get("disk_min_free_mb", 512))
+        results["disk"]["ok"] = (free_mb >= min_mb)
+        if not results["disk"]["ok"]:
+            results["disk"]["reason"] = f"free {free_mb}MB < min {min_mb}MB"
+    except Exception as e:
+        results["disk"]["reason"] = str(e)
+        status_code = 503
+    # LLM readiness (optional)
+    try:
+        results["llm"]["ok"] = (translator is not None)
+        if translator is None:
+            results["llm"]["reason"] = "model not loaded"
+    except Exception as e:
+        results["llm"]["reason"] = str(e)
+        # LLM 실패만으로는 전체 5xx로 올리지 않음
+    # Overall ok?
+    overall_ok = results["comfyui"]["ok"] and results["db"]["ok"] and results["disk"]["ok"]
+    payload = {"ok": overall_ok, "components": results}
+    if not overall_ok and status_code == 200:
+        status_code = 503
+    return JSONResponse(content=payload, status_code=status_code)
 
 
 @app.on_event("startup")
@@ -800,8 +802,8 @@ async def on_startup():
                 pos = job_manager.get_position(jid)
                 event = dict(event)
                 event["position"] = pos
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug({"event": "job_notifier_upsert_failed", "error": str(e)})
         # Persist job snapshot if exists
         try:
             if jid:
@@ -847,6 +849,6 @@ async def on_startup():
         job_manager.max_per_user_queue = int(QUEUE_CONFIG.get("max_per_user_queue", 5))
         job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
         job_manager.job_timeout_seconds = float(QUEUE_CONFIG.get("job_timeout_seconds", 180))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug({"event": "job_manager_env_apply_failed", "error": str(e)})
     job_manager.start()
