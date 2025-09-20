@@ -48,6 +48,8 @@ from .services.media_store import (
     _update_image_status,
 )
 from .routers.admin import router as admin_router
+from .ws.manager import manager
+from .ws.routes import router as ws_router
 
 logger = setup_logging()
 try:
@@ -63,6 +65,7 @@ except Exception as e:
 templates = Jinja2Templates(directory="templates")
 app = FastAPI(title="ComfyUI FastAPI Server", version="0.4.0 (Jobs & Queues)")
 app.include_router(admin_router)
+app.include_router(ws_router)
 
 # --- HTTP request logging middleware ---
 @app.middleware("http")
@@ -147,46 +150,6 @@ Filesystem helpers were extracted to app/services/media_store.py.
 Imports above wire them in; local duplicates removed to reduce main.py size.
 """
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-        self.user_to_conns: dict[str, list[WebSocket]] = {}
-        self.loop: asyncio.AbstractEventLoop | None = None
-    def set_loop(self, loop: asyncio.AbstractEventLoop):
-        self.loop = loop
-    async def connect(self, websocket: WebSocket, user_id: str):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        self.user_to_conns.setdefault(user_id, []).append(websocket)
-    def disconnect(self, websocket: WebSocket, user_id: str):
-        try:
-            self.active_connections.remove(websocket)
-        except ValueError:
-            pass
-        lst = self.user_to_conns.get(user_id)
-        if lst and websocket in lst:
-            lst.remove(websocket)
-            if not lst:
-                self.user_to_conns.pop(user_id, None)
-    async def broadcast_json(self, data: dict):
-        tasks = [connection.send_json(data) for connection in self.active_connections]
-        await asyncio.gather(*tasks, return_exceptions=True)
-    async def send_json_to_user(self, user_id: str, data: dict):
-        conns = self.user_to_conns.get(user_id, [])
-        if not conns:
-            return
-        tasks = [ws.send_json(data) for ws in list(conns)]
-        await asyncio.gather(*tasks, return_exceptions=True)
-    def send_from_worker(self, user_id: str, data: dict):
-        if not self.loop:
-            return
-        coro = self.send_json_to_user(user_id, data)
-        try:
-            asyncio.run_coroutine_threadsafe(coro, self.loop)
-        except Exception as e:
-            logger.debug({"event": "ws_send_from_worker_failed", "owner_id": user_id, "error": str(e)})
-
-manager = ConnectionManager()
 job_manager = JobManager()
 job_store = JobStore(JOB_DB_PATH)
 try:
@@ -713,21 +676,7 @@ async def translate_prompt_endpoint(text: str = Form(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.websocket("/ws/status")
-async def websocket_endpoint(websocket: WebSocket):
-    qp = websocket.query_params
-    user_id = qp.get("anon_id") or _get_anon_id_from_ws(websocket)
-    logger.info({"event": "ws_connect", "owner_id": user_id})
-    await manager.connect(websocket, user_id)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        logger.info({"event": "ws_disconnect", "owner_id": user_id})
-        manager.disconnect(websocket, user_id)
-    except Exception as e:
-        logger.error({"event": "ws_error", "owner_id": user_id, "error": str(e)})
-        manager.disconnect(websocket, user_id)
+# WebSocket routes moved to app/ws/routes.py
 
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 app.mount("/static", StaticFiles(directory="static"), name="static")
