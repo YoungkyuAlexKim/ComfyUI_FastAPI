@@ -31,6 +31,7 @@ from .job_store import JobStore
 from .logging_utils import setup_logging
 from llm.prompt_translator import PromptTranslator
 from .config import UPLOAD_CONFIG
+from .auth.user_management import _ensure_anon_id_cookie, _get_anon_id_from_request, _get_anon_id_from_ws, ANON_COOKIE_NAME, ANON_COOKIE_PREFIX
 
 logger = setup_logging()
 try:
@@ -123,41 +124,6 @@ OUTPUT_DIR = SERVER_CONFIG["output_dir"]
 SERVER_ADDRESS = SERVER_CONFIG["server_address"]
 
 
-# --- Anonymous user ID helpers ---
-ANON_COOKIE_NAME = "anon_id"
-ANON_COOKIE_PREFIX = "anon-"
-
-def _ensure_anon_id_cookie(req: Request, resp: HTMLResponse) -> str:
-    existing = req.cookies.get(ANON_COOKIE_NAME)
-    if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
-        return existing
-    new_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
-    # ~180 days
-    max_age = 60 * 60 * 24 * 180
-    resp.set_cookie(
-        key=ANON_COOKIE_NAME,
-        value=new_id,
-        httponly=True,
-        samesite="lax",
-        secure=False,
-        max_age=max_age,
-    )
-    return new_id
-
-def _get_anon_id_from_request(req: Request) -> str:
-    value = req.cookies.get(ANON_COOKIE_NAME)
-    if value and isinstance(value, str) and value.startswith(ANON_COOKIE_PREFIX):
-        return value
-    # Fallback anonymous namespace when no cookie is present (should be rare for API calls)
-    return ANON_COOKIE_PREFIX + "guest"
-
-
-# For WebSocket cookie access
-def _get_anon_id_from_ws(websocket: WebSocket) -> str:
-    value = websocket.cookies.get(ANON_COOKIE_NAME)
-    if value and isinstance(value, str) and value.startswith(ANON_COOKIE_PREFIX):
-        return value
-    return ANON_COOKIE_PREFIX + "guest"
 
 # --- Paths and saving helpers ---
 def _user_base_dir(anon_id: str) -> str:
