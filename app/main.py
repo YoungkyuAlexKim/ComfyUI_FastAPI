@@ -516,6 +516,7 @@ def _processor_generate(job: Job, progress_cb):
     workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
     control = None
     multi_controls: List[dict] = []
+    uploaded_multi_filenames: List[str] = []
     # Prepare ControlNet overrides if enabled
     uploaded_input_filename: Optional[str] = None
     try:
@@ -564,6 +565,10 @@ def _processor_generate(job: Job, progress_cb):
                                 "image_filename": stored,
                                 "strength": 1.0,
                             })
+                            try:
+                                uploaded_multi_filenames.append(stored)
+                            except Exception:
+                                pass
                             try:
                                 time.sleep(0.1)
                             except Exception:
@@ -721,33 +726,51 @@ def _processor_generate(job: Job, progress_cb):
     # Allow cancellation from job manager
     job_manager.set_active_cancel_handle(client.interrupt)
 
-    resp = client.queue_prompt(workflow_path, prompt_overrides)
-    prompt_id = resp.get('prompt_id') if isinstance(resp, dict) else None
-    if not prompt_id:
-        raise RuntimeError("Failed to get prompt_id.")
-
-    def on_progress(p: float):
-        progress_cb(p)
-
-    images_data = client.get_images(prompt_id, on_progress=on_progress)
-    if not images_data:
-        raise RuntimeError("Failed to receive generated images.")
-
-    filename = list(images_data.keys())[0]
-    image_bytes = list(images_data.values())[0]
-    saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, filename)
-    web_path = _build_web_path(saved_image_path)
-    job.result["image_path"] = web_path
-
-    # Best-effort cleanup of uploaded input in ComfyUI input directory
     try:
-        if uploaded_input_filename and isinstance(COMFY_INPUT_DIR, str) and COMFY_INPUT_DIR:
-            # ComfyUI may flatten or keep names; try direct match
-            candidate = os.path.join(COMFY_INPUT_DIR, uploaded_input_filename)
-            if os.path.exists(candidate):
-                os.remove(candidate)
-    except Exception:
-        pass
+        resp = client.queue_prompt(workflow_path, prompt_overrides)
+        prompt_id = resp.get('prompt_id') if isinstance(resp, dict) else None
+        if not prompt_id:
+            raise RuntimeError("Failed to get prompt_id.")
+
+        def on_progress(p: float):
+            progress_cb(p)
+
+        images_data = client.get_images(prompt_id, on_progress=on_progress)
+        if not images_data:
+            raise RuntimeError("Failed to receive generated images.")
+
+        filename = list(images_data.keys())[0]
+        image_bytes = list(images_data.values())[0]
+        saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, filename)
+        web_path = _build_web_path(saved_image_path)
+        job.result["image_path"] = web_path
+    finally:
+        # Best-effort cleanup of any uploaded inputs in ComfyUI input directory (single and multi)
+        try:
+            if isinstance(COMFY_INPUT_DIR, str) and COMFY_INPUT_DIR:
+                # Single-control temp file
+                if uploaded_input_filename:
+                    try:
+                        candidate = os.path.join(COMFY_INPUT_DIR, uploaded_input_filename)
+                        if os.path.exists(candidate):
+                            os.remove(candidate)
+                    except Exception:
+                        pass
+                # Multi-control temp files
+                try:
+                    for fname in list(uploaded_multi_filenames):
+                        if not fname:
+                            continue
+                        try:
+                            candidate = os.path.join(COMFY_INPUT_DIR, fname)
+                            if os.path.exists(candidate):
+                                os.remove(candidate)
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
 @app.post("/api/v1/generate", tags=["Image Generation"])
 async def generate_image(request: GenerateRequest, http_request: Request):
