@@ -420,7 +420,7 @@
 
     .loading-spinner {
         animation: none;
-        border-top-color: var(--neutral-300);
+        border-top-color: var(--bg-surface);
     }
 
     .skeleton-item {
@@ -456,6 +456,6 @@
     .input-card,
     .output-card {
         box-shadow: none;
-        border: 1px solid var(--neutral-300);
+        border: 1px solid var(--bg-surface);
     }
 }

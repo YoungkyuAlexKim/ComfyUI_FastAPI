@@ -1,43 +1,58 @@
-/* Modern Design System Variables */
+/* Dark Modern Design System Variables - Gaming Studio Style */
 :root {
-    /* LC Brand Colors - LOADCOMPLETE Style */
-    --lc-primary: #FF8C00;      /* Dark Orange */
-    --lc-secondary: #FFA500;    /* Orange */
-    --lc-accent: #FFD700;       /* Gold/Yellow */
+    /* Gaming Studio Brand Colors - Dark Modern Theme */
+    --lc-primary: #3B82F6;      /* Professional Blue */
+    --lc-secondary: #10B981;    /* Emerald Green */
+    --lc-accent: #F59E0B;       /* Amber Accent */
 
-    /* Primary Colors - LOADCOMPLETE Orange Palette */
-    --primary-50: #fff8e1;      /* Very Light Orange */
-    --primary-100: #ffecb3;     /* Light Orange */
-    --primary-200: #ffd54f;     /* Light Gold */
-    --primary-300: #ffca28;     /* Gold */
-    --primary-400: #ffc107;     /* Amber */
-    --primary-500: #ff9800;     /* Orange */
-    --primary-600: #ff8f00;     /* Dark Orange */
-    --primary-700: #f57c00;     /* Deep Orange */
-    --primary-800: #ef6c00;     /* Darker Orange */
-    --primary-900: #e65100;     /* Darkest Orange */
+    /* Primary Colors - Professional Blue Palette */
+    --primary-50: #EFF6FF;      /* Very Light Blue */
+    --primary-100: #DBEAFE;     /* Light Blue */
+    --primary-200: #BFDBFE;     /* Light Professional */
+    --primary-300: #93C5FD;     /* Professional */
+    --primary-400: #60A5FA;     /* Bright Professional */
+    --primary-500: #3B82F6;     /* Professional Blue */
+    --primary-600: #2563EB;     /* Deep Professional */
+    --primary-700: #1D4ED8;     /* Dark Professional */
+    --primary-800: #1E40AF;     /* Darker Professional */
+    --primary-900: #1E3A8A;     /* Darkest Professional */
 
-    /* Neutral Colors - Modern Gray Scale */
-    --neutral-50: #fafaf9;
-    --neutral-100: #f5f5f4;
-    --neutral-200: #e7e5e4;
-    --neutral-300: #d6d3d1;
-    --neutral-400: #a8a29e;
-    --neutral-500: #78716c;
-    --neutral-600: #57534e;
-    --neutral-700: #44403c;
-    --neutral-800: #292524;
-    --neutral-900: #1c1917;
+    /* Secondary Colors - Emerald Green Palette */
+    --secondary-50: #ECFDF5;     /* Very Light Emerald */
+    --secondary-100: #D1FAE5;    /* Light Emerald */
+    --secondary-200: #A7F3D0;    /* Light Professional */
+    --secondary-300: #6EE7B7;    /* Professional Emerald */
+    --secondary-400: #34D399;    /* Bright Emerald */
+    --secondary-500: #10B981;    /* Professional Emerald */
+    --secondary-600: #059669;    /* Deep Emerald */
+    --secondary-700: #047857;    /* Dark Emerald */
+    --secondary-800: #065F46;    /* Darker Emerald */
+    --secondary-900: #064E3B;    /* Darkest Emerald */
 
-    /* Semantic Colors - LOADCOMPLETE Style */
-    --success: #4caf50;         /* Green (unchanged) */
-    --success-light: #e8f5e8;
-    --error: #f44336;           /* Red */
-    --error-light: #ffebee;
-    --warning: #ff9800;         /* Orange */
-    --warning-light: #fff3e0;
-    --info: #ff8f00;            /* Orange */
-    --info-light: #fff8e1;
+    /* Dark Theme Backgrounds */
+    --bg-primary: #0F172A;      /* Slate Dark */
+    --bg-secondary: #1E293B;    /* Slate Medium */
+    --bg-tertiary: #334155;     /* Slate Light */
+    --bg-surface: #475569;      /* Slate Surface */
+    --bg-card: #1E293B;         /* Card Background */
+    --bg-hover: #334155;        /* Hover State */
+
+    /* Dark Theme Text Colors */
+    --text-primary: #F8FAFC;    /* Primary Text */
+    --text-secondary: #CBD5E1;  /* Secondary Text */
+    --text-tertiary: #94A3B8;   /* Tertiary Text */
+    --text-muted: #64748B;      /* Muted Text */
+    --text-disabled: #475569;   /* Disabled Text */
+
+    /* Semantic Colors - Professional Style */
+    --success: #10B981;         /* Emerald */
+    --success-light: rgba(16, 185, 129, 0.15);
+    --error: #EF4444;           /* Red */
+    --error-light: rgba(239, 68, 68, 0.15);
+    --warning: #F59E0B;         /* Amber */
+    --warning-light: rgba(245, 158, 11, 0.15);
+    --info: #3B82F6;            /* Professional Blue */
+    --info-light: rgba(59, 130, 246, 0.15);
 
     /* Spacing System - More Generous */
     --space-xs: 0.25rem;    /* 4px */
@@ -59,12 +74,14 @@
     --radius-3xl: 2rem;      /* 32px */
     --radius-full: 9999px;   /* Full rounded */
 
-    /* Shadows - Subtle and Modern */
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-    --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+    /* Dark Theme Shadows - Subtle and Professional */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4), 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 10px -6px rgba(0, 0, 0, 0.6);
+    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+    --shadow-glow: 0 0 15px rgba(59, 130, 246, 0.2), 0 0 30px rgba(59, 130, 246, 0.1);
+    --shadow-glow-green: 0 0 15px rgba(16, 185, 129, 0.2), 0 0 30px rgba(16, 185, 129, 0.1);
 
     /* Transitions */
     --transition-fast: 0.15s ease-out;
@@ -103,8 +120,12 @@
     --header-height: 64px;
     --input-height: 120px;
 
-    /* Skeleton Loading */
-    --skeleton-color-1: var(--neutral-100);
-    --skeleton-color-2: var(--neutral-200);
+    /* Dark Theme Skeleton Loading */
+    --skeleton-color-1: var(--bg-tertiary);
+    --skeleton-color-2: var(--bg-surface);
     --skeleton-speed: 1.4s;
+
+    /* Professional Theme Specific */
+    --neon-glow: 0 0 8px rgba(59, 130, 246, 0.3);
+    --neon-glow-green: 0 0 8px rgba(16, 185, 129, 0.3);
 }

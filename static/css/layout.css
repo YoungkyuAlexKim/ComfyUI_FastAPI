@@ -16,12 +16,12 @@
     min-height: calc(100vh - var(--space-5xl));
 }
 
-/* Sidebar - Full Height from Start */
+/* Dark Theme Sidebar - Full Height from Start */
 .sidebar {
     width: var(--sidebar-width);
-    background: rgba(255, 248, 225, 0.95); /* Very Light Orange */
+    background: var(--bg-card);
     backdrop-filter: blur(20px);
-    border: 1px solid var(--primary-200);
+    border: 1px solid var(--bg-surface);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-lg);
     display: flex;
@@ -35,7 +35,7 @@
 
 .sidebar-header {
     padding: var(--space-2xl);
-    border-bottom: 1px solid var(--primary-200);
+    border-bottom: 1px solid var(--bg-surface);
     text-align: center;
     /* 헤더 크기 고정 */
     flex-shrink: 0;
@@ -57,7 +57,7 @@
 .sidebar-title {
     font-size: var(--font-size-lg);
     font-weight: 600;
-    color: var(--neutral-800);
+    color: var(--text-primary);
     margin: 0;
     display: flex;
     align-items: center;
@@ -74,7 +74,7 @@
     flex-shrink: 0;
     /* 스크롤바 스타일 개선 */
     scrollbar-width: thin;
-    scrollbar-color: var(--neutral-300) var(--neutral-100);
+    scrollbar-color: var(--bg-surface) var(--bg-tertiary);
 }
 
 .workflow-loading {
@@ -84,21 +84,21 @@
     justify-content: center;
     gap: var(--space-lg);
     padding: var(--space-3xl);
-    color: var(--neutral-500);
+    color: var(--text-muted);
     font-size: var(--font-size-sm);
     height: 200px;
 }
 
 .sidebar-footer {
     padding: var(--space-lg) var(--space-2xl);
-    border-top: 1px solid var(--primary-200);
-    background: var(--primary-100);
+    border-top: 1px solid var(--bg-surface);
+    background: var(--bg-tertiary);
     /* 푸터 크기 고정 */
     flex-shrink: 0;
 }
 
 .workflow-info {
-    color: var(--neutral-600);
+    color: var(--text-muted);
     font-size: var(--font-size-xs);
     display: flex;
     align-items: center;
@@ -128,9 +128,9 @@
 }
 
 .input-card {
-    background: rgba(255, 248, 225, 0.95); /* Very Light Orange */
+    background: var(--bg-card);
     backdrop-filter: blur(20px);
-    border: 1px solid var(--primary-200);
+    border: 1px solid var(--bg-surface);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
@@ -141,9 +141,9 @@
 
 .card-header {
     padding: var(--space-3xl);
-    border-bottom: 1px solid var(--primary-200);
+    border-bottom: 1px solid var(--bg-surface);
     text-align: center;
-    background: var(--primary-100);
+    background: var(--bg-tertiary);
 }
 
 .workflow-info-header {
@@ -153,7 +153,7 @@
 .workflow-name-display {
     font-size: var(--font-size-2xl);
     font-weight: 700;
-    color: var(--neutral-800);
+    color: var(--text-primary);
     margin-bottom: var(--space-sm);
     display: flex;
     align-items: center;
@@ -163,10 +163,11 @@
 
 .workflow-name-display.selected {
     color: var(--lc-primary);
+    text-shadow: var(--neon-glow);
 }
 
 .workflow-description-display {
-    color: var(--neutral-600);
+    color: var(--text-secondary);
     font-size: var(--font-size-sm);
     line-height: 1.5;
     margin: 0;
@@ -178,11 +179,11 @@
     padding: var(--space-3xl);
 }
 
-/* Generator Toolbar */
+/* Dark Theme Generator Toolbar */
 .generator-toolbar {
-    background: rgba(255, 248, 225, 0.95); /* Very Light Orange */
+    background: var(--bg-card);
     backdrop-filter: blur(20px);
-    border: 1px solid var(--primary-200);
+    border: 1px solid var(--bg-surface);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-md);
     padding: var(--space-xl);
@@ -204,14 +205,14 @@
     margin-left: auto;
 }
 
-/* ControlNet Strip */
+/* Dark Theme ControlNet Strip */
 .controlnet-strip {
     display: flex;
     align-items: center;
     justify-content: flex-start;
     gap: var(--space-md);
     padding: var(--space-lg);
-    background: var(--primary-100);
+    background: var(--bg-tertiary);
     border-radius: var(--radius-lg);
     margin-top: var(--space-lg);
 }
@@ -220,8 +221,8 @@
     width: 80px;
     height: 80px;
     border-radius: var(--radius-xl);
-    border: 2px solid var(--primary-300);
-    background: rgba(255, 248, 225, 0.9); /* Very Light Orange */
+    border: 2px solid var(--bg-surface);
+    background: var(--bg-card);
     backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
@@ -232,8 +233,8 @@
 }
 
 #control-floating:hover {
-    border-color: var(--primary-400);
-    box-shadow: var(--shadow-md);
+    border-color: var(--lc-primary);
+    box-shadow: var(--shadow-glow);
 }
 
 #control-slot-inner {
@@ -278,7 +279,7 @@
     justify-content: center;
     width: 100%;
     height: 100%;
-    color: var(--neutral-400);
+    color: var(--text-muted);
     font-size: var(--font-size-xl);
 }
 
@@ -297,6 +298,7 @@
     justify-content: center;
     cursor: pointer;
     font-size: 10px;
+    box-shadow: var(--shadow-sm);
 }
 
 /* Output Panel */
@@ -309,9 +311,9 @@
 }
 
 .output-card {
-    background: rgba(255, 248, 225, 0.95); /* Very Light Orange */
+    background: var(--bg-card);
     backdrop-filter: blur(20px);
-    border: 1px solid var(--primary-200);
+    border: 1px solid var(--bg-surface);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
@@ -322,28 +324,30 @@
     top: var(--space-3xl);
 }
 
-/* Progress Section */
+/* Dark Theme Progress Section */
 .progress-section {
     padding: var(--space-xl);
-    background: var(--primary-100);
+    background: var(--bg-tertiary);
     border-radius: var(--radius-lg);
     margin-bottom: var(--space-lg);
 }
 
 .progress-container {
     height: 6px;
-    background: var(--neutral-200);
+    background: var(--bg-surface);
     border-radius: var(--radius-full);
     overflow: hidden;
     margin: var(--space-lg) 0;
+    border: 1px solid var(--bg-hover);
 }
 
 .progress-bar {
     height: 100%;
-    /* LC 브랜드 색상 사용 */
+    /* Gaming Studio 브랜드 색상 사용 */
     background: linear-gradient(90deg, var(--lc-primary), var(--lc-secondary));
     border-radius: var(--radius-full);
     transition: width var(--transition-normal);
+    box-shadow: var(--neon-glow);
 }
 
 /* Status Container */
@@ -378,9 +382,9 @@
 }
 
 .gallery-card {
-    background: rgba(255, 248, 225, 0.95); /* Very Light Orange */
+    background: var(--bg-card);
     backdrop-filter: blur(20px);
-    border: 1px solid var(--primary-200);
+    border: 1px solid var(--bg-surface);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-lg);
     height: 100%;
@@ -391,7 +395,7 @@
 
 .gallery-header {
     padding: var(--space-xl);
-    border-bottom: 1px solid var(--primary-200);
+    border-bottom: 1px solid var(--bg-surface);
     flex-shrink: 0;
 }
 
@@ -406,7 +410,7 @@
 .gallery-title {
     font-size: var(--font-size-lg);
     font-weight: 600;
-    color: var(--neutral-800);
+    color: var(--text-primary);
     margin: 0;
     display: flex;
     align-items: center;
@@ -439,8 +443,8 @@
 .gallery-load-more {
     padding: var(--space-xl);
     border: none;
-    background: var(--primary-100);
-    color: var(--primary-700);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
     border-radius: var(--radius-lg);
     cursor: pointer;
     display: flex;
@@ -450,18 +454,21 @@
     font-weight: 500;
     transition: all var(--transition-fast);
     flex-shrink: 0;
+    border: 1px solid var(--bg-surface);
 }
 
 .gallery-load-more:hover {
-    background: var(--primary-200);
-    color: var(--primary-800);
+    background: var(--bg-hover);
+    color: var(--lc-primary);
+    border-color: var(--lc-primary);
+    box-shadow: var(--neon-glow);
 }
 
-/* App Title */
+/* Dark Theme App Title */
 .app-title {
     font-size: var(--font-size-2xl);
     font-weight: 700;
-    /* LC 브랜드 색상 사용 */
+    /* Gaming Studio 브랜드 색상 사용 */
     background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
     background-clip: text;
     -webkit-background-clip: text;
@@ -470,27 +477,24 @@
     align-items: center;
     gap: var(--space-sm);
     margin: 0 0 var(--space-lg) 0;
+    text-shadow: var(--neon-glow);
 }
 
 .app-title i {
     font-size: var(--font-size-xl);
-    /* 아이콘은 순수 색상으로 표시 */
+    /* 아이콘은 네온 효과와 함께 표시 */
     color: var(--lc-primary);
     background: none;
     -webkit-text-fill-color: var(--lc-primary);
+    text-shadow: var(--neon-glow);
 }
 
-/* LC Brand Colors - LOADCOMPLETE Style */
-:root {
-    --lc-primary: #8B4513;      /* Saddle Brown */
-    --lc-secondary: #A0522D;    /* Sienna */
-    --lc-accent: #CD853F;       /* Peru */
-}
+/* LC Brand Colors are now defined in variables.css */
 
 
 .card-header {
     padding: var(--space-2xl);
-    border-bottom: 1px solid var(--neutral-200);
+    border-bottom: 1px solid var(--bg-tertiary);
     text-align: center;
 }
 
@@ -502,7 +506,7 @@
 .workflow-name-display {
     font-size: 1.5rem;
     font-weight: 700;
-    color: var(--neutral-800);
+    color: var(--text-primary);
     margin-bottom: var(--space-sm);
     display: flex;
     align-items: center;
@@ -515,7 +519,7 @@
 }
 
 .workflow-description-display {
-    color: var(--neutral-500);
+    color: var(--text-muted);
     font-size: 0.9rem;
     line-height: 1.4;
     margin: 0;
@@ -527,7 +531,7 @@
 /* Slightly increase space between ControlNet strip and status text */
 .input-card .status-container { margin-top: 10px; }
 
-/* Placeholder Section */
+/* Dark Theme Placeholder Section */
 .placeholder-section {
     flex: 1;
     display: block;
@@ -536,8 +540,8 @@
 }
 
 .placeholder-card {
-    background: var(--neutral-50);
-    border: 1px solid var(--neutral-200);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--bg-surface);
     border-radius: var(--radius-xl);
     padding: var(--space-xl);
     text-align: center;
@@ -550,7 +554,7 @@
 
 .placeholder-title {
     margin-bottom: var(--space-xl);
-    color: var(--neutral-600);
+    color: var(--text-secondary);
     font-size: 1.25rem;
     font-weight: 600;
     display: flex;
@@ -569,25 +573,27 @@
 .placeholder-icon {
     width: 120px;
     height: 120px;
-    background: linear-gradient(135deg, var(--primary-100), var(--primary-200));
+    background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 3rem;
-    color: var(--primary-500);
+    color: var(--bg-primary);
     margin-bottom: var(--space-md);
+    box-shadow: var(--shadow-glow);
+    border: 2px solid var(--bg-surface);
 }
 
 .placeholder-text {
-    color: var(--neutral-500);
+    color: var(--text-secondary);
     font-size: 1rem;
     line-height: 1.6;
     max-width: 400px;
     margin: 0;
 }
 
-/* Result Section */
+/* Dark Theme Result Section */
 .result-section {
     flex: 1;
     display: none;
@@ -596,8 +602,8 @@
 }
 
 .result-card {
-    background: var(--neutral-50);
-    border: 1px solid var(--neutral-200);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--bg-surface);
     border-radius: var(--radius-xl);
     padding: var(--space-xl);
     text-align: center;
@@ -616,7 +622,7 @@
 
 .result-title {
     margin-bottom: var(--space-lg);
-    color: var(--neutral-700);
+    color: var(--text-primary);
     font-size: 1.25rem;
     font-weight: 600;
     display: flex;
@@ -638,6 +644,6 @@
 
 .result-hint {
     margin-top: var(--space-lg);
-    color: var(--neutral-500);
+    color: var(--text-muted);
     font-size: 0.875rem;
 }
