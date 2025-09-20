@@ -72,8 +72,22 @@
       ctx.fillRect(0,0, canvas.width, canvas.height);
     }
 
-    function open(){ overlay.style.display = 'flex'; setTimeout(resizeCanvasForDisplay, 50); }
-    function close(){ overlay.style.display = 'none'; }
+    function open(){
+        overlay.style.display = 'flex';
+        overlay.style.opacity = '0';
+        overlay.classList.add('fade-in');
+        setTimeout(() => {
+            overlay.style.opacity = '1';
+            resizeCanvasForDisplay();
+        }, 10);
+    }
+    function close(){
+        overlay.classList.add('fade-out');
+        setTimeout(() => {
+            overlay.style.display = 'none';
+            overlay.classList.remove('fade-in', 'fade-out');
+        }, 300);
+    }
 
     function getPos(e){
       if (e.touches && e.touches[0]) {

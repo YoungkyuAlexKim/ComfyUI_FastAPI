@@ -442,6 +442,7 @@
 .selection-mode .gallery-select {
     opacity: 1;
     transform: scale(1);
+    animation: fadeInScale 0.3s ease-out;
 }
 
 .gallery-item.selected .gallery-select {
@@ -1394,6 +1395,125 @@
 
 /* Gallery action bar */
 .gallery-actions { display:flex; align-items:center; gap:8px; margin-bottom: 8px; }
+
+/* Gallery selection mode animations */
+.gallery-actions .chip-btn,
+.gallery-actions #selected-count {
+    animation: fadeInUp 0.4s ease-out;
+}
+
+.gallery-actions.fade-out .chip-btn {
+    animation: fadeOutUp 0.3s ease-in forwards;
+}
+
+.gallery-actions.fade-out #selected-count {
+    animation: fadeOutUp 0.3s ease-in forwards;
+}
+
+/* Gallery selection fade animations */
+.selection-mode .gallery-select {
+    opacity: 1;
+    transform: scale(1);
+    animation: fadeInScale 0.3s ease-out;
+}
+
+.selection-mode.exiting .gallery-select {
+    animation: fadeOutScale 0.3s ease-in forwards;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeOutUp {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes fadeOutScale {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+}
+
+/* Control Canvas Animations */
+#control-canvas-overlay {
+    transition: opacity 0.3s ease-in-out;
+}
+
+#control-canvas-overlay.fade-in {
+    opacity: 0;
+    animation: controlCanvasFadeIn 0.3s ease-out forwards;
+}
+
+#control-canvas-overlay.fade-out {
+    opacity: 1;
+    animation: controlCanvasFadeOut 0.3s ease-in forwards;
+}
+
+#control-canvas-overlay.fade-in #cc-card {
+    opacity: 0;
+    transform: scale(0.95);
+    animation: controlCanvasCardFadeIn 0.4s ease-out 0.1s forwards;
+}
+
+@keyframes controlCanvasFadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes controlCanvasFadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes controlCanvasCardFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
 
 /* Selection mode badge removed (kept slot for potential future use) */
 .selection-badge { display: none; }

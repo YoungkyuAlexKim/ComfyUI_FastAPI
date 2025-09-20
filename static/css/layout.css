@@ -251,6 +251,25 @@
     height: 100%;
     object-fit: cover;
     display: none;
+    opacity: 0;
+    transition: opacity 0.4s ease-in-out;
+}
+
+#control-floating-img.show {
+    display: block;
+    opacity: 1;
+    animation: fadeIn 0.4s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
 #control-floating-empty {
@@ -451,6 +470,14 @@
     align-items: center;
     gap: var(--space-sm);
     margin: 0 0 var(--space-lg) 0;
+}
+
+.app-title i {
+    font-size: var(--font-size-xl);
+    /* 아이콘은 순수 색상으로 표시 */
+    color: var(--lc-primary);
+    background: none;
+    -webkit-text-fill-color: var(--lc-primary);
 }
 
 /* LC Brand Colors - LOADCOMPLETE Style */
