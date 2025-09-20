@@ -184,22 +184,32 @@
         const chk = document.getElementById('control-enabled');
         if (chk) chk.checked = true;
         // 갤러리 컨트롤 탭 갱신 유도: 저장 후 즉시 전환은 하지 않음
-        alert('컨트롤이 저장되었습니다. 내 컨트롤 탭에서 확인할 수 있어요.');
+        try { alert('컨트롤이 저장되었습니다. 내 컨트롤 탭에서 확인할 수 있어요.'); } catch (_) {}
       } catch (e) {
-        alert('업로드 실패: ' + e.message);
+        try { alert('업로드 실패: ' + e.message); } catch (_) {}
       }
     }
 
     async function loadSelectedToCanvas(){
-      let id = null; try { id = localStorage.getItem('selectedControlId') || ''; } catch(_) {}
-      if (!id) { alert('선택된 컨트롤이 없습니다. 내 컨트롤 탭에서 선택하세요.'); return; }
+      // Prefer new storage: controlSlots.default, fallback to legacy selectedControlId
+      let id = '';
       try {
-        // 간단히 썸네일/원본 URL은 모르므로 내 컨트롤 목록 첫 페이지에서 찾아 시도
-        const res = await fetch('/api/v1/controls?page=1&size=24');
+        const slotsRaw = localStorage.getItem('controlSlots');
+        const slots = slotsRaw ? JSON.parse(slotsRaw) : {};
+        if (slots && typeof slots === 'object' && typeof slots.default === 'string' && slots.default) {
+          id = slots.default;
+        }
+      } catch (_) {}
+      if (!id) {
+        try { id = localStorage.getItem('selectedControlId') || ''; } catch(_) {}
+      }
+      if (!id) { try { alert('선택된 컨트롤이 없습니다. 내 컨트롤 탭에서 선택하세요.'); } catch (_) {} return; }
+      try {
+        const res = await fetch('/api/v1/controls?page=1&size=500');
         const data = await res.json();
         const items = Array.isArray(data.items) ? data.items : [];
         const it = items.find(x => x.id === id);
-        if (!it || !it.url) { alert('컨트롤 이미지를 찾을 수 없습니다.'); return; }
+        if (!it || !it.url) { try { alert('컨트롤 이미지를 찾을 수 없습니다.'); } catch(_) {} return; }
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
@@ -216,10 +226,10 @@
           }
           ctx.drawImage(img, dx, dy, dw, dh);
         };
-        img.onerror = () => alert('이미지 로드 실패');
+        img.onerror = () => { try { alert('이미지 로드 실패'); } catch (_) {} };
         img.src = it.url;
       } catch (_) {
-        alert('불러오기 실패');
+        try { alert('불러오기 실패'); } catch (_) {}
       }
     }
 

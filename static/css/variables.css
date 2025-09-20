@@ -1,58 +1,58 @@
-/* Dark Modern Design System Variables - Gaming Studio Style */
+/* Dark Modern Design System Variables - Professional Corporate Style */
 :root {
-    /* Gaming Studio Brand Colors - Dark Modern Theme */
-    --lc-primary: #3B82F6;      /* Professional Blue */
-    --lc-secondary: #10B981;    /* Emerald Green */
-    --lc-accent: #F59E0B;       /* Amber Accent */
+    /* Corporate Brand Colors - Muted Professional Theme */
+    --lc-primary: #64748B;      /* Muted Slate Gray */
+    --lc-secondary: #475569;    /* Darker Slate */
+    --lc-accent: #334155;       /* Medium Slate */
 
-    /* Primary Colors - Professional Blue Palette */
-    --primary-50: #EFF6FF;      /* Very Light Blue */
-    --primary-100: #DBEAFE;     /* Light Blue */
-    --primary-200: #BFDBFE;     /* Light Professional */
-    --primary-300: #93C5FD;     /* Professional */
-    --primary-400: #60A5FA;     /* Bright Professional */
-    --primary-500: #3B82F6;     /* Professional Blue */
-    --primary-600: #2563EB;     /* Deep Professional */
-    --primary-700: #1D4ED8;     /* Dark Professional */
-    --primary-800: #1E40AF;     /* Darker Professional */
-    --primary-900: #1E3A8A;     /* Darkest Professional */
+    /* Primary Colors - Muted Slate Palette */
+    --primary-50: #F8FAFC;      /* Very Light Gray */
+    --primary-100: #F1F5F9;     /* Light Gray */
+    --primary-200: #E2E8F0;     /* Light Muted */
+    --primary-300: #CBD5E1;     /* Muted Gray */
+    --primary-400: #94A3B8;     /* Medium Muted */
+    --primary-500: #64748B;     /* Muted Slate */
+    --primary-600: #475569;     /* Darker Muted */
+    --primary-700: #334155;     /* Dark Muted */
+    --primary-800: #1E293B;     /* Darker Muted */
+    --primary-900: #0F172A;     /* Darkest Muted */
 
-    /* Secondary Colors - Emerald Green Palette */
-    --secondary-50: #ECFDF5;     /* Very Light Emerald */
-    --secondary-100: #D1FAE5;    /* Light Emerald */
-    --secondary-200: #A7F3D0;    /* Light Professional */
-    --secondary-300: #6EE7B7;    /* Professional Emerald */
-    --secondary-400: #34D399;    /* Bright Emerald */
-    --secondary-500: #10B981;    /* Professional Emerald */
-    --secondary-600: #059669;    /* Deep Emerald */
-    --secondary-700: #047857;    /* Dark Emerald */
-    --secondary-800: #065F46;    /* Darker Emerald */
-    --secondary-900: #064E3B;    /* Darkest Emerald */
+    /* Secondary Colors - Neutral Gray Palette */
+    --secondary-50: #F8FAFC;     /* Very Light Gray */
+    --secondary-100: #F1F5F9;    /* Light Gray */
+    --secondary-200: #E2E8F0;    /* Light Neutral */
+    --secondary-300: #CBD5E1;    /* Neutral Gray */
+    --secondary-400: #94A3B8;    /* Medium Neutral */
+    --secondary-500: #64748B;    /* Neutral Slate */
+    --secondary-600: #475569;    /* Darker Neutral */
+    --secondary-700: #334155;    /* Dark Neutral */
+    --secondary-800: #1E293B;    /* Darker Neutral */
+    --secondary-900: #0F172A;    /* Darkest Neutral */
 
-    /* Dark Theme Backgrounds */
-    --bg-primary: #0F172A;      /* Slate Dark */
-    --bg-secondary: #1E293B;    /* Slate Medium */
-    --bg-tertiary: #334155;     /* Slate Light */
-    --bg-surface: #475569;      /* Slate Surface */
-    --bg-card: #1E293B;         /* Card Background */
-    --bg-hover: #334155;        /* Hover State */
+    /* Dark Theme Backgrounds - Improved Contrast */
+    --bg-primary: #0A0F1A;      /* Deeper Dark */
+    --bg-secondary: #1A2332;    /* Darker Medium */
+    --bg-tertiary: #2D3748;     /* Medium Gray */
+    --bg-surface: #3A4556;      /* Surface Gray */
+    --bg-card: #1A2332;         /* Card Background */
+    --bg-hover: #2D3748;        /* Hover State */
 
-    /* Dark Theme Text Colors */
-    --text-primary: #F8FAFC;    /* Primary Text */
-    --text-secondary: #CBD5E1;  /* Secondary Text */
-    --text-tertiary: #94A3B8;   /* Tertiary Text */
-    --text-muted: #64748B;      /* Muted Text */
-    --text-disabled: #475569;   /* Disabled Text */
+    /* Dark Theme Text Colors - Better Readability */
+    --text-primary: #F7FAFC;    /* Bright White */
+    --text-secondary: #E2E8F0;  /* Light Gray */
+    --text-tertiary: #A0AEC0;   /* Medium Gray */
+    --text-muted: #718096;      /* Muted Gray */
+    --text-disabled: #4A5568;   /* Dark Gray */
 
-    /* Semantic Colors - Professional Style */
-    --success: #10B981;         /* Emerald */
-    --success-light: rgba(16, 185, 129, 0.15);
-    --error: #EF4444;           /* Red */
-    --error-light: rgba(239, 68, 68, 0.15);
-    --warning: #F59E0B;         /* Amber */
-    --warning-light: rgba(245, 158, 11, 0.15);
-    --info: #3B82F6;            /* Professional Blue */
-    --info-light: rgba(59, 130, 246, 0.15);
+    /* Semantic Colors - Muted Professional Style */
+    --success: #48BB78;         /* Muted Green */
+    --success-light: rgba(72, 187, 120, 0.15);
+    --error: #F56565;           /* Muted Red */
+    --error-light: rgba(245, 101, 101, 0.15);
+    --warning: #ED8936;         /* Muted Orange */
+    --warning-light: rgba(237, 137, 54, 0.15);
+    --info: #64748B;            /* Muted Slate */
+    --info-light: rgba(100, 116, 139, 0.15);
 
     /* Spacing System - More Generous */
     --space-xs: 0.25rem;    /* 4px */
@@ -74,14 +74,13 @@
     --radius-3xl: 2rem;      /* 32px */
     --radius-full: 9999px;   /* Full rounded */
 
-    /* Dark Theme Shadows - Subtle and Professional */
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4), 0 1px 3px 0 rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 10px -6px rgba(0, 0, 0, 0.6);
-    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
-    --shadow-glow: 0 0 15px rgba(59, 130, 246, 0.2), 0 0 30px rgba(59, 130, 246, 0.1);
-    --shadow-glow-green: 0 0 15px rgba(16, 185, 129, 0.2), 0 0 30px rgba(16, 185, 129, 0.1);
+    /* Dark Theme Shadows - Subtle and Clean */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 12px -2px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 12px 16px -4px rgba(0, 0, 0, 0.6);
+    --shadow-2xl: 0 16px 20px -8px rgba(0, 0, 0, 0.7);
+    /* Removed neon glow effects for cleaner appearance */
 
     /* Transitions */
     --transition-fast: 0.15s ease-out;
@@ -125,7 +124,5 @@
     --skeleton-color-2: var(--bg-surface);
     --skeleton-speed: 1.4s;
 
-    /* Professional Theme Specific */
-    --neon-glow: 0 0 8px rgba(59, 130, 246, 0.3);
-    --neon-glow-green: 0 0 8px rgba(16, 185, 129, 0.3);
+    /* Clean Theme - No neon effects */
 }

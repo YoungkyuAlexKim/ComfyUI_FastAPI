@@ -139,7 +139,7 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: var(--space-sm);
-        padding: 0 var(--space-lg) var(--space-lg);
+        padding: var(--space-md) var(--space-lg) var(--space-lg);
     }
 
     .workflow-item {
@@ -296,7 +296,7 @@
 
     .workflow-list {
         grid-template-columns: 1fr;
-        padding: 0 var(--space-md) var(--space-md);
+        padding: var(--space-sm) var(--space-md) var(--space-md);
     }
 
     .workflow-item {

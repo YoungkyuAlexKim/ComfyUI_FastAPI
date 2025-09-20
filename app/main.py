@@ -34,11 +34,72 @@ from llm.prompt_translator import PromptTranslator
 try:
     translator = PromptTranslator(model_path="./models/gemma-3-4b-it-Q6_K.gguf")
 except FileNotFoundError as e:
-    print(f"경고: {e}. 프롬프트 번역 기능이 비활성화됩니다.")
+    logger.warning({"event": "llm_load_warning", "message": str(e)})
     translator = None
 
 templates = Jinja2Templates(directory="templates")
 app = FastAPI(title="ComfyUI FastAPI Server", version="0.4.0 (Jobs & Queues)")
+logger = setup_logging()
+
+# --- HTTP request logging middleware ---
+@app.middleware("http")
+async def http_logging_middleware(request: Request, call_next):
+    path = request.url.path or ""
+    # Skip very noisy static mounts
+    if path.startswith("/static") or path.startswith("/outputs"):
+        return await call_next(request)
+    req_id = uuid.uuid4().hex
+    start = time.perf_counter()
+    try:
+        logger.info({"event": "http_request", "request_id": req_id, "method": request.method, "path": path})
+        response = await call_next(request)
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        try:
+            response.headers["X-Request-ID"] = req_id
+        except Exception:
+            pass
+        logger.info({
+            "event": "http_response",
+            "request_id": req_id,
+            "method": request.method,
+            "path": path,
+            "status_code": getattr(response, "status_code", None),
+            "duration_ms": duration_ms,
+        })
+        return response
+    except Exception as e:
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        logger.error({
+            "event": "http_exception",
+            "request_id": req_id,
+            "method": request.method,
+            "path": path,
+            "error": str(e),
+            "duration_ms": duration_ms,
+        })
+        raise
+
+# --- Global exception handlers ---
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    logger.warning({
+        "event": "http_error",
+        "path": request.url.path,
+        "method": request.method,
+        "status_code": exc.status_code,
+        "detail": exc.detail,
+    })
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error({
+        "event": "unhandled_exception",
+        "path": request.url.path,
+        "method": request.method,
+        "error": str(exc),
+    })
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 # --- API 요청 모델 (v3.0 기준) ---
 class GenerateRequest(BaseModel):
@@ -467,7 +528,7 @@ async def get_workflows():
                 with open(json_path, 'r', encoding='utf-8') as f:
                     node_count = len(json.load(f))
             except Exception as e:
-                print(f"Error processing workflow {json_path}: {e}")
+                logger.warning({"event": "workflow_list_error", "workflow": json_path, "error": str(e)})
         workflows.append({
             "id": workflow_id,
             "name": config.get("display_name", workflow_id.replace("_", " ").title()),  # config에서 가져오기
@@ -1217,7 +1278,7 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info({"event": "ws_disconnect", "owner_id": user_id})
         manager.disconnect(websocket, user_id)
     except Exception as e:
-        print(f"💥 WebSocket error: {e}")
+        logger.error({"event": "ws_error", "owner_id": user_id, "error": str(e)})
         manager.disconnect(websocket, user_id)
 
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")

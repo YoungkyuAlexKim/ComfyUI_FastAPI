@@ -1,21 +1,20 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const translateButtons = document.querySelectorAll('.translate-btn');
+    const translateButtons = document.querySelectorAll('.translate-btn, .translate-btn--icon, .translate-btn--small');
 
     translateButtons.forEach(button => {
         button.addEventListener('click', async (e) => {
             e.preventDefault();
             const targetId = button.dataset.target;
             const textarea = document.getElementById(targetId);
-            const originalText = textarea.value.trim();
+            const originalText = (textarea && typeof textarea.value === 'string') ? textarea.value.trim() : '';
 
             if (!originalText) {
-                alert('번역할 내용을 입력해주세요.');
+                try { alert('번역할 내용을 입력해주세요.'); } catch (_) {}
                 return;
             }
 
-            // 버튼 상태 변경 (작은 버튼은 더 컴팩트한 스피너 사용)
             const originalButtonHtml = button.innerHTML;
-            const isSmall = button.classList.contains('translate-btn--small');
+            const isSmall = button.classList.contains('translate-btn--small') || button.classList.contains('translate-btn--icon');
             button.disabled = true;
             button.innerHTML = isSmall
                 ? '<div class="loading-spinner-small"></div>'
@@ -31,21 +30,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '번역 중 오류가 발생했습니다.');
+                    let detail = '번역 중 오류가 발생했습니다.';
+                    try { const errorData = await response.json(); if (errorData && errorData.detail) detail = errorData.detail; } catch (_) {}
+                    throw new Error(detail);
                 }
 
                 const result = await response.json();
-                textarea.value = result.translated_text;
-
-                // textarea 높이 자동 조절
-                textarea.dispatchEvent(new Event('input'));
+                if (textarea) {
+                    textarea.value = result.translated_text || '';
+                    try { textarea.dispatchEvent(new Event('input')); } catch (_) {}
+                }
 
             } catch (error) {
                 console.error('Translation error:', error);
-                alert(`오류: ${error.message}`);
+                try { alert(`오류: ${error.message}`); } catch (_) {}
             } finally {
-                // 버튼 상태 복원
                 button.disabled = false;
                 button.innerHTML = originalButtonHtml;
             }

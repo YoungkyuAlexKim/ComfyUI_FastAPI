@@ -56,10 +56,16 @@ class ComfyUIClient:
             with open(workflow_json_path, 'r', encoding='utf-8') as f:
                 prompt = json.load(f)
         except FileNotFoundError:
-            print(f"❌ 에러: 워크플로우 파일을 찾을 수 없습니다! 경로: {workflow_json_path}")
+            try:
+                self._logger.error({"event": "workflow_json_missing", "path": workflow_json_path})
+            except Exception:
+                pass
             return {}
-        except json.JSONDecodeError:
-            print(f"❌ 에러: 워크플로우 파일이 유효한 JSON 형식이 아닙니다! 파일 내용을 확인해주세요.")
+        except json.JSONDecodeError as e:
+            try:
+                self._logger.error({"event": "workflow_json_invalid", "path": workflow_json_path, "error": str(e)})
+            except Exception:
+                pass
             return {}
 
         # 2. 프롬프트 오버라이드 적용 (⭐️⭐️⭐️ 버그 수정된 핵심 로직 ⭐️⭐️⭐️)
@@ -71,7 +77,10 @@ class ComfyUIClient:
                 else: # 'inputs'가 아닌 다른 최상위 키를 덮어쓰는 경우 (예: class_type)
                         prompt[node_id].update(overrides)
             else:
-                print(f"⚠️ 경고: 워크플로우에 노드 ID '{node_id}'가 없습니다. 이 오버라이드는 무시됩니다.")
+                try:
+                    self._logger.warning({"event": "override_missing_node", "node_id": node_id})
+                except Exception:
+                    pass
         
         # Note: 출력 노드(Preview/SaveImage)는 워크플로우에 직접 포함하는 정책으로 유지합니다.
 
@@ -90,7 +99,10 @@ class ComfyUIClient:
             response.raise_for_status() # 2xx 상태 코드가 아니면 에러를 발생시킴
             return response.json()
         except ImportError:
-            print("❌ 에러: 'requests' 라이브러리가 설치되지 않았습니다. 'pip install requests'를 실행해주세요.")
+            try:
+                self._logger.error({"event": "requests_missing"})
+            except Exception:
+                pass
             return {}
         except requests.exceptions.Timeout as e:
             try:
@@ -99,8 +111,10 @@ class ComfyUIClient:
                 pass
             return {}
         except requests.exceptions.RequestException as e:
-            print(f"❌ 에러: ComfyUI 서버에 요청을 보내는 중 문제가 발생했습니다.")
-            print(f"    - URL: {url}")
+            try:
+                self._logger.error({"event": "comfy_http_error", "stage": "queue_prompt", "url": url, "error": str(e)})
+            except Exception:
+                pass
             try:
                 # If server responded with 4xx/5xx, include body for diagnostics
                 if hasattr(e, 'response') and e.response is not None:
@@ -110,10 +124,12 @@ class ComfyUIClient:
                     except Exception:
                         body = None
                     if body:
-                        print(f"    - 응답 본문: {body}")
+                        try:
+                            self._logger.error({"event": "comfy_http_error_body", "status_code": e.response.status_code, "body": body[:2048]})
+                        except Exception:
+                            pass
             except Exception:
                 pass
-            print(f"    - 에러 내용: {e}")
             try:
                 payload = {"event": "comfy_http_error", "stage": "queue_prompt", "url": url, "error": str(e)}
                 try:
@@ -200,13 +216,19 @@ class ComfyUIClient:
                                     on_progress(100.0)
                                 except Exception:
                                     pass
-                            print("\n✅ 작업 실행이 서버에서 완료되었습니다.")
+                            try:
+                                self._logger.info({"event": "comfy_ws_complete", "prompt_id": prompt_id})
+                            except Exception:
+                                pass
                             break
 
                     if message['type'] == 'progress':
                         progress_data = message['data']
                         progress = (progress_data['value'] / progress_data['max']) * 100
-                        print(f"⏳ 진행 중... {progress:.2f}%", end='\r', flush=True) # 터미널 로그는 유지
+                        try:
+                            self._logger.debug({"event": "comfy_progress", "progress": round(progress, 2)})
+                        except Exception:
+                            pass
 
                         # 진행률 콜백
                         if on_progress:
@@ -219,9 +241,15 @@ class ComfyUIClient:
                     pass # Pong frame, 무시
 
         except websocket.WebSocketConnectionClosedException:
-            print("웹소켓 연결이 정상적으로 닫혔습니다.")
+            try:
+                self._logger.info({"event": "comfy_ws_closed"})
+            except Exception:
+                pass
         except Exception as e:
-            print(f"메시지 수신 중 오류 발생: {e}")
+            try:
+                self._logger.error({"event": "comfy_ws_exception", "error": str(e)})
+            except Exception:
+                pass
             try:
                 self._logger.error({"event": "comfy_ws_error", "stage": "get_images", "url": ws_url, "error": str(e)})
             except Exception:
@@ -261,7 +289,10 @@ class ComfyUIClient:
             response.raise_for_status()
             return True
         except ImportError:
-            print("❌ 에러: 'requests' 라이브러리가 설치되지 않았습니다. 'pip install requests'를 실행해주세요.")
+            try:
+                self._logger.error({"event": "requests_missing"})
+            except Exception:
+                pass
             return False
         except requests.exceptions.Timeout as e:
             try:
@@ -270,7 +301,10 @@ class ComfyUIClient:
                 pass
             return False
         except Exception as e:
-            print(f"❌ 인터럽트 전송 실패: {e}")
+            try:
+                self._logger.error({"event": "interrupt_failed", "error": str(e)})
+            except Exception:
+                pass
             try:
                 self._logger.error({"event": "comfy_http_error", "stage": "interrupt", "url": url, "error": str(e)})
             except Exception:

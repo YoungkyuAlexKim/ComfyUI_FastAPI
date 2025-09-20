@@ -9,12 +9,12 @@
     <style>
         .admin-layout { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
         .admin-grid { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
-        .admin-card { background: #fff; border: 1px solid var(--neutral-200); border-radius: var(--radius-xl); padding: 16px; }
+        .admin-card { background: var(--bg-card); border: 1px solid var(--bg-surface); border-radius: var(--radius-xl); padding: 16px; color: var(--text-primary); }
         .admin-users { max-height: 70vh; overflow: auto; }
-        .admin-user { padding: 8px 10px; border-radius: 8px; cursor: pointer; display:flex; align-items:center; }
-        .admin-user:hover { background: var(--neutral-100); }
-        .admin-user.active { background: var(--primary-50); border: 1px solid var(--primary-200); }
-        .admin-user::before { content: "\f007"; font-family: "Font Awesome 6 Free"; font-weight: 900; margin-right: 8px; color: var(--neutral-500); }
+        .admin-user { padding: 8px 10px; border-radius: 8px; cursor: pointer; display:flex; align-items:center; color: var(--text-primary); }
+        .admin-user:hover { background: var(--bg-hover); }
+        .admin-user.active { background: var(--bg-tertiary); border: 1px solid var(--primary-500); }
+        .admin-user::before { content: "\f007"; font-family: "Font Awesome 6 Free"; font-weight: 900; margin-right: 8px; color: var(--text-muted); }
         .admin-user { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .admin-toolbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
         .admin-gallery { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
@@ -22,10 +22,11 @@
         @media (max-width: 1024px){ .admin-gallery{ grid-template-columns: repeat(5,1fr);} }
         @media (max-width: 768px){ .admin-gallery{ grid-template-columns: repeat(4,1fr);} }
         @media (max-width: 480px){ .admin-gallery{ grid-template-columns: repeat(3,1fr);} }
-        .admin-thumb { position: relative; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden; background: var(--neutral-100); display: flex; align-items: center; justify-content: center; }
+        .admin-thumb { position: relative; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; }
         .admin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .admin-actions { display: flex; gap: 6px; margin-top: 4px; }
-        .btn { padding: 6px 10px; border: 1px solid var(--neutral-300); background: #fff; border-radius: 8px; cursor: pointer; }
+        .btn { padding: 6px 10px; border: 1px solid var(--bg-surface); background: var(--bg-card); color: var(--text-primary); border-radius: 8px; cursor: pointer; }
+        .btn:hover { background: var(--bg-tertiary); border-color: var(--bg-hover); }
         .btn.danger { border-color: #ef4444; color: #ef4444; }
         .btn.success { border-color: #10b981; color: #10b981; }
         .pagination { display:flex; gap:8px; justify-content:center; margin-top:12px; }
@@ -33,10 +34,20 @@
         .badge-active { background: rgba(16, 185, 129, .9); border: 1px solid rgba(16, 185, 129, .3); }
         .badge-trash { background: rgba(239, 68, 68, .9); border: 1px solid rgba(239, 68, 68, .3); }
         .jobs-card { margin-top: 16px; }
-        .jobs-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        .jobs-table th, .jobs-table td { border-bottom: 1px solid var(--neutral-200); padding: 8px; text-align: left; }
+        .jobs-table { width: 100%; border-collapse: collapse; font-size: 14px; color: var(--text-primary); }
+        .jobs-table th, .jobs-table td { border-bottom: 1px solid var(--bg-surface); padding: 8px; text-align: left; }
+        .jobs-table th { color: var(--text-secondary); background: var(--bg-tertiary); }
         .jobs-status { font-weight: 600; }
-        .jobs-meta { font-size: 12px; color: var(--neutral-500); }
+        .jobs-meta { font-size: 12px; color: var(--text-muted); }
+
+        /* Tab buttons (Images / Jobs) */
+        .tab-btn { padding: 8px 12px; border: 1px solid var(--bg-surface); border-radius: 9999px; background: var(--bg-card); color: var(--text-primary); cursor: pointer; }
+        .tab-btn.active { background: var(--bg-tertiary); border-color: var(--lc-primary); color: var(--lc-primary); }
+
+        /* Inputs/selects in dark surfaces */
+        .admin-card input,
+        .admin-card select { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--bg-surface); border-radius: 8px; padding: 6px 8px; }
+        .admin-card input::placeholder { color: var(--text-muted); }
     </style>
 </head>
 <body>
@@ -52,8 +63,8 @@
             <button class="btn" id="hb-refresh">새로고침</button>
         </div>
         <div class="admin-tabs" style="display:flex; gap:8px; margin-bottom:12px;">
-            <button class="tab-btn active" id="tab-images" type="button" style="padding:8px 12px; border:1px solid var(--neutral-300); border-radius: 9999px; background:#fff; cursor:pointer;">이미지</button>
-            <button class="tab-btn" id="tab-jobs" type="button" style="padding:8px 12px; border:1px solid var(--neutral-300); border-radius: 9999px; background:#fff; cursor:pointer;">작업 히스토리</button>
+            <button class="tab-btn active" id="tab-images" type="button">이미지</button>
+            <button class="tab-btn" id="tab-jobs" type="button">작업 히스토리</button>
         </div>
         <div class="admin-grid" id="images-panel">
             <div class="admin-card admin-users">

@@ -53,7 +53,7 @@
 .form-input:focus {
     outline: none;
     border-color: var(--lc-primary);
-    box-shadow: var(--neon-glow), inset 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.1);
     background: var(--bg-tertiary);
     color: var(--text-primary);
 }
@@ -116,7 +116,7 @@
     background: var(--bg-hover);
     color: var(--lc-primary);
     border-color: var(--lc-primary);
-    box-shadow: var(--neon-glow);
+    box-shadow: var(--shadow-sm);
 }
 
 .translate-btn--icon i {
@@ -140,7 +140,7 @@
     background: var(--bg-hover);
     border-color: var(--lc-primary);
     color: var(--lc-primary);
-    box-shadow: var(--neon-glow);
+    box-shadow: var(--shadow-sm);
 }
 
 /* Dark Theme Tooltip */
@@ -171,8 +171,8 @@
 
 /* Dark Theme Button Components */
 .generate-btn {
-    /* Gaming Studio 브랜드 색상 사용 - 네온 테마 */
-    background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
+    /* Clean professional appearance */
+    background: var(--lc-primary);
     color: var(--bg-primary);
     border: 2px solid transparent;
     border-radius: var(--radius-lg);
@@ -186,13 +186,13 @@
     justify-content: center;
     gap: var(--space-sm);
     min-height: 48px;
-    box-shadow: var(--shadow-glow);
-    text-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-md);
+    text-shadow: none;
 }
 
 .generate-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: var(--shadow-glow-green);
+    box-shadow: var(--shadow-lg);
     border-color: var(--lc-secondary);
 }
 
@@ -253,7 +253,7 @@
     color: var(--lc-primary);
     border-color: var(--lc-primary);
     transform: translateY(-1px);
-    box-shadow: var(--neon-glow);
+    box-shadow: var(--shadow-sm);
 }
 
 .icon-btn:disabled {
@@ -287,7 +287,7 @@
     border-color: var(--lc-primary);
     background: var(--bg-hover);
     color: var(--lc-primary);
-    box-shadow: var(--neon-glow);
+    box-shadow: var(--shadow-sm);
     transform: translateY(-1px);
 }
 
@@ -295,7 +295,8 @@
     background: var(--lc-primary);
     border-color: var(--lc-primary);
     color: var(--bg-primary);
-    box-shadow: var(--neon-glow);
+    box-shadow: var(--shadow-md);
+    font-weight: 600;
 }
 
 .chip-btn:disabled {
@@ -326,7 +327,7 @@
 }
 
 .aspect-ratio-btn {
-    background: var(--bg-card);
+    background: var(--bg-tertiary);
     border: 2px solid var(--bg-surface);
     border-radius: var(--radius-lg);
     padding: var(--space-lg);
@@ -334,7 +335,7 @@
     transition: all var(--transition-fast);
     text-align: center;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--lc-primary);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -346,22 +347,31 @@
 .aspect-ratio-btn:hover {
     border-color: var(--lc-primary);
     background: var(--bg-hover);
-    box-shadow: var(--neon-glow);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
     transform: translateY(-2px);
 }
 
+.aspect-ratio-btn:hover .icon {
+    color: var(--text-primary);
+}
+
 .aspect-ratio-btn.selected {
-    background: var(--bg-tertiary);
+    background: #FFFFFF;
     border-color: var(--lc-primary);
-    color: var(--lc-primary);
-    box-shadow: var(--neon-glow);
+    color: #FFFFFF;
+    box-shadow: var(--shadow-md);
 }
 
 .aspect-ratio-btn .icon {
     font-size: 24px;
-    /* Gaming Studio 브랜드 색상 사용 */
+    /* Clean professional color */
     color: var(--lc-primary);
-    text-shadow: var(--neon-glow);
+    text-shadow: none;
+}
+
+.aspect-ratio-btn.selected .icon {
+    color: #FFFFFF;
 }
 
 .aspect-ratio-btn .label {
@@ -388,11 +398,11 @@
 
 .progress-bar {
     height: 100%;
-    /* Gaming Studio 브랜드 색상 사용 */
-    background: linear-gradient(90deg, var(--lc-primary), var(--lc-secondary));
+    /* Clean professional single color */
+    background: var(--lc-primary);
     border-radius: var(--radius-full);
     transition: width var(--transition-normal);
-    box-shadow: var(--neon-glow);
+    box-shadow: none;
 }
 
 /* Dark Theme Status Messages */
@@ -438,7 +448,7 @@
 .gallery-item:hover {
     transform: translateY(-2px);
     border-color: var(--lc-primary);
-    box-shadow: var(--neon-glow);
+    box-shadow: var(--shadow-sm);
 }
 
 .gallery-thumb {
@@ -501,11 +511,11 @@
     display: inline-block;
     width: 20px;
     height: 20px;
-    border: 2px solid var(--bg-surface);
+    border: 2px solid rgba(255, 255, 255, 0.25);
     border-radius: var(--radius-full);
-    border-top-color: var(--lc-primary);
+    border-top-color: #ffffff;
     animation: spin 1s linear infinite;
-    box-shadow: var(--neon-glow);
+    box-shadow: none;
 }
 
 @keyframes spin {
@@ -550,9 +560,10 @@
 }
 
 .workflow-item.selected {
-    background: var(--bg-tertiary);
+    background: var(--lc-primary);
     border-color: var(--lc-primary);
-    box-shadow: var(--neon-glow);
+    color: var(--bg-primary);
+    box-shadow: var(--shadow-md);
 }
 
 .workflow-item-header {
@@ -717,15 +728,15 @@
 .placeholder-icon {
     width: 80px;
     height: 80px;
-    /* LOADCOMPLETE 브랜드 색상 사용 */
-    background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
+    /* Clean professional appearance */
+    background: var(--lc-primary);
     border-radius: var(--radius-full);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 32px;
     color: var(--bg-primary);
-    box-shadow: var(--shadow-glow);
+    box-shadow: var(--shadow-md);
 }
 
 .placeholder-text {
@@ -940,8 +951,7 @@
         border-top: 1px solid var(--text-primary);
     }
 }
-    position: absolute;
-}
+/* fixed stray tokens */
 
 .translate-btn--icon[data-tooltip]::after {
     content: attr(data-tooltip);
@@ -950,7 +960,7 @@
     right: 0;
     transform: translateY(-4px);
     background: rgba(17, 24, 39, 0.95);
-    color: var(--bg-primary);
+    color: #ffffff;
     padding: 6px 8px;
     font-size: 11px;
     border-radius: 6px;
@@ -1104,7 +1114,7 @@
     align-items: center;
     justify-content: center;
     background: rgba(0,0,0,0.35);
-    color: var(--bg-primary);
+    color: #ffffff;
     z-index: 10;
     opacity: 0;
     transition: opacity var(--overlay-fade, 300ms) var(--overlay-easing, ease);
@@ -1116,7 +1126,7 @@
 /* Ensure overlay can absolutely position within placeholder card */
 .placeholder-card { position: relative; transition: filter var(--overlay-fade, 300ms) ease; }
 .preview-overlay-content { text-align: center; max-width: 80%; }
-.preview-overlay-tip { font-weight: 600; line-height: 1.4; }
+.preview-overlay-tip { font-weight: 600; line-height: 1.4; color: #ffffff; }
 .typing-caret::after { content: '\2588'; animation: caretBlink 1s steps(1) infinite; margin-left: 2px; }
 @keyframes caretBlink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 
@@ -1289,7 +1299,7 @@
 /* Subtle dark overlay in selection mode for visual cue */
 .gallery-item::after {
     content: '';
-.    position: absolute;
+    position: absolute;
     inset: 0;
     background: rgba(0,0,0,0.06);
     opacity: 0;
@@ -1617,9 +1627,9 @@
     display: inline-block;
     width: 20px;
     height: 20px;
-    border: 3px solid var(--bg-surface);
+    border: 3px solid rgba(255, 255, 255, 0.25);
     border-radius: 50%;
-    border-top-color: var(--primary-500);
+    border-top-color: #ffffff;
     animation: spin 1s ease-in-out infinite;
 }
 
@@ -1644,6 +1654,7 @@
 .workflow-item.selected {
     background: var(--bg-tertiary);
     /* border-left removed as requested */
+    box-shadow: 0 0 0 1px rgb(97, 124, 136);
 }
 
 .workflow-item-header {
@@ -1835,7 +1846,7 @@
     transition: all var(--transition-fast);
     text-align: center;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--primary-500);
     display: flex; /* 내부 요소 정렬을 위해 flexbox 사용 */
     flex-direction: column; /* 세로 정렬 */
     align-items: center; /* 가로 중앙 정렬 */
@@ -1852,7 +1863,7 @@
 .aspect-ratio-btn.selected {
     background-color: var(--bg-tertiary);
     border-color: var(--primary-500);
-    color: var(--primary-700);
+    color: #FFFFFF;
     box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
 }
 
@@ -1868,6 +1879,12 @@
     display: block;
     font-weight: 600; /* 라벨 굵기 유지 */
     margin-bottom: 0; /* 해상도 숫자 제거에 따라 마진 제거 */
+    color: var(--primary-500);
+}
+
+/* Selected state content should be white for clarity */
+.aspect-ratio-btn.selected .label {
+    color: #FFFFFF;
 }
 
 .aspect-ratio-btn .resolution { /* 해상도 숫자는 더 이상 표시되지 않으므로, 이 스타일은 더 이상 필요 없지만 만일을 위해 남겨둠 */
