@@ -30,16 +30,21 @@ from .job_manager import JobManager, Job
 from .job_store import JobStore
 from .logging_utils import setup_logging
 from llm.prompt_translator import PromptTranslator
+from .config import UPLOAD_CONFIG
 
+logger = setup_logging()
 try:
     translator = PromptTranslator(model_path="./models/gemma-3-4b-it-Q6_K.gguf")
 except FileNotFoundError as e:
     logger.warning({"event": "llm_load_warning", "message": str(e)})
     translator = None
+except Exception as e:
+    # Any other initialization error should not block the server
+    logger.warning({"event": "llm_init_warning", "message": str(e)})
+    translator = None
 
 templates = Jinja2Templates(directory="templates")
 app = FastAPI(title="ComfyUI FastAPI Server", version="0.4.0 (Jobs & Queues)")
-logger = setup_logging()
 
 # --- HTTP request logging middleware ---
 @app.middleware("http")
@@ -475,7 +480,6 @@ class ConnectionManager:
 manager = ConnectionManager()
 job_manager = JobManager()
 job_store = JobStore(JOB_DB_PATH)
-logger = setup_logging()
 
 # --- Helpers ---
 def _wait_for_input_visibility(filename: str, timeout_sec: float = 1.5, poll_ms: int = 50) -> bool:
@@ -834,7 +838,33 @@ async def user_upload_control_image(request: Request, file: UploadFile = File(..
     name = os.path.basename(file.filename)
     if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
         raise HTTPException(status_code=400, detail="Unsupported file type")
-    data = await file.read()
+    # Enforce size limit by streaming in chunks and capping total bytes
+    max_bytes = 0
+    try:
+        from .config import UPLOAD_CONFIG as _UP
+        max_bytes = int((_UP or {}).get("controls_max_bytes") or 0)
+    except Exception:
+        max_bytes = 0
+    cap = max_bytes if isinstance(max_bytes, int) and max_bytes > 0 else (10 * 1024 * 1024)
+    total = 0
+    chunks: list[bytes] = []
+    while True:
+        piece = await file.read(1024 * 256)
+        if not piece:
+            break
+        total += len(piece)
+        if total > cap:
+            # Drain remaining to avoid broken client state
+            try:
+                while True:
+                    more = await file.read(1024 * 256)
+                    if not more:
+                        break
+            except Exception:
+                pass
+            raise HTTPException(status_code=413, detail="File too large")
+        chunks.append(piece)
+    data = b"".join(chunks)
     # Convert to PNG if not png
     png_bytes = data
     if not name.lower().endswith(".png") and Image is not None:

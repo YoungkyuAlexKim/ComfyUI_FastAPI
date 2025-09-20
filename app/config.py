@@ -79,6 +79,12 @@ PROGRESS_LOG_CONFIG = {
     "level": os.getenv("PROGRESS_LOG_LEVEL", "info").lower(),
 }
 
+# --- 3.5 Upload limits (.env) ---
+# Control image upload: maximum allowed size in bytes (default: 10MB)
+UPLOAD_CONFIG = {
+    "controls_max_bytes": int(os.getenv("CONTROLS_MAX_BYTES", str(10 * 1024 * 1024))),
+}
+
 # --- 4. 관련 함수 ---
 def _clean_tags(tags_string: str) -> list[str]:
     """콤마로 구분된 문자열을 태그 리스트로 변환하고 정리합니다."""
