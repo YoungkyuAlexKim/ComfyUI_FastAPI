@@ -361,15 +361,13 @@
 }
 
 /* Gallery Panel - Independent Right Column */
-.gallery-panel {
-    grid-column: 3;
-    position: sticky;
-    top: var(--space-3xl);
-    height: calc(100vh - var(--space-5xl));
-    overflow: hidden;
-    max-width: 400px;
-    /* 메인 컨텐츠와 동일한 높이 */
-    align-self: start;
+.gallery-panel { /* legacy fixed column styles (kept for safety but not used by drawer) */
+    grid-column: auto;
+    position: static;
+    height: auto;
+    overflow: visible;
+    max-width: none;
+    align-self: auto;
 }
 
 .gallery-section {
