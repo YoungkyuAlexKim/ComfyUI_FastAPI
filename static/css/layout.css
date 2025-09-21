@@ -115,7 +115,7 @@
 .main-content {
     flex: 1;
     display: grid;
-    grid-template-columns: 0.9fr 1.1fr; /* 입력(조금 축소) / 결과(조금 확대) */
+    grid-template-columns: 0.7fr 1.3fr; /* 입력 더 축소 / 결과 더 확대 */
     gap: var(--space-3xl);
     align-items: start;
     height: calc(100vh - var(--space-5xl)); /* 사이드바와 동일한 높이 */
@@ -318,7 +318,7 @@
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
-    height: 720px; /* 갤러리 닫힘 기준 더 크게 */
+    height: 880px; /* 결과 영역 추가 확대 */
     display: flex;
     flex-direction: column;
     position: sticky;

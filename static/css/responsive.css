@@ -8,8 +8,8 @@
     }
 
     .main-content {
-        /* 입력 패널 축소, 결과 패널 확대 (갤러리는 서랍으로 별도 처리) */
-        grid-template-columns: 0.9fr 1.1fr;
+        /* 입력 더 축소, 결과 더 확대 */
+        grid-template-columns: 0.75fr 1.25fr;
         gap: var(--space-4xl);
     }
 
@@ -28,10 +28,9 @@
     .sidebar { width: 260px; box-sizing: border-box; }
 
     .main-content {
-        /* 입력 패널 약간 축소, 결과 패널 약간 확대 (갤러리는 서랍으로 별도 처리) */
-        grid-template-columns: 0.95fr 1.05fr; /* 갤러리 고정 칼럼 제거 */
+        /* 입력 더 축소, 결과 더 확대 */
+        grid-template-columns: 0.85fr 1.15fr;
         gap: var(--space-2xl);
-        /* 태블릿에서도 전체 높이 확보 */
         height: calc(100vh - var(--space-4xl));
         min-height: calc(100vh - var(--space-4xl));
     }
