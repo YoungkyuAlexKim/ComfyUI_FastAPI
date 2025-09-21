@@ -8,7 +8,8 @@
     }
 
     .main-content {
-        grid-template-columns: 1.2fr 1fr;
+        /* 입력 패널 축소, 결과 패널 확대 (갤러리는 서랍으로 별도 처리) */
+        grid-template-columns: 0.9fr 1.1fr;
         gap: var(--space-4xl);
     }
 
@@ -29,7 +30,8 @@
     }
 
     .main-content {
-        grid-template-columns: 1fr 1fr 350px; /* 갤러리 영역을 조금 작게 */
+        /* 입력 패널 약간 축소, 결과 패널 약간 확대 (갤러리는 서랍으로 별도 처리) */
+        grid-template-columns: 0.95fr 1.05fr; /* 갤러리 고정 칼럼 제거 */
         gap: var(--space-2xl);
         /* 태블릿에서도 전체 높이 확보 */
         height: calc(100vh - var(--space-4xl));
