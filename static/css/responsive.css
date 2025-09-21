@@ -8,8 +8,8 @@
     }
 
     .main-content {
-        /* 입력 더 축소, 결과 더 확대 */
-        grid-template-columns: 0.75fr 1.25fr;
+        /* 입력 좁게, 결과 넓게 */
+        grid-template-columns: 0.65fr 1.35fr;
         gap: var(--space-4xl);
     }
 
@@ -28,8 +28,8 @@
     .sidebar { width: 260px; box-sizing: border-box; }
 
     .main-content {
-        /* 입력 더 축소, 결과 더 확대 */
-        grid-template-columns: 0.85fr 1.15fr;
+        /* 입력 약간 축소, 결과 약간 확대 */
+        grid-template-columns: 0.75fr 1.25fr;
         gap: var(--space-2xl);
         height: calc(100vh - var(--space-4xl));
         min-height: calc(100vh - var(--space-4xl));
@@ -75,6 +75,11 @@
     .output-panel {
         width: 100%;
     }
+
+    /* Remove vertical divider on mobile */
+    .input-panel { padding-right: 0; }
+    .input-panel::after { display: none; }
+    .output-panel { padding-left: 0; }
 
     /* Mobile에서 갤러리를 최상단에 배치하여 바로 볼 수 있도록 */
     .gallery-panel {
@@ -392,6 +397,7 @@
 @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
     .form-input,
     .seed-input {
+        appearance: none;
         -webkit-appearance: none;
         border-width: 0.5px;
     }

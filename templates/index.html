@@ -46,7 +46,7 @@
                                     <label class="form-label" for="user_prompt">
                                         <i class="fas fa-comment-dots"></i> 프롬프트 (내용)
                                     </label>
-                                    <p class="prompt-suggestion" id="prompt-suggestion-text" style="display: none;"></p>
+                                    <p class="prompt-suggestion" id="prompt-suggestion-text" style="display: none;" title=""></p>
                                     <div class="input-with-action">
                                         <textarea class="form-input" id="user_prompt" placeholder="그리고 싶은 내용을 입력하세요 (예: 한복을 입은 소녀)..." rows="5">{{ default_user_prompt }}</textarea>
                                         <button class="translate-btn--icon" data-target="user_prompt" data-tooltip="Danbooru 태그로 변환" aria-label="Danbooru 태그로 변환">
@@ -617,7 +617,8 @@
             ui.negativePromptInput.value = workflow.negative_prompt;
             
             if (workflow.recommended_prompt) {
-                ui.promptSuggestionText.innerHTML = `✨ 추천: <span class="suggestion-tags">${workflow.recommended_prompt}</span> (클릭하여 추가)`;
+                ui.promptSuggestionText.innerHTML = `<i class="fas fa-gem suggestion-icon" aria-hidden="true"></i> 추천 <span class=\"suggestion-hint\">(클릭하여 추가)</span> <span class=\"suggestion-tags\">${workflow.recommended_prompt}</span>`;
+                ui.promptSuggestionText.setAttribute('title', workflow.recommended_prompt || '');
                 ui.promptSuggestionText.style.display = 'block';
             } else {
                 ui.promptSuggestionText.style.display = 'none';

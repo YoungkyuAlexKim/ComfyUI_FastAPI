@@ -117,9 +117,23 @@
     display: grid;
     grid-template-columns: 0.7fr 1.3fr; /* 입력 더 축소 / 결과 더 확대 */
     gap: var(--space-3xl);
-    align-items: start;
+    align-items: stretch; /* 컬럼을 전체 높이에 맞춰 늘려 세로 구분선이 끊기지 않도록 */
     height: calc(100vh - var(--space-5xl)); /* 사이드바와 동일한 높이 */
     min-height: calc(100vh - var(--space-5xl));
+    position: relative;
+}
+
+/* 메인 컨텐츠 자체에도 가이드라인을 그려, 부모 padding/마진 영향 없이 전체를 덮도록 백업 라인 제공 */
+.main-content::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(0.7 * 100%); /* 첫 번째 컬럼 끝 위치 */
+    transform: translateX(var(--space-3xl)); /* 컬럼 간 gap 만큼 이동 */
+    width: 1px;
+    background: transparent; /* 기본은 투명 - input-panel의 라인이 주 라인 */
+    pointer-events: none;
 }
 
 /* Input Panel */
@@ -129,25 +143,27 @@
     flex-direction: column;
     gap: var(--space-2xl);
     height: 100%; /* 메인 컨텐츠 높이에 맞춤 */
+    position: relative; /* pseudo divider 기준 */
+    padding-right: var(--space-lg);
 }
 
 .input-card {
-    background: var(--bg-card);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--bg-surface);
-    border-radius: var(--radius-2xl);
-    box-shadow: var(--shadow-lg);
-    overflow: hidden;
+    background: transparent;
+    backdrop-filter: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
     position: sticky;
     top: var(--space-3xl);
     height: fit-content;
 }
 
 .card-header {
-    padding: var(--space-3xl);
-    border-bottom: 1px solid var(--bg-surface);
+    padding: var(--space-2xl);
+    border-bottom: none;
     text-align: center;
-    background: var(--bg-tertiary);
+    background: transparent;
 }
 
 .workflow-info-header {
@@ -155,7 +171,7 @@
 }
 
 .workflow-name-display {
-    font-size: var(--font-size-2xl);
+    font-size: calc(var(--font-size-xl) + 2px);
     font-weight: 700;
     color: #a9b4e6;
     margin-bottom: var(--space-sm);
@@ -177,18 +193,20 @@
 }
 
 .card-content {
-    padding: var(--space-3xl);
+    padding: var(--space-2xl);
+    /* 상단 영역이 2줄 높이일 때 아래 요소들과의 간격 보정 */
+    row-gap: var(--space-lg);
 }
 
 /* Dark Theme Generator Toolbar */
 .generator-toolbar {
-    background: var(--bg-card);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--bg-surface);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-md);
-    padding: var(--space-xl);
-    margin-bottom: var(--space-xl);
+    background: transparent;
+    backdrop-filter: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: var(--space-lg);
+    margin-bottom: var(--space-lg);
 }
 
 .output-toolbar {
@@ -212,9 +230,9 @@
     align-items: center;
     justify-content: flex-start;
     gap: var(--space-md);
-    padding: var(--space-lg);
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-lg);
+    padding: var(--space-lg) 0;
+    background: transparent;
+    border-radius: 0;
     margin-top: var(--space-lg);
 }
 
@@ -309,6 +327,20 @@
     flex-direction: column;
     gap: var(--space-2xl);
     height: 100%; /* 메인 컨텐츠 높이에 맞춤 */
+    padding-left: var(--space-lg);
+}
+
+/* 세로 구분선: 상하단이 끊기지 않도록 pseudo로 전체 높이를 덮음 */
+.input-panel::after {
+    content: "";
+    position: absolute;
+    top: calc(-1 * var(--space-3xl)); /* 상단 패딩 구간까지 확장 */
+    bottom: calc(-1 * var(--space-3xl)); /* 하단 패딩 구간까지 확장 */
+    right: 0;
+    width: 1px;
+    background: var(--bg-surface);
+    pointer-events: none;
+    z-index: 0;
 }
 
 .output-card {
@@ -327,10 +359,10 @@
 
 /* Dark Theme Progress Section */
 .progress-section {
-    padding: var(--space-xl);
+    padding: var(--space-md);
     background: var(--bg-tertiary);
     border-radius: var(--radius-lg);
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-md);
 }
 
 .progress-container {

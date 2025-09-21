@@ -4,18 +4,18 @@
 .form-grid {
     display: grid;
     gap: var(--space-xl);
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-md);
 }
 
 .form-group {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-md);
 }
 
 .form-label {
     font-weight: 600;
-    font-size: var(--font-size-sm);
+    font-size: 0.9rem;
     color: var(--text-primary);
     display: flex;
     align-items: center;
@@ -36,7 +36,7 @@
 /* Dark Theme Form Input */
 .form-input {
     width: 100%;
-    padding: var(--space-lg);
+    padding: var(--space-md);
     border: 2px solid var(--bg-surface);
     border-radius: var(--radius-lg);
     background: var(--bg-card);
@@ -72,7 +72,7 @@
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     cursor: not-allowed;
-    min-height: 80px;
+    min-height: 64px;
     resize: none;
     border-color: var(--bg-surface);
     opacity: 0.7;
@@ -133,7 +133,26 @@
     font-size: var(--font-size-sm);
     cursor: pointer;
     transition: all var(--transition-fast);
-    margin-top: calc(-1 * var(--space-sm));
+    margin-top: var(--space-sm);
+    margin-bottom: var(--space-md);
+    /* 항상 2줄 높이를 고정 (컨테이너 기준) */
+    display: block;
+    line-height: 1.4;
+    height: auto; /* 내용 증가 시 자동 확장 허용 */
+    min-height: calc(2 * 1.4em + 2 * var(--space-md)); /* 2줄+패딩 기준 높이 확보 */
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* 내부 태그는 기본 블록 흐름 유지 (부모가 클램프 담당) */
+.prompt-suggestion .suggestion-tags {
+    display: -webkit-box;
+    line-clamp: 2;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
 }
 
 .prompt-suggestion:hover {
@@ -141,6 +160,20 @@
     border-color: var(--lc-primary);
     color: var(--lc-primary);
     box-shadow: var(--shadow-sm);
+}
+
+/* 추천 힌트 문구 스타일 (아이콘 뒤에 표시) */
+.suggestion-hint {
+    color: var(--text-secondary);
+    font-weight: 600;
+    margin-right: var(--space-sm);
+}
+
+/* 추천 아이콘을 테마 컬러로 통일 */
+.suggestion-icon {
+    color: #a9c3ff; /* 입력 영역 제목과 유사한 밝은 톤 */
+    margin-right: var(--space-sm);
+    filter: drop-shadow(0 0 2px rgba(169,195,255,0.35));
 }
 
 /* Dark Theme Tooltip */
@@ -381,10 +414,10 @@
 
 /* Dark Theme Progress Components */
 .progress-section {
-    padding: var(--space-xl);
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--bg-surface);
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    border: none;
 }
 
 .progress-container {
@@ -407,13 +440,13 @@
 
 /* Dark Theme Status Messages */
 .status-container {
-    padding: var(--space-lg);
-    border-radius: var(--radius-lg);
+    padding: 0;
+    border-radius: 0;
     text-align: center;
     font-weight: 500;
     font-size: var(--font-size-sm);
     min-height: 24px;
-    border: 1px solid var(--bg-surface);
+    border: none;
 }
 
 .status-info {
@@ -560,15 +593,15 @@
 .workflow-item-header { display:flex; align-items:center; gap: var(--space-sm); }
 
 .workflow-icon {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     background: var(--bg-tertiary);
     border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: 11px;
     flex-shrink: 0;
     transition: all var(--transition-fast);
     border: 1px solid var(--bg-surface);
@@ -982,10 +1015,10 @@
 .output-card { margin-top: var(--space-xs, 6px); }
 
 /* Generator area fine spacing */
-.generator-toolbar { display: flex; flex-direction: column; gap: 8px; }
+.generator-toolbar { display: flex; flex-direction: column; gap: 12px; }
 .generator-toolbar .output-toolbar { gap: 10px; }
-.generator-toolbar .output-toolbar + .output-toolbar { margin-top: 8px; }
-.generator-toolbar .progress-section { margin: 6px 0; }
+.generator-toolbar .output-toolbar + .output-toolbar { margin-top: 12px; }
+.generator-toolbar .progress-section { margin: 8px 0; }
 .generator-toolbar .queue-info { margin-top: 4px; }
 .seed-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
 .seed-row .seed-input { max-width: 220px; }
@@ -1741,7 +1774,7 @@
     background: transparent;
     border: none;
     border-radius: var(--radius-md);
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-sm) var(--space-md);
     margin-bottom: var(--space-xs);
     cursor: pointer;
     transition: all var(--transition-fast);
