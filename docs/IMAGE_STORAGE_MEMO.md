@@ -5,19 +5,24 @@
 - 나중에 사용자 인증/확장(오브젝트 스토리지+DB)으로 자연스럽게 이전 가능
 
 ## 1) 현재 단계(파일시스템 기반)
-- 경로 스킴
-  - outputs/users/{user_id}/YYYY/MM/DD/{ulid}.png
-  - 썸네일: outputs/users/{user_id}/YYYY/MM/DD/thumb/{ulid}.webp (환경에 따라 .jpg 폴백)
-  - 메타(사이드카): outputs/users/{user_id}/YYYY/MM/DD/{ulid}.json
-- 파일명/키 규칙
-  - user_id: 내부 UUID/ULID(PII 금지), 폴더명으로 사용
-  - ulid: 시간 정렬 가능 키(중복 방지/정렬 용이)
-  - 현재 구현: 브라우저 익명 쿠키(anon_id) 네임스페이스 사용 → `users/anon-.../YYYY/MM/DD/...`
+- 경로 스킴(생성 이미지)
+  - outputs/users/{user_id}/YYYY/MM/DD/{id}.png
+  - 썸네일: outputs/users/{user_id}/YYYY/MM/DD/thumb/{id}.webp (환경에 따라 .jpg 폴백)
+  - 메타(사이드카): outputs/users/{user_id}/YYYY/MM/DD/{id}.json
+- 경로 스킴(컨트롤 이미지)
+  - outputs/users/{user_id}/controls/YYYY/MM/DD/{id}.png
+  - 썸네일: outputs/users/{user_id}/controls/YYYY/MM/DD/thumb/{id}.webp (또는 .jpg)
+  - 메타: outputs/users/{user_id}/controls/YYYY/MM/DD/{id}.json
+- 파일명/키 규칙(현 구현 기준)
+  - user_id: 브라우저 익명 쿠키 `anon_id` 값을 사용(예: `anon-xxxxxxxx...`). 추후 로그인 전환 시 그대로 `user_id`로 대체 가능.
+  - id: UUID v4 hex(32자리) 사용
   - 현행 JobManager 연계: 이미지 메타의 `owner`는 Job의 `owner_id(anon_id)`로 기록 → 갤러리/관리 API가 동일 키로 필터링
-- 메타데이터(예시)
-  - { id, user_id, prompt, negative_prompt, seed, aspect_ratio, workflow_id,
-      image_width, image_height, mime, file_bytes, sha256, created_at,
-      tags:[], favorite:boolean, status:"active|trash", trash_until, version }
+- 메타데이터(현 구현 예시)
+  - 생성 이미지: { id, owner, workflow_id, aspect_ratio, seed, prompt, original_filename, mime, bytes, sha256, created_at(ISO8601), status:"active|trash", thumb, tags:[] }
+  - 컨트롤 이미지: { id, owner, kind:"control", original_filename, mime, bytes, sha256, created_at(ISO8601), status, thumb, tags:[] }
+  - 주의: 현재는 negative_prompt, 이미지 width/height 등은 메타에 저장하지 않습니다(필요 시 확장).
+- 정적 제공
+  - FastAPI가 `outputs/`를 `/outputs` 경로로 마운트하여 브라우저가 직접 접근 가능(예: `/outputs/users/.../xxx.png`).
 - 매니페스트(선택)
   - outputs/users/{user_id}/manifest.json (append-only, 최근순 인덱스)
   - 서버 시작 시 폴더 스캔 → 매니페스트 재빌드 가능
@@ -64,6 +69,6 @@
 - 키/경로 스킴을 초기에 고정 → 이후 이전이 쉬움
 - 원본 불변, 메타는 가변(태그/즐겨찾기 등)
 - 소프트삭제 기본, 하드삭제는 배치에서만
-- 사용자/게스트 네임스페이스 분리(guest/{session_id}/...)
+- 사용자/게스트 네임스페이스 분리(현 구현은 `anon-...` 쿠키 네임스페이스)
 
 (구조 변경 시 이 메모를 함께 업데이트합니다)

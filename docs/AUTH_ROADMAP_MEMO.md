@@ -10,9 +10,10 @@
 - 제한: 게스트 쿼터(갯수/용량/보존기간), 이후 로그인 유도
 
 ### (현 구현 상태)
-- 게스트 식별: 브라우저 쿠키 `anon_id` 사용
+- 게스트 식별: 브라우저 쿠키 `anon_id` 사용(HTTPOnly, SameSite=Lax; 내부망/HTTP 기본)
 - 실시간 일치: HTTP와 WebSocket 모두 동일 `anon_id`로 사용자 식별 일치 (WS `?anon_id=...`)
 - 작업 스코프: JobManager가 `owner_id = anon_id` 기준으로 큐잉/진행/취소/브로드캐스트 관리
+- 정적 리소스 접근: `/outputs/...` 경로를 통해 본인 네임스페이스의 산출물 접근
 
 ## 2) 기본 로그인(이메일/비밀번호 또는 Magic Link)
 - Password: 해시(Argon2/Bcrypt), 비밀번호 재설정 토큰(만료), 이메일 검증
@@ -27,6 +28,7 @@
   - WebSocket: `?anon_id=` 대신 인증된 `user_id` 주입
   - JobManager/RR 스케줄러 변경 없음 (키 문자열만 교체)
 - 게스트 보관물 이관: 게스트 출력물의 `owner=anon-*`을 신규 `user_id`로 재태깅(폴더/메타 갱신)
+ - 쿠키: HTTPS 전환 시 `secure=True`로 강화, 외부 공개 시 Admin 엔드포인트는 별도 보호
 
 ## 3) 소셜 로그인(OAuth 2.0 / OIDC)
 - Google/GitHub/Apple 등 프로바이더 연결, 이메일/프로필 동기화

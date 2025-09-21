@@ -26,6 +26,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
   - `COMFYUI_SERVER=127.0.0.1:8188`
   - `OUTPUT_DIR=./outputs/`
   - `JOB_DB_PATH=db/app_data.db`
+  - (선택) `COMFY_INPUT_DIR=C:/path/to/ComfyUI/input`  ← ControlNet용 업로드/정리에 사용
 - 큐/타임아웃
   - `MAX_PER_USER_QUEUE=3`
   - `MAX_PER_USER_CONCURRENT=1`
@@ -41,12 +42,15 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
   - `LOG_FILE_PATH=logs/app.log`, `LOG_MAX_BYTES=1048576`, `LOG_BACKUP_COUNT=3`
 - 진행률 로그(터미널 노이즈)
   - `PROGRESS_LOG_STEP=20`, `PROGRESS_LOG_MIN_MS=1000`, `PROGRESS_LOG_LEVEL=info`
+ - 업로드 제한(컨트롤 이미지)
+   - `CONTROLS_MAX_BYTES=10485760` (기본 10MB)
 
 변경 시 서버 재시작 필요
 
 ## 4. 헬스체크/상태 확인
 - `/healthz` (200=OK, 503=FAIL)
   - ComfyUI HTTP 응답, SQLite 쓰기, 디스크 여유, LLM 준비
+  - DB 경로는 `JOB_DB_PATH`와 동일 경로를 사용(단일 진실)
 - 관리자 배너: `http://127.0.0.1:8000/admin` → 새로고침 가능
 - 사용자 화면: 생성 클릭 시 1.5초 사전 검사(FAIL 시 간단 안내 후 차단)
 
@@ -64,10 +68,13 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
 - 처리 지연/멈춤 느낌
   - `COMFY_HTTP_READ_TIMEOUT` 10→15 조정
   - 진행률 로그 스텝 `PROGRESS_LOG_STEP` 20→25/50 (노이즈 감소)
+  - ControlNet 사용 시 입력 이미지 업로드가 지연될 수 있음(WS 진행률은 정상)
 - 디스크 부족 경고
   - 저장소 확보 또는 `HEALTHZ_DISK_MIN_FREE_MB` 조정
 - 로그 위치
   - 콘솔 + (옵션) 파일 `logs/app.log` (json)
+ - 정적 파일 제공
+   - `outputs/` 폴더는 `/outputs`로 서빙되어 응답의 `url`이 `/outputs/...`로 시작해야 브라우저에서 접근 가능
 
 ## 7. 데이터/정리
 - 사용자 갤러리: `GET /api/v1/images?page=&size=`
@@ -75,6 +82,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
 - 관리자 이미지: `GET /api/v1/admin/images?user_id=&page=&size=&include=&from_date=&to_date=`
 - 휴지통 비우기: `POST /api/v1/admin/purge-trash`
 - 잡 스냅샷 DB: `db/app_data.db` (SQLite)
+ - 컨트롤/생성 이미지 임시 파일 정리
+   - `COMFY_INPUT_DIR`가 설정된 경우, 생성 파이프라인 완료 시 ComfyUI input 폴더의 업로드 파일을 베스트에포트로 삭제
 
 ## 8. 권장 값(단일 GPU)
 - `MAX_PER_USER_CONCURRENT=1`

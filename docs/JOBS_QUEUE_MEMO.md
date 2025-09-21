@@ -9,7 +9,7 @@
   - 레지스트리: `job_id -> { owner_id, type(generate|...), status, progress, result }`
   - 사용자 큐: `owner_id -> deque[job_id]`
   - 스케줄러: 라운드로빈으로 각 사용자 큐에서 1개씩 꺼내 단일 워커로 처리
-  - 취소: queued → 즉시 취소, running → ComfyUI `interrupt` 전달(취소 플래그 반영)
+  - 취소: queued → 즉시 취소, running → ComfyUI `interrupt` 전달(취소 플래그 반영). 타임아웃 도래 시에도 cancel을 트리거.
   - 알림: notifier로 사용자 스코프 WebSocket에 이벤트 전송(`queued|running|complete|cancelled|error` + `job_id`)
 - 사용자 식별: 브라우저 쿠키 `anon_id` (WS 연결 시 `?anon_id=`로 전달)
 - API/WS
@@ -26,6 +26,7 @@
   - 잡 스냅샷을 상태 변경 시 upsert로 기록
   - ADMIN의 최근 잡 목록은 SQLite에서 우선 조회(없으면 인메모리 폴백)
   - 별도 서버/설치 불필요, 파일은 레포 내 `db/` 폴더에 생성
+  - 보조 필드: `artifact_available`(결과 파일 존재 여부) 주기적 스위프/업데이트 지원
 
 ## 로깅
 - 구조화 로그(JSON): `comfyui_app` 로거
@@ -36,10 +37,12 @@
 ## 환경변수(.env)
 - COMFYUI_SERVER, OUTPUT_DIR, JOB_DB_PATH
 - MAX_PER_USER_QUEUE, MAX_PER_USER_CONCURRENT, JOB_TIMEOUT_SECONDS
+ - PROGRESS_LOG_STEP/PROGRESS_LOG_MIN_MS/PROGRESS_LOG_LEVEL → 진행률 로그 빈도/레벨 조정
 
 ## 운영/모니터링
 - ADMIN: `GET /api/v1/admin/jobs`(최근 N개) + UI 테이블(취소 버튼 포함)
 - 로그/메트릭(향후): 처리시간/성공률/실패 사유 집계, 워커별 상태판
+ - 사용자 UI는 대기열 ETA 계산 시(선택) 평균 처리시간을 사용(관리자 엔드포인트에 대한 접근은 내부망/보호 권장)
 
 ## 차후 확장 포인트
 - 큐 백엔드: 메모리 → Redis/RabbitMQ 교체(인터페이스 유지)

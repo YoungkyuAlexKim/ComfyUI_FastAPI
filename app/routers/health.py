@@ -5,7 +5,7 @@ import requests
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from ..logging_utils import setup_logging
-from ..config import SERVER_CONFIG, HEALTHZ_CONFIG
+from ..config import SERVER_CONFIG, HEALTHZ_CONFIG, JOB_DB_PATH
 import os
 
 
@@ -14,7 +14,6 @@ router = APIRouter(tags=["Health"])
 
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
 SERVER_ADDRESS = SERVER_CONFIG["server_address"]
-JOB_DB_PATH = SERVER_CONFIG.get("job_db_path") or "db/app_data.db"
 
 
 @router.get("/healthz")

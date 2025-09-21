@@ -8,6 +8,7 @@ from ..services.media_store import (
     _gather_user_controls,
     _save_control_image_and_meta,
     _update_control_status,
+    _build_web_path,
 )
 from ..schemas.api_models import PaginatedControls, UploadControlResponse, OkResponse
 
@@ -102,7 +103,9 @@ async def user_upload_control_image(request: Request, file: UploadFile = File(..
         except Exception:
             raise HTTPException(status_code=400, detail="Failed to decode image")
     path, meta = _save_control_image_and_meta(anon_id, png_bytes, name)
-    return {"ok": True, "id": os.path.splitext(os.path.basename(path))[0], "url": path.replace("\\", "/").replace("//", "/")}
+    # Return a browser-accessible URL under /outputs instead of a filesystem path
+    web_url = _build_web_path(path)
+    return {"ok": True, "id": os.path.splitext(os.path.basename(path))[0], "url": web_url}
 
 
 @router.post("/api/v1/controls/{image_id}/delete", response_model=OkResponse)
