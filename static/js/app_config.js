@@ -75,4 +75,17 @@
     // 메타 패널 배경색
     metaBg: 'rgba(34, 34, 34, 0.55)'
   };
+
+  // 프롬프트 태그 가중치 설정 (Ctrl+위/아래)
+  window.APP_CONFIG.weight = window.APP_CONFIG.weight || {
+    // 기본 증감 단위
+    step: 0.05,
+    // Shift와 함께 사용할 배수 (예: 0.25 → 0.025씩, 2 → 0.2씩)
+    shiftMultiplier: 2,
+    // 허용 범위
+    min: 0.1,
+    max: 3.0,
+    // 소수점 자리수
+    precision: 2
+  };
 })();
