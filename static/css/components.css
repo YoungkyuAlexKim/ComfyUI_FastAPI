@@ -994,6 +994,15 @@
 }
 .output-card { margin-top: var(--space-xs, 6px); }
 
+/* Generator area fine spacing */
+.generator-toolbar { display: flex; flex-direction: column; gap: 8px; }
+.generator-toolbar .output-toolbar { gap: 10px; }
+.generator-toolbar .output-toolbar + .output-toolbar { margin-top: 8px; }
+.generator-toolbar .progress-section { margin: 6px 0; }
+.generator-toolbar .queue-info { margin-top: 4px; }
+.seed-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
+.seed-row .seed-input { max-width: 220px; }
+
 .output-tools {
     display: inline-flex;
     align-items: center;

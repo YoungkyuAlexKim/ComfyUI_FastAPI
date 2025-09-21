@@ -92,6 +92,14 @@
 
                             <!-- Generator Toolbar -->
                             <div class="generator-toolbar">
+                                <!-- Compact Seed Row (moved above buttons) -->
+                                <div class="seed-row" id="seed-row" style="display:flex; align-items:center; gap:8px; margin:8px 0;">
+                                    <label class="seed-label" for="seed" style="display:inline-flex; align-items:center; gap:6px;">
+                                        <i class="fas fa-dice"></i> 시드값
+                                    </label>
+                                    <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0" style="max-width:220px;">
+                                </div>
+                                <!-- Top row: Generate / Cancel -->
                                 <div class="output-toolbar">
                                     <button class="generate-btn" id="generate-btn">
                                         <i class="fas fa-sparkles"></i> 이미지 생성하기
@@ -99,6 +107,28 @@
                                     <button class="cancel-btn" id="cancel-btn" disabled>
                                         <i class="fas fa-stop-circle"></i> 생성 취소
                                     </button>
+                                </div>
+
+                                <!-- Injected Progress Section (moved here between rows) -->
+                                <div class="progress-section" id="progress-section">
+                                    <div class="progress-title" style="display:none;">
+                                        <i class="fas fa-bolt"></i> 진행률
+                                    </div>
+                                    <div class="progress-container">
+                                        <div class="progress-bar" id="progress-bar"></div>
+                                    </div>
+                                    <!-- Percent labels (controlled by APP_CONFIG.progress.percentMode) -->
+                                    <div class="progress-right" id="progress-right" aria-live="polite" style="display:none;"></div>
+                                    <div class="progress-bubble" id="progress-bubble" aria-live="polite" style="display:none;"></div>
+                                    <div class="progress-text" id="progress-text" aria-live="polite" style="display:none;"></div>
+                                    <div class="queue-info" id="queue-info" style="display:none;">
+                                        <span class="badge" id="queue-position"></span>
+                                        <span id="queue-eta"></span>
+                                    </div>
+                                </div>
+
+                                <!-- Bottom row: ControlNet toggle, Canvas, and icons -->
+                                <div class="output-toolbar">
                                     <div class="output-tools">
                                         <label class="control-toggle">
                                             <input type="checkbox" id="control-enabled" />
@@ -144,35 +174,8 @@
 
                 <!-- Output Panel -->
                 <div class="output-panel">
-                    <div class="control-section">
-                        <div class="seed-section">
-                            <div class="seed-input-group">
-                                <div class="seed-input-wrapper">
-                                    <label class="seed-label" for="seed">
-                                        <i class="fas fa-dice"></i> 시드값
-                                    </label>
-                                    <div>
-                                        <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0">
-                                        <button id="seed-random-btn" type="button" title="랜덤 시드">
-                                            <i class="fas fa-dice"></i> 랜덤
-                                        </button>
-                                    </div>
-                                    <small class="seed-hint">동일 이미지 재생성용</small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Progress Section -->
-                    <div class="progress-section" id="progress-section">
-                        <div class="progress-container">
-                            <div class="progress-bar" id="progress-bar"></div>
-                        </div>
-                        <div class="queue-info" id="queue-info" style="display:none;">
-                            <span class="badge" id="queue-position"></span>
-                            <span id="queue-eta"></span>
-                        </div>
-                    </div>
+                    
 
                     <!-- Output Card -->
                     <div class="output-card">
@@ -521,6 +524,29 @@
                     btn.classList.toggle('selected', btn === button);
                 });
                 try { localStorage.setItem('selectedAspectRatio', selectedAspectRatio); } catch(_) {}
+            }
+        });
+
+        // --- Keyboard shortcuts ---
+        // Ctrl/Cmd+Enter: trigger generate; Esc: cancel (if no lightbox open)
+        document.addEventListener('keydown', (e) => {
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const metaOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+            if (metaOrCtrl && e.key === 'Enter') {
+                e.preventDefault();
+                try { ui.generateBtn.click(); } catch(_) {}
+                return;
+            }
+            if (e.key === 'Escape') {
+                const lightbox = document.getElementById('image-lightbox');
+                const isLightboxOpen = lightbox && lightbox.classList.contains('open');
+                if (!isLightboxOpen) {
+                    const cancelBtn = document.getElementById('cancel-btn');
+                    if (cancelBtn && !cancelBtn.disabled) {
+                        e.preventDefault();
+                        try { cancelBtn.click(); } catch(_) {}
+                    }
+                }
             }
         });
 
