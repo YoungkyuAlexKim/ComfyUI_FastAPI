@@ -30,7 +30,7 @@
                 </div>
             </aside>
 
-            <main class="main-content">
+            <main class="main-content gallery-collapsible">
                 <!-- Input Panel -->
                 <div class="input-panel">
                     <div class="input-card">
@@ -210,8 +210,16 @@
                     </div>
                 </div>
 
-                <!-- Gallery Panel -->
-                <div class="gallery-panel">
+                <!-- Gallery Toggle Button (edge) -->
+                <button id="gallery-toggle" class="gallery-toggle" type="button" aria-label="갤러리 열기" title="갤러리 열기">
+                    <i class="fas fa-images"></i>
+                </button>
+
+                <!-- Gallery Panel (slide-out) -->
+                <div class="gallery-panel" id="gallery-panel" aria-hidden="true">
+                    <button id="gallery-close" class="gallery-close" type="button" aria-label="갤러리 닫기" title="갤러리 닫기">
+                        <i class="fas fa-times"></i>
+                    </button>
                     <div class="gallery-section" id="gallery-section" data-skeleton-count="12">
                         <div class="gallery-card">
                             <div class="gallery-header">
@@ -1678,6 +1686,22 @@
             t.addEventListener('input', () => autoResizeTextarea(t));
             autoResizeTextarea(t);
         });
+
+        // --- Gallery drawer toggle ---
+        (function setupGalleryDrawer(){
+            const root = document.querySelector('main.gallery-collapsible');
+            const panel = document.getElementById('gallery-panel');
+            const toggle = document.getElementById('gallery-toggle');
+            if (!root || !panel || !toggle) return;
+            function openDrawer(){ root.classList.add('gallery-open'); panel.setAttribute('aria-hidden','false'); toggle.setAttribute('aria-label','갤러리 닫기'); }
+            function closeDrawer(){ root.classList.remove('gallery-open'); panel.setAttribute('aria-hidden','true'); toggle.setAttribute('aria-label','갤러리 열기'); }
+            function isOpen(){ return root.classList.contains('gallery-open'); }
+            toggle.addEventListener('click', ()=>{ isOpen() ? closeDrawer() : openDrawer(); });
+            const closeBtn = document.getElementById('gallery-close');
+            if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+            // ESC closes on small screens when overlay mode
+            document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape' && isOpen()) closeDrawer(); });
+        })();
 
         loadWorkflows();
         // 초기 진입: 생성 탭 로드
