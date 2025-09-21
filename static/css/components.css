@@ -544,33 +544,20 @@
 /* Dark Theme Workflow Items */
 .workflow-item {
     background: transparent;
-    border: 1px solid var(--bg-surface);
-    border-radius: var(--radius-md);
-    padding: var(--space-md) var(--space-lg);
-    margin-bottom: var(--space-xs);
+    border-bottom: 1px solid var(--bg-surface); /* 카드 대신 리스트 라인 */
+    border-radius: 0;
+    padding: var(--space-sm) var(--space-md);
+    margin: 0;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background var(--transition-fast), color var(--transition-fast);
     position: relative;
 }
 
-.workflow-item:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--lc-primary);
-    transform: translateX(var(--space-xs));
-}
+.workflow-item:hover { background: var(--bg-tertiary); }
 
-.workflow-item.selected {
-    background: var(--lc-primary);
-    border-color: var(--lc-primary);
-    color: var(--bg-primary);
-    box-shadow: var(--shadow-md);
-}
+.workflow-item.selected { background: var(--lc-primary); color: var(--bg-primary); }
 
-.workflow-item-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-}
+.workflow-item-header { display:flex; align-items:center; gap: var(--space-sm); }
 
 .workflow-icon {
     width: 28px;

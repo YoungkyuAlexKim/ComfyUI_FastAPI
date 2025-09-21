@@ -12,32 +12,33 @@
 /* Layout Structure - Simplified 2-Column */
 .app-layout {
     display: flex;
-    gap: var(--space-3xl);
+    gap: 0; /* 좌측 워크플로우와 메인 사이의 여백 제거 (경계선만 보이게) */
     min-height: calc(100vh - var(--space-5xl));
 }
 
 /* Dark Theme Sidebar - Full Height from Start */
 .sidebar {
     width: var(--sidebar-width);
-    background: var(--bg-card);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--bg-surface);
-    border-radius: var(--radius-2xl);
-    box-shadow: var(--shadow-lg);
+    background: transparent; /* 카드 배경 제거 */
+    backdrop-filter: none;
+    border: none;
+    border-right: 1px solid var(--bg-surface); /* 갤러리 서랍과 유사한 경계선만 유지 */
+    border-radius: 0; /* 라운딩 제거 */
+    box-shadow: none; /* 그림자 제거 */
     display: flex;
     flex-direction: column;
     overflow: hidden;
     position: sticky;
     top: var(--space-3xl);
-    height: calc(100vh - var(--space-5xl)); /* 전체 화면 높이 확보 */
+    height: calc(100vh - var(--space-5xl));
     max-height: calc(100vh - var(--space-5xl));
 }
 
 .sidebar-header {
-    padding: var(--space-2xl);
+    padding: var(--space-lg) var(--space-md);
     border-bottom: 1px solid var(--bg-surface);
     text-align: center;
-    /* 헤더 크기 고정 */
+    background: var(--bg-card); /* 헤더만 얕은 배경 */
     flex-shrink: 0;
 }
 
@@ -46,10 +47,11 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    background: transparent; /* 본문 영역 카드 제거 */
 }
 
 .workflow-section-header {
-    padding: var(--space-xl) var(--space-2xl) var(--space-lg);
+    padding: var(--space-sm) var(--space-md) var(--space-xs);
     /* 섹션 헤더 크기 고정 */
     flex-shrink: 0;
 }
@@ -67,12 +69,10 @@
 
 .workflow-list {
     flex: 1;
-    padding: var(--space-xl) var(--space-2xl) var(--space-xl);
+    padding: 0; /* 좌/상/하 여백 제거 */
     overflow-y: auto;
-    min-height: 200px;
-    /* 워크플로우가 적어도 컨테이너 크기 유지 */
-    flex-shrink: 0;
-    /* 스크롤바 스타일 개선 */
+    min-height: 0; /* 남는 공간을 모두 사용하고, 내부 스크롤만 발생 */
+    flex-shrink: 1;
     scrollbar-width: thin;
     scrollbar-color: var(--bg-surface) var(--bg-tertiary);
 }
@@ -90,7 +90,7 @@
 }
 
 .sidebar-footer {
-    padding: var(--space-lg) var(--space-2xl);
+    padding: var(--space-sm) var(--space-md);
     border-top: 1px solid var(--bg-surface);
     background: var(--bg-tertiary);
     /* 푸터 크기 고정 */
