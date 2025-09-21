@@ -14,32 +14,37 @@
     display: flex;
     gap: 0; /* 좌측 워크플로우와 메인 사이의 여백 제거 (경계선만 보이게) */
     min-height: calc(100vh - var(--space-5xl));
+    padding-left: var(--sidebar-width); /* 고정 사이드바 공간 확보 */
+    box-sizing: border-box;
 }
 
 /* Dark Theme Sidebar - Full Height from Start */
 .sidebar {
     width: var(--sidebar-width);
-    background: transparent; /* 카드 배경 제거 */
+    background: transparent;
     backdrop-filter: none;
-    border: none;
-    border-right: 1px solid var(--bg-surface); /* 갤러리 서랍과 유사한 경계선만 유지 */
-    border-radius: 0; /* 라운딩 제거 */
-    box-shadow: none; /* 그림자 제거 */
+    border-right: 1px solid var(--bg-surface);
+    border-radius: 0;
+    box-shadow: none;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    position: sticky;
-    top: var(--space-3xl);
-    height: calc(100vh - var(--space-5xl));
-    max-height: calc(100vh - var(--space-5xl));
+    overflow: auto; /* 사이드바 자체 스크롤 */
+    position: fixed; /* 고정 레일: 좌측/상단/하단 여백 제거 */
+    left: 0;
+    top: 0;
+    bottom: 0;
+    height: auto;
+    max-height: none;
+    z-index: 20;
 }
 
 .sidebar-header {
     padding: var(--space-lg) var(--space-md);
     border-bottom: 1px solid var(--bg-surface);
     text-align: center;
-    background: var(--bg-card); /* 헤더만 얕은 배경 */
-    flex-shrink: 0;
+    background: var(--bg-card);
+    position: sticky; top: 0; z-index: 21; /* 스크롤 시 상단 고정 */
 }
 
 .workflow-section {
@@ -69,7 +74,7 @@
 
 .workflow-list {
     flex: 1;
-    padding: 0; /* 좌/상/하 여백 제거 */
+    padding: 0 0 var(--space-sm) 0; /* 하단 살짝 여유로 푸터와 겹침/클리핑 방지 */
     overflow-y: auto;
     min-height: 0; /* 남는 공간을 모두 사용하고, 내부 스크롤만 발생 */
     flex-shrink: 1;
@@ -93,8 +98,7 @@
     padding: var(--space-sm) var(--space-md);
     border-top: 1px solid var(--bg-surface);
     background: var(--bg-tertiary);
-    /* 푸터 크기 고정 */
-    flex-shrink: 0;
+    position: sticky; bottom: 0; z-index: 21; /* 하단 고정, 잘림 방지 */
 }
 
 .workflow-info {

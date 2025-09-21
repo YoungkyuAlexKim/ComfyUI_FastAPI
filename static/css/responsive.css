@@ -25,9 +25,7 @@
         gap: var(--space-2xl);
     }
 
-    .sidebar {
-        width: 260px;
-    }
+    .sidebar { width: 260px; box-sizing: border-box; }
 
     .main-content {
         /* 입력 패널 약간 축소, 결과 패널 약간 확대 (갤러리는 서랍으로 별도 처리) */
@@ -60,21 +58,9 @@
         gap: var(--space-xl);
     }
 
-    .app-layout {
-        flex-direction: column;
-        gap: var(--space-xl);
-    }
+    .app-layout { flex-direction: column; gap: var(--space-xl); padding-left: 0; }
 
-    .sidebar {
-        width: 100%;
-        max-height: none;
-        position: static;
-        border-radius: var(--radius-xl);
-        margin-bottom: var(--space-lg);
-        /* 모바일에서도 적절한 높이 유지 */
-        height: auto;
-        min-height: 300px;
-    }
+    .sidebar { width: 100%; position: static; left: auto; right: auto; top: auto; bottom: auto; height: auto; max-height: none; border-right: none; }
 
     .main-content {
         display: flex;
