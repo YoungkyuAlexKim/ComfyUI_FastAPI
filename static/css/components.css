@@ -1640,16 +1640,19 @@
     padding-bottom: var(--space-sm);
     overflow-y: auto;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
     gap: 10px;
     align-content: start; /* 남는 세로 공간은 아래에 모으고, 행 간 간격은 gap만 적용 */
     justify-content: stretch;
     align-items: stretch;
-    grid-auto-rows: 1fr;
+    justify-items: stretch;
+    grid-auto-rows: auto; /* aspect-ratio에 맡기고, 확대/축소 시 행 높이 왜곡 방지 */
+    grid-auto-flow: row; /* 확대 시 밀집 재배치로 인한 간격 깨짐 방지 */
+    box-sizing: border-box;
 }
 
 /* Stabilize items inside drawer grid to avoid overlap on hover */
-#gallery-panel .gallery-item { box-sizing: border-box; margin: 0; }
+#gallery-panel .gallery-item { box-sizing: border-box; margin: 0; aspect-ratio: 1 / 1; }
 #gallery-panel .gallery-item:hover { transform: none; box-shadow: var(--shadow-sm); }
 #gallery-panel .gallery-thumb { width: 100%; height: 100%; display: block; object-fit: cover; }
 
