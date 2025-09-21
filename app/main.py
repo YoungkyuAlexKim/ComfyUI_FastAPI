@@ -48,8 +48,13 @@ from .services.media_store import (
     _update_image_status,
 )
 from .routers.admin import router as admin_router
+from .routers.workflows import router as workflows_router
+from .routers.images import router as images_router
+from .routers.controls import router as controls_router
+from .routers.health import router as health_router
 from .ws.manager import manager
 from .ws.routes import router as ws_router
+from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActiveResponse, TranslateResponse
 
 logger = setup_logging()
 try:
@@ -66,6 +71,10 @@ templates = Jinja2Templates(directory="templates")
 app = FastAPI(title="ComfyUI FastAPI Server", version="0.4.0 (Jobs & Queues)")
 app.include_router(admin_router)
 app.include_router(ws_router)
+app.include_router(workflows_router)
+app.include_router(images_router)
+app.include_router(controls_router)
+app.include_router(health_router)
 
 # --- HTTP request logging middleware ---
 @app.middleware("http")
@@ -218,28 +227,7 @@ async def read_root(request: Request):
     _ensure_anon_id_cookie(request, response)
     return response
 
-@app.get("/api/v1/workflows", tags=["Workflows"])
-async def get_workflows():
-    workflows = []
-    for workflow_id, config in WORKFLOW_CONFIGS.items():
-        json_path = os.path.join(WORKFLOW_DIR, f"{workflow_id}.json")
-        node_count = 0
-        if os.path.exists(json_path):
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    node_count = len(json.load(f))
-            except Exception as e:
-                logger.warning({"event": "workflow_list_error", "workflow": json_path, "error": str(e)})
-        workflows.append({
-            "id": workflow_id,
-            "name": config.get("display_name", workflow_id.replace("_", " ").title()),  # config에서 가져오기
-            "description": config.get("description", "워크플로우 설명이 없습니다."),  # config에서 가져오기
-            "node_count": node_count,
-            "style_prompt": config.get("style_prompt", ""),
-            "negative_prompt": config.get("negative_prompt", ""),
-            "recommended_prompt": config.get("recommended_prompt", "") # 추천 프롬프트 추가
-        })
-    return {"workflows": workflows}
+# Workflows routes moved to app/routers/workflows.py
 
 def _processor_generate(job: Job, progress_cb):
     req_dict = job.payload
@@ -504,7 +492,7 @@ def _processor_generate(job: Job, progress_cb):
         except Exception as e:
             logger.debug({"event": "cleanup_uploaded_inputs_failed", "error": str(e)})
 
-@app.post("/api/v1/generate", tags=["Image Generation"])
+@app.post("/api/v1/generate", tags=["Image Generation"], response_model=EnqueueResponse)
 async def generate_image(request: GenerateRequest, http_request: Request):
     anon_id = _get_anon_id_from_request(http_request)
     try:
@@ -518,120 +506,21 @@ async def generate_image(request: GenerateRequest, http_request: Request):
     return {"job_id": job.id, "status": "queued", "position": position}
 
 
-@app.get("/api/v1/images", tags=["Images"])
-async def list_images(page: int = 1, size: int = 24, request: Request = None):
-    anon_id = _get_anon_id_from_request(request)
-    logger.info({"event": "list_images", "owner_id": anon_id, "page": page, "size": size})
-    items = _gather_user_images(anon_id, include_trash=False)
-    slice_items, meta = _paginate(items, page, size)
-    response_items = []
-    for it in slice_items:
-        response_items.append({
-            "id": it["id"],
-            "url": it["url"],
-            "created_at": datetime.fromtimestamp(it["mtime"], tz=timezone.utc).isoformat(),
-            "meta": it.get("meta"),
-            "thumb_url": it.get("thumb_url"),
-        })
-    return {"items": response_items, **meta}
+# Images routes moved to app/routers/images.py
 
 
 # -------------------- Controls (user) --------------------
 
-@app.post("/api/v1/controls/upload", tags=["Controls"])
-async def user_upload_control_image(request: Request, file: UploadFile = File(...)):
-    anon_id = _get_anon_id_from_request(request)
-    if not file or not isinstance(file.filename, str):
-        raise HTTPException(status_code=400, detail="Invalid upload")
-    # Basic validation
-    name = os.path.basename(file.filename)
-    if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-        raise HTTPException(status_code=400, detail="Unsupported file type")
-    # Enforce size limit by streaming in chunks and capping total bytes
-    max_bytes = 0
-    try:
-        from .config import UPLOAD_CONFIG as _UP
-        max_bytes = int((_UP or {}).get("controls_max_bytes") or 0)
-    except Exception:
-        max_bytes = 0
-    cap = max_bytes if isinstance(max_bytes, int) and max_bytes > 0 else (10 * 1024 * 1024)
-    total = 0
-    chunks: list[bytes] = []
-    while True:
-        piece = await file.read(1024 * 256)
-        if not piece:
-            break
-        total += len(piece)
-        if total > cap:
-            # Drain remaining to avoid broken client state
-            try:
-                while True:
-                    more = await file.read(1024 * 256)
-                    if not more:
-                        break
-            except Exception:
-                pass
-            raise HTTPException(status_code=413, detail="File too large")
-        chunks.append(piece)
-    data = b"".join(chunks)
-    # Convert to PNG if not png
-    png_bytes = data
-    if not name.lower().endswith(".png") and Image is not None:
-        try:
-            with Image.open(BytesIO(data)) as im:
-                im = im.convert("RGB")
-                out = BytesIO()
-                im.save(out, format="PNG")
-                png_bytes = out.getvalue()
-        except Exception:
-            raise HTTPException(status_code=400, detail="Failed to decode image")
-    path, meta = _save_control_image_and_meta(anon_id, png_bytes, name)
-    return {"ok": True, "id": os.path.splitext(os.path.basename(path))[0], "url": _build_web_path(path)}
+# Controls upload moved to app/routers/controls.py
 
 
-@app.get("/api/v1/controls", tags=["Controls"]) 
-async def user_list_controls(page: int = 1, size: int = 24, request: Request = None):
-    anon_id = _get_anon_id_from_request(request)
-    items = _gather_user_controls(anon_id, include_trash=False)
-    slice_items, meta = _paginate(items, page, size)
-    response_items = []
-    for it in slice_items:
-        response_items.append({
-            "id": it["id"],
-            "url": it["url"],
-            "created_at": datetime.fromtimestamp(it["mtime"], tz=timezone.utc).isoformat(),
-            "meta": it.get("meta"),
-            "thumb_url": it.get("thumb_url"),
-        })
-    return {"items": response_items, **meta}
+# Controls list moved to app/routers/controls.py
 
 
-@app.post("/api/v1/controls/{image_id}/delete", tags=["Controls"])
-async def user_soft_delete_control(image_id: str, request: Request):
-    anon_id = _get_anon_id_from_request(request)
-    ok = _update_control_status(anon_id, image_id, "trash")
-    if not ok:
-        raise HTTPException(status_code=404, detail="Control not found")
-    return {"ok": True}
+# Controls delete/restore moved to app/routers/controls.py
 
 
-@app.post("/api/v1/controls/{image_id}/restore", tags=["Controls"])
-async def user_restore_control(image_id: str, request: Request):
-    anon_id = _get_anon_id_from_request(request)
-    ok = _update_control_status(anon_id, image_id, "active")
-    if not ok:
-        raise HTTPException(status_code=404, detail="Control not found")
-    return {"ok": True}
-
-
-@app.post("/api/v1/images/{image_id}/delete", tags=["Images"])
-async def user_soft_delete_image(image_id: str, request: Request):
-    anon_id = _get_anon_id_from_request(request)
-    logger.info({"event": "user_soft_delete", "owner_id": anon_id, "image_id": image_id})
-    ok = _update_image_status(anon_id, image_id, "trash")
-    if not ok:
-        raise HTTPException(status_code=404, detail="Image not found")
-    return {"ok": True}
+# Images delete moved to app/routers/images.py
 
 
 
@@ -642,7 +531,7 @@ async def cancel_generation_by_id(job_id: str):
         raise HTTPException(status_code=400, detail="Job not found or not cancellable")
     return {"ok": True}
 
-@app.get("/api/v1/jobs/{job_id}", tags=["Image Generation"])
+@app.get("/api/v1/jobs/{job_id}", tags=["Image Generation"], response_model=JobStatusResponse)
 async def job_status(job_id: str):
     j = job_manager.get(job_id)
     if not j:
@@ -656,7 +545,7 @@ async def job_status(job_id: str):
         "error": j.error_message,
     }
 
-@app.post("/api/v1/cancel", tags=["Image Generation"])
+@app.post("/api/v1/cancel", tags=["Image Generation"], response_model=CancelActiveResponse)
 async def cancel_active_for_user(request: Request):
     anon_id = _get_anon_id_from_request(request)
     j = job_manager.get_active_for_owner(anon_id)
@@ -668,7 +557,7 @@ async def cancel_active_for_user(request: Request):
     await manager.send_json_to_user(anon_id, {"status": "cancelling", "job_id": j.id})
     return {"message": "Cancel request sent.", "job_id": j.id}
 
-@app.post("/api/v1/translate-prompt", tags=["Prompt Translation"])
+@app.post("/api/v1/translate-prompt", tags=["Prompt Translation"], response_model=TranslateResponse)
 async def translate_prompt_endpoint(text: str = Form(...)):
     if translator is None: raise HTTPException(status_code=503, detail="LLM model not loaded.")
     try:
@@ -681,62 +570,7 @@ async def translate_prompt_endpoint(text: str = Form(...)):
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/healthz", tags=["Health"])
-def healthz():
-    results = {
-        "comfyui": {"ok": False, "reason": None},
-        "db": {"ok": False, "reason": None},
-        "disk": {"ok": False, "reason": None},
-        "llm": {"ok": False, "reason": None},
-    }
-    status_code = 200
-    # ComfyUI HTTP ping (lightweight)
-    try:
-        url = f"http://{SERVER_ADDRESS}/"
-        resp = requests.get(url, timeout=(3.0, 5.0))
-        results["comfyui"]["ok"] = (resp.status_code >= 200 and resp.status_code < 500)
-        if not results["comfyui"]["ok"]:
-            results["comfyui"]["reason"] = f"HTTP {resp.status_code}"
-    except Exception as e:
-        results["comfyui"]["reason"] = str(e)
-        status_code = 503
-    # DB writeability (temp table insert)
-    try:
-        conn = sqlite3.connect(JOB_DB_PATH)
-        conn.execute("CREATE TABLE IF NOT EXISTS __healthz (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER)")
-        conn.execute("INSERT INTO __healthz (ts) VALUES (?)", (int(time.time()),))
-        conn.execute("DELETE FROM __healthz WHERE id IN (SELECT id FROM __healthz ORDER BY id DESC LIMIT 1 OFFSET 50)")
-        conn.commit()
-        conn.close()
-        results["db"]["ok"] = True
-    except Exception as e:
-        results["db"]["reason"] = str(e)
-        status_code = 503
-    # Disk free space
-    try:
-        total, used, free = shutil.disk_usage(OUTPUT_DIR)
-        free_mb = int(free / (1024 * 1024))
-        min_mb = int(HEALTHZ_CONFIG.get("disk_min_free_mb", 512))
-        results["disk"]["ok"] = (free_mb >= min_mb)
-        if not results["disk"]["ok"]:
-            results["disk"]["reason"] = f"free {free_mb}MB < min {min_mb}MB"
-    except Exception as e:
-        results["disk"]["reason"] = str(e)
-        status_code = 503
-    # LLM readiness (optional)
-    try:
-        results["llm"]["ok"] = (translator is not None)
-        if translator is None:
-            results["llm"]["reason"] = "model not loaded"
-    except Exception as e:
-        results["llm"]["reason"] = str(e)
-        # LLM 실패만으로는 전체 5xx로 올리지 않음
-    # Overall ok?
-    overall_ok = results["comfyui"]["ok"] and results["db"]["ok"] and results["disk"]["ok"]
-    payload = {"ok": overall_ok, "components": results}
-    if not overall_ok and status_code == 200:
-        status_code = 503
-    return JSONResponse(content=payload, status_code=status_code)
+# Health route moved to app/routers/health.py
 
 
 @app.on_event("startup")

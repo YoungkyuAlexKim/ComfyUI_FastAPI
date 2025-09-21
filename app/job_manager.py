@@ -312,6 +312,8 @@ class JobManager:
             # If a cancel was requested, prefer cancelled state
             if job.id in self._cancel_requests:
                 job.status = "cancelled"
+                # Provide a friendly cancellation message for UI instead of a generic fetch failure
+                message = "생성이 취소되었습니다."
             else:
                 job.status = "error"
             job.error_message = message
