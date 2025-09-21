@@ -206,7 +206,7 @@
 .generate-btn {
     /* Clean professional appearance */
     background: var(--lc-primary);
-    color: var(--bg-primary);
+    color: #0A0D12;
     border: 2px solid transparent;
     border-radius: var(--radius-lg);
     padding: var(--space-md) var(--space-xl);
@@ -238,8 +238,8 @@
 }
 
 .cancel-btn {
-    background: linear-gradient(135deg, var(--error), #dc2626);
-    color: var(--bg-primary);
+    background: var(--error);
+    color: #0A0D12;
     border: 2px solid transparent;
     border-radius: var(--radius-lg);
     padding: var(--space-md) var(--space-xl);
@@ -275,7 +275,7 @@
     justify-content: center;
     border: 1px solid var(--bg-surface);
     border-radius: var(--radius-lg);
-    background: var(--bg-card);
+    background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
     transition: all var(--transition-fast);
@@ -308,7 +308,7 @@
     padding: var(--space-sm) var(--space-md);
     border: 1px solid var(--bg-surface);
     border-radius: var(--radius-full);
-    background: var(--bg-card);
+    background: transparent;
     color: var(--text-primary);
     font-size: var(--font-size-sm);
     font-weight: 500;
@@ -1518,7 +1518,7 @@
 .chip-btn:disabled { opacity: .6; cursor: not-allowed; }
 
 .chip-btn--ghost { background: var(--bg-card); border-color: var(--bg-tertiary); color: var(--text-secondary); }
-.chip-btn--danger { background: var(--bg-card); border-color: #ef4444; color: #ef4444; }
+.chip-btn--danger { background: transparent; border-color: #ef4444; color: #ef4444; }
 .chip-btn--danger:hover:not(:disabled) { background: var(--bg-tertiary); border-color: #ef4444; }
 
 .chip-btn.icon-only { width: 32px; height: 32px; padding: 0; justify-content: center; }

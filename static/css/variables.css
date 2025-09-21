@@ -1,9 +1,9 @@
 /* Dark Modern Design System Variables - Professional Corporate Style */
 :root {
-    /* Corporate Brand Colors - Muted Professional Theme */
-    --lc-primary: #64748B;      /* Muted Slate Gray */
-    --lc-secondary: #475569;    /* Darker Slate */
-    --lc-accent: #334155;       /* Medium Slate */
+    /* Accent Colors - Low saturation with a single clear highlight */
+    --lc-primary: #9BB8FF;      /* Soft blue highlight (used sparingly) */
+    --lc-secondary: #6B7FA0;    /* Muted secondary */
+    --lc-accent: #4F627D;       /* Deep muted blue-gray */
 
     /* Primary Colors - Muted Slate Palette */
     --primary-50: #F8FAFC;      /* Very Light Gray */
@@ -29,30 +29,30 @@
     --secondary-800: #1E293B;    /* Darker Neutral */
     --secondary-900: #0F172A;    /* Darkest Neutral */
 
-    /* Dark Theme Backgrounds - Improved Contrast */
-    --bg-primary: #0A0F1A;      /* Deeper Dark */
-    --bg-secondary: #1A2332;    /* Darker Medium */
-    --bg-tertiary: #2D3748;     /* Medium Gray */
-    --bg-surface: #3A4556;      /* Surface Gray */
-    --bg-card: #1A2332;         /* Card Background */
-    --bg-hover: #2D3748;        /* Hover State */
+    /* Dark Theme Backgrounds - Near black base, low saturation surfaces */
+    --bg-primary: #000000;      /* Pure black background */
+    --bg-secondary: #0B0F14;    /* Near-black surface */
+    --bg-tertiary: #0F141C;     /* Very dark muted blue-gray */
+    --bg-surface: #151B24;      /* Divider/surface lines */
+    --bg-card: #0B0F14;         /* Card Background */
+    --bg-hover: #101620;        /* Subtle hover */
 
-    /* Dark Theme Text Colors - Better Readability */
-    --text-primary: #F7FAFC;    /* Bright White */
-    --text-secondary: #E2E8F0;  /* Light Gray */
-    --text-tertiary: #A0AEC0;   /* Medium Gray */
-    --text-muted: #718096;      /* Muted Gray */
-    --text-disabled: #4A5568;   /* Dark Gray */
+    /* Dark Theme Text Colors - Lower saturation */
+    --text-primary: #E8EEF6;    /* Soft white */
+    --text-secondary: #C7D2E2;  /* Light gray-blue */
+    --text-tertiary: #8A94A6;   /* Muted */
+    --text-muted: #667089;      /* More muted */
+    --text-disabled: #3E4554;   /* Disabled */
 
-    /* Semantic Colors - Muted Professional Style */
-    --success: #48BB78;         /* Muted Green */
-    --success-light: rgba(72, 187, 120, 0.15);
-    --error: #F56565;           /* Muted Red */
-    --error-light: rgba(245, 101, 101, 0.15);
-    --warning: #ED8936;         /* Muted Orange */
-    --warning-light: rgba(237, 137, 54, 0.15);
-    --info: #64748B;            /* Muted Slate */
-    --info-light: rgba(100, 116, 139, 0.15);
+    /* Semantic Colors - desaturated */
+    --success: #3FA96B;
+    --success-light: rgba(63, 169, 107, 0.12);
+    --error: #E35B5B;
+    --error-light: rgba(227, 91, 91, 0.12);
+    --warning: #D8793A;
+    --warning-light: rgba(216, 121, 58, 0.12);
+    --info: #6B7FA0;
+    --info-light: rgba(107, 127, 160, 0.12);
 
     /* Spacing System - More Generous */
     --space-xs: 0.25rem;    /* 4px */
@@ -75,10 +75,10 @@
     --radius-full: 9999px;   /* Full rounded */
 
     /* Dark Theme Shadows - Subtle and Clean */
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 8px 12px -2px rgba(0, 0, 0, 0.5);
-    --shadow-xl: 0 12px 16px -4px rgba(0, 0, 0, 0.6);
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 8px 12px -2px rgba(0, 0, 0, 0.6);
+    --shadow-xl: 0 12px 16px -4px rgba(0, 0, 0, 0.65);
     --shadow-2xl: 0 16px 20px -8px rgba(0, 0, 0, 0.7);
     /* Removed neon glow effects for cleaner appearance */
 
@@ -125,4 +125,6 @@
     --skeleton-speed: 1.4s;
 
     /* Clean Theme - No neon effects */
+    /* Divider color (slightly brighter than surface for clarity) */
+    --divider-color: #1E2633;
 }

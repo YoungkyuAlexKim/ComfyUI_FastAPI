@@ -56,7 +56,7 @@
 }
 
 .workflow-section-header {
-    padding: var(--space-sm) var(--space-md) var(--space-xs);
+    padding: var(--space-sm) var(--space-md) var(--space-sm);
     /* 섹션 헤더 크기 고정 */
     flex-shrink: 0;
 }
@@ -74,7 +74,7 @@
 
 .workflow-list {
     flex: 1;
-    padding: 0 0 var(--space-sm) 0; /* 하단 살짝 여유로 푸터와 겹침/클리핑 방지 */
+    padding: var(--space-sm) 0 var(--space-sm) 0; /* 헤더와 리스트 사이 여백 추가 */
     overflow-y: auto;
     min-height: 0; /* 남는 공간을 모두 사용하고, 내부 스크롤만 발생 */
     flex-shrink: 1;
@@ -338,14 +338,14 @@
     bottom: calc(-1 * var(--space-3xl)); /* 하단 패딩 구간까지 확장 */
     right: 0;
     width: 1px;
-    background: var(--bg-surface);
+    background: var(--divider-color, var(--bg-surface));
     pointer-events: none;
     z-index: 0;
 }
 
 .output-card {
-    background: var(--bg-card);
-    backdrop-filter: blur(20px);
+    background: transparent;
+    backdrop-filter: none;
     border: 1px solid var(--bg-surface);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-lg);
