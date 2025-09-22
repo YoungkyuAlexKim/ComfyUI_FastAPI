@@ -1222,6 +1222,27 @@
 }
 .preview-overlay.open { opacity: 1; }
 
+/* Result image overlay download button */
+.result-download-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 12;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    cursor: pointer;
+    transition: background var(--transition-fast), transform var(--transition-fast);
+}
+.result-download-btn:hover { background: rgba(0,0,0,0.65); transform: translateY(-1px); }
+.result-download-btn i { font-size: 16px; }
+
 /* Ensure overlay can absolutely position within placeholder card */
 .placeholder-card { position: relative; transition: filter var(--overlay-fade, 300ms) ease; }
 .preview-overlay-content { text-align: center; max-width: 80%; }

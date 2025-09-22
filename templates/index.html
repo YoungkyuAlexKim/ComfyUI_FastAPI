@@ -207,6 +207,9 @@
                                 <div class="result-content">
                                     <div class="image-container" id="result-image-container">
                                         <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image">
+                                        <button id="result-download-btn" class="result-download-btn" type="button" title="다운로드" aria-label="다운로드" style="display:none;">
+                                            <i class="fas fa-download"></i>
+                                        </button>
                                     </div>
                                     <p class="result-hint" id="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
                                 </div>
@@ -527,10 +530,27 @@
         let lastImageUrlOriginal = '';
         function setResultActionsEnabled(enabled){
             [openBtn, downloadBtn, copyLinkBtn].forEach((b)=>{ if (b) b.disabled = !enabled; });
+            const rdb = document.getElementById('result-download-btn');
+            if (rdb) {
+                if (enabled && lastImageUrlOriginal) { rdb.style.display = 'inline-flex'; rdb.disabled = false; }
+                else { rdb.style.display = 'none'; rdb.disabled = true; }
+            }
         }
         setResultActionsEnabled(false);
         if (openBtn) openBtn.addEventListener('click', async () => { if (!lastImageUrlOriginal) return; const ok = await headOk(lastImageUrlOriginal); if (ok) window.open(lastImageUrlOriginal, '_blank'); else showStatus('파일이 삭제되었거나 만료되었습니다.', 'error'); });
         if (downloadBtn) downloadBtn.addEventListener('click', async () => {
+            if (!lastImageUrlOriginal) return;
+            const ok = await headOk(lastImageUrlOriginal);
+            if (!ok) { showStatus('파일이 삭제되었거나 만료되었습니다.', 'error'); return; }
+            const a = document.createElement('a');
+            a.href = lastImageUrlOriginal;
+            a.download = (lastImageUrlOriginal.split('/').pop() || 'image.png');
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        });
+        const resultDownloadBtn = document.getElementById('result-download-btn');
+        if (resultDownloadBtn) resultDownloadBtn.addEventListener('click', async () => {
             if (!lastImageUrlOriginal) return;
             const ok = await headOk(lastImageUrlOriginal);
             if (!ok) { showStatus('파일이 삭제되었거나 만료되었습니다.', 'error'); return; }
@@ -1665,9 +1685,11 @@
         const lightboxImage = document.getElementById('lightbox-image');
         const lightboxCloseBtn = document.getElementById('lightbox-close');
 
+        let lightboxCurrentUrl = '';
         function openLightbox(src, alt = '', metaItem = null) {
             lightboxImage.src = src;
             lightboxImage.alt = alt || '확대된 이미지';
+            lightboxCurrentUrl = src;
             lightbox.classList.add('open');
             lightbox.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
@@ -1716,6 +1738,18 @@
         // 이전 방식: 오버레이 관련 로직 제거
 
         lightboxCloseBtn.addEventListener('click', closeLightbox);
+        const lbDownloadBtn = document.getElementById('lb-download');
+        if (lbDownloadBtn) lbDownloadBtn.addEventListener('click', async () => {
+            if (!lightboxCurrentUrl) return;
+            const ok = await headOk(lightboxCurrentUrl);
+            if (!ok) { try { alert('파일이 삭제되었거나 만료되었습니다.'); } catch(_) {} return; }
+            const a = document.createElement('a');
+            a.href = lightboxCurrentUrl;
+            try { a.download = (new URL(lightboxCurrentUrl, window.location.origin).pathname.split('/').pop() || 'image.png'); } catch(_) { a.download = 'image.png'; }
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        });
 
         lightbox.addEventListener('click', (e) => {
             if (e.target === lightbox) {
@@ -1795,6 +1829,11 @@
                         <input class="meta-input" id="lb-created" type="text" readonly value="" />
                         <label class="meta-label">프롬프트</label>
                         <textarea class="meta-textarea" id="lb-prompt" rows="6" readonly></textarea>
+                        <div class="meta-actions">
+                            <button class="chip-btn" id="lb-download" type="button" aria-label="다운로드">
+                                <i class="fas fa-download"></i> 다운로드
+                            </button>
+                        </div>
                     </div>
                 </aside>
             </div>
