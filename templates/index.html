@@ -13,7 +13,11 @@
         <div class="app-layout">
             <aside class="sidebar">
                 <div class="sidebar-header">
-                    <h1 class="app-title"><i class="fas fa-bars"></i> LC AI Canvas</h1>
+                    <div class="brand-banner" id="brand-banner" role="img" aria-label="앱 배너">
+                        <div class="brand-banner-text" id="brand-banner-text">
+                            <h1 class="app-title"><i class="fas fa-bars"></i> LC AI Canvas</h1>
+                        </div>
+                    </div>
                 </div>
                 <div class="workflow-section">
                     <div class="workflow-section-header">
@@ -35,9 +39,12 @@
                 <div class="input-panel">
                     <div class="input-card">
                         <div class="card-header">
-                            <div class="workflow-info-header">
-                                <h2 class="workflow-name-display" id="workflow-name-display">워크플로우를 선택해주세요</h2>
-                                <p class="workflow-description-display" id="workflow-description-display">왼쪽에서 사용할 워크플로우를 선택하면 여기에 정보가 표시됩니다</p>
+                            <div class="workflow-banner" id="workflow-banner" role="img" aria-label="워크플로우 배너">
+                                <div class="workflow-banner-scrim"></div>
+                                <div class="workflow-banner-text">
+                                    <h2 class="workflow-name-display" id="workflow-name-display">워크플로우를 선택해주세요</h2>
+                                    <p class="workflow-description-display" id="workflow-description-display">왼쪽에서 사용할 워크플로우를 선택하면 여기에 정보가 표시됩니다</p>
+                                </div>
                             </div>
                         </div>
                         <div class="card-content">
@@ -390,6 +397,29 @@
             }
         }
         connectWS();
+
+        // --- Brand banner init ---
+        try {
+            const b = (window.APP_CONFIG && window.APP_CONFIG.brand) || {};
+            const el = document.getElementById('brand-banner');
+            const textWrap = document.getElementById('brand-banner-text');
+            if (el) {
+                const h = Number.isFinite(b.heightPx) ? b.heightPx : 80;
+                el.style.setProperty('--brand-banner-height', `${h}px`);
+                const pad = Number.isFinite(b.paddingPx) ? b.paddingPx : 12;
+                el.style.setProperty('--brand-padding', `${pad}px`);
+                const url = b.url || '';
+                if (url) {
+                    el.style.setProperty('--brand-banner-img', `url("${url}")`);
+                    el.style.setProperty('--brand-hasimg', '1');
+                    if (textWrap) textWrap.style.display = (b.showTextByDefault === false) ? 'none' : '';
+                } else {
+                    el.style.removeProperty('--brand-banner-img');
+                    el.style.setProperty('--brand-hasimg', '0');
+                    if (textWrap) textWrap.style.display = '';
+                }
+            }
+        } catch(_) {}
         // Reflect saved aspect-ratio selection on initial UI
         try {
             document.querySelectorAll('.aspect-ratio-btn').forEach(btn => {
@@ -603,10 +633,39 @@
             ui.selectedWorkflowName.textContent = workflow.name;
             try { localStorage.setItem('selectedWorkflowId', workflow.id); } catch(_) {}
 
-            // 메인 헤더 업데이트
+            // 메인 헤더 + 배너 업데이트
             ui.workflowNameDisplay.textContent = workflow.name;
             ui.workflowNameDisplay.classList.add('selected');
             ui.workflowDescriptionDisplay.textContent = workflow.description || '선택된 워크플로우로 고품질 이미지를 생성하세요';
+            try {
+                const bann = (window.APP_CONFIG && window.APP_CONFIG.banners) || {};
+                const map = bann.map || {};
+                const heightPx = Number.isFinite(bann.heightPx) ? bann.heightPx : 180;
+                const defShowTitle = (typeof bann.showTitleByDefault === 'boolean') ? bann.showTitleByDefault : true;
+                const defShowDesc = (typeof bann.showDescriptionByDefault === 'boolean') ? bann.showDescriptionByDefault : true;
+                const mapEntry = (workflow && map && map[workflow.id]) ? map[workflow.id] : null;
+                const cfg = (typeof mapEntry === 'string') ? { url: mapEntry } : (mapEntry || {});
+                const url = cfg.url || bann.defaultUrl || '';
+                const showTitle = (typeof cfg.showTitle === 'boolean') ? cfg.showTitle : defShowTitle;
+                const showDesc = (typeof cfg.showDescription === 'boolean') ? cfg.showDescription : defShowDesc;
+                const el = document.getElementById('workflow-banner');
+                if (el) {
+                    el.style.setProperty('--wf-banner-height', `${heightPx}px`);
+                    if (url) {
+                        el.style.setProperty('--wf-banner-img', `url("${url}")`);
+                        el.style.setProperty('--wf-banner-hasimg', '1');
+                        el.setAttribute('aria-label', `${workflow.name} 배너`);
+                    } else {
+                        el.style.removeProperty('--wf-banner-img');
+                        el.style.setProperty('--wf-banner-hasimg', '0');
+                        el.setAttribute('aria-label', `${workflow.name}`);
+                    }
+                }
+                const nameEl = document.getElementById('workflow-name-display');
+                const descEl = document.getElementById('workflow-description-display');
+                if (nameEl) nameEl.style.display = showTitle ? '' : 'none';
+                if (descEl) descEl.style.display = showDesc ? '' : 'none';
+            } catch(_) {}
 
             // 워크플로우별 기본 프롬프트 설정
             const defaultPrompt = workflowDefaultPrompts[workflow.id] || '';

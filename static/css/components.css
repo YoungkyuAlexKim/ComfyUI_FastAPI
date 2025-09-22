@@ -202,6 +202,51 @@
 }
 
 
+/* Workflow banner (image or gradient) */
+.workflow-banner {
+    position: relative;
+    width: 100%;
+    height: var(--wf-banner-height, 180px);
+    border-radius: 0; /* 배너는 사각형 */
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(30,41,59,0.9), rgba(15,23,42,0.9));
+    border: 1px solid var(--bg-surface);
+    box-shadow: var(--shadow-lg);
+}
+.workflow-banner::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--wf-banner-img, none);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    filter: saturate(1.05) contrast(1.02);
+    transform: scale(1.02);
+    transition: opacity var(--transition-normal), transform var(--transition-normal);
+    opacity: var(--wf-banner-hasimg, 0);
+}
+.workflow-banner-scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.35));
+    /* 배너 이미지가 있을 때는 스크림을 숨김 (어둡게 보이지 않도록) */
+    opacity: calc((1 - var(--wf-banner-hasimg, 0)) * 0.35);
+    transition: opacity var(--transition-normal, 200ms) ease;
+}
+.workflow-banner-text {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-xl);
+}
+.workflow-banner .workflow-name-display { margin: 0 0 6px 0; }
+.workflow-banner .workflow-description-display { margin: 0; }
+
 /* Dark Theme Button Components */
 .generate-btn {
     /* Clean professional appearance */
@@ -585,6 +630,31 @@
     transition: background var(--transition-fast), color var(--transition-fast);
     position: relative;
 }
+
+/* Brand banner (sidebar header) */
+.brand-banner {
+    position: relative;
+    width: 100%;
+    height: var(--brand-banner-height, 80px);
+    border-radius: 0;
+    overflow: hidden;
+    background: var(--bg-card);
+    border: 1px solid var(--bg-surface);
+    box-shadow: none;
+}
+.brand-banner::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--brand-banner-img, none);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: var(--brand-hasimg, 0);
+    transition: opacity var(--transition-normal, 200ms) ease;
+}
+.brand-banner-text { position: relative; z-index: 1; height: 100%; display: flex; align-items: center; justify-content: center; padding: var(--brand-padding, 12px); }
+.brand-banner .app-title { margin: 0; }
 
 .workflow-item:hover { background: var(--bg-tertiary); }
 

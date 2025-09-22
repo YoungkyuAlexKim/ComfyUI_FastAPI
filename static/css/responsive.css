@@ -8,8 +8,8 @@
     }
 
     .main-content {
-        /* 입력 좁게, 결과 넓게 */
-        grid-template-columns: 0.65fr 1.35fr;
+        /* 입력 고정폭 유지, 결과 가변 */
+        grid-template-columns: var(--input-fixed-width, 520px) 1fr;
         gap: var(--space-4xl);
     }
 
@@ -28,8 +28,8 @@
     .sidebar { width: 260px; box-sizing: border-box; }
 
     .main-content {
-        /* 입력 약간 축소, 결과 약간 확대 */
-        grid-template-columns: 0.75fr 1.25fr;
+        /* 입력 고정폭 유지, 결과 가변 */
+        grid-template-columns: var(--input-fixed-width, 520px) 1fr;
         gap: var(--space-2xl);
         height: calc(100vh - var(--space-4xl));
         min-height: calc(100vh - var(--space-4xl));

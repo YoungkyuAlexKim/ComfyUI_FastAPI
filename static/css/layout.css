@@ -115,7 +115,7 @@
 .main-content {
     flex: 1;
     display: grid;
-    grid-template-columns: 0.7fr 1.3fr; /* 입력 더 축소 / 결과 더 확대 */
+    grid-template-columns: var(--input-fixed-width, 520px) 1fr; /* 입력 영역 고정폭, 결과 가변 */
     gap: var(--space-3xl);
     align-items: stretch; /* 컬럼을 전체 높이에 맞춰 늘려 세로 구분선이 끊기지 않도록 */
     height: calc(100vh - var(--space-5xl)); /* 사이드바와 동일한 높이 */
@@ -145,6 +145,8 @@
     height: 100%; /* 메인 컨텐츠 높이에 맞춤 */
     position: relative; /* pseudo divider 기준 */
     padding-right: var(--space-lg);
+    min-width: var(--input-fixed-width, 520px);
+    max-width: var(--input-fixed-width, 520px);
 }
 
 .input-card {

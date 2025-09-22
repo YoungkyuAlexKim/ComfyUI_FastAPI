@@ -76,6 +76,41 @@
     metaBg: 'rgba(34, 34, 34, 0.55)'
   };
 
+  // 워크플로우 배너 설정
+  // - defaultUrl: 배너 기본 이미지 경로 (없으면 CSS 그라디언트 사용)
+  // - heightPx: 배너 높이(px)
+  // - map: 워크플로우 ID별 배너 경로 매핑
+  window.APP_CONFIG.banners = window.APP_CONFIG.banners || {
+    defaultUrl: '',
+    heightPx: 180,
+    // 전역 기본 표시 여부 (워크플로우 매핑에서 개별 오버라이드 가능)
+    showTitleByDefault: true,
+    showDescriptionByDefault: true,
+    // map은 문자열 경로 또는 확장 객체를 허용합니다.
+    // 1) 문자열: 배너 이미지 경로만 지정 (전역 기본 표시 여부 사용)
+    // 2) 객체: { url: '...', showTitle: true/false, showDescription: true/false }
+    map: {
+      'BasicWorkFlow_PixelArt': {
+        url: '/static/img/banner/img_banner_workflow_pixelart.png',
+        // 예: 이미지에 텍스트가 내장된 경우 아래를 false로 설정
+        showTitle: false,     // 배너 이미지에 텍스트가 포함돼 있다면 false
+        showDescription: false // 배너 이미지에 텍스트가 포함돼 있다면 false
+      }
+    }
+  };
+
+  // 브랜드(좌측 상단) 배너 설정
+  window.APP_CONFIG.brand = window.APP_CONFIG.brand || {
+    // 배너 이미지 경로 (없으면 텍스트 타이틀 표시)
+    url: '/static/img/banner/brand_banner.png',
+    // 배너 높이(px)
+    heightPx: 80,
+    // 텍스트 타이틀 기본 표시 여부 (이미지를 쓰면 보통 false 권장)
+    showTextByDefault: false,
+    // 여백 조정
+    paddingPx: 12,
+  };
+
   // 프롬프트 태그 가중치 설정 (Ctrl+위/아래)
   window.APP_CONFIG.weight = window.APP_CONFIG.weight || {
     // 기본 증감 단위

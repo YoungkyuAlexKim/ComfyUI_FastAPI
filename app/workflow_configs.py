@@ -9,7 +9,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "description": "레트로 감성의 픽셀 아트 스타일 이미지를 생성합니다",
 
         # 기본 사용자 프롬프트 (워크플로우별 고유)
-        "default_user_prompt": "a girl in a hanbok",
+        "default_user_prompt": "1girl, solo, hanbok",
 
         # 노드 ID
         "prompt_node": "6",
