@@ -92,9 +92,9 @@ def _clean_tags(tags_string: str) -> list[str]:
 
 def get_prompt_overrides(
     user_prompt: str,
-    aspect_ratio: str, # width, height 대신 aspect_ratio 사용
+    aspect_ratio: str,  # width, height 대신 aspect_ratio 사용
     workflow_name: str = "BasicWorkFlow_PixelArt",
-    seed: int = None,
+    seed: int | None = None,
     control: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """
@@ -105,35 +105,66 @@ def get_prompt_overrides(
         raise ValueError(f"지원하지 않는 워크플로우입니다: {workflow_name}. 사용 가능: {available}")
 
     config = WORKFLOW_CONFIGS[workflow_name]
-    
-    # --- [4차] 비율에 맞는 width, height 가져오기 ---
-    if aspect_ratio not in config["sizes"]:
-        raise ValueError(f"지원하지 않는 비율입니다: {aspect_ratio}. 사용 가능: {list(config['sizes'].keys())}")
-    
-    size = config["sizes"][aspect_ratio]
-    width = size["width"]
-    height = size["height"]
-    
-    # --- 프롬프트 결합 로직 ---
-    user_tags = _clean_tags(user_prompt)
-    style_tags = _clean_tags(config.get("style_prompt", ""))
-    
-    final_positive_tags = user_tags + [tag for tag in style_tags if tag not in user_tags]
-    final_positive_prompt = ", ".join(final_positive_tags)
-    
+
+    # --- [선택] 비율 기반 사이즈 계산 (sizes 정의가 있는 워크플로우에서만) ---
+    width = None
+    height = None
+    try:
+        if isinstance(config.get("sizes"), dict):
+            if aspect_ratio not in config["sizes"]:
+                raise ValueError(
+                    f"지원하지 않는 비율입니다: {aspect_ratio}. 사용 가능: {list(config['sizes'].keys())}"
+                )
+            size = config["sizes"][aspect_ratio]
+            width = size.get("width")
+            height = size.get("height")
+    except Exception:
+        # sizes가 없거나 잘못돼도 이미지 변환형 워크플로우에선 무시 가능
+        width = None
+        height = None
+
+    # --- 프롬프트 결합 로직 (prompt_node가 있는 워크플로우에서만 적용) ---
+    final_positive_prompt = None
+    try:
+        user_tags = _clean_tags(user_prompt)
+        style_tags = _clean_tags(config.get("style_prompt", ""))
+        final_positive_tags = user_tags + [tag for tag in style_tags if tag not in user_tags]
+        final_positive_prompt = ", ".join(final_positive_tags)
+    except Exception:
+        final_positive_prompt = user_prompt or ""
+
     if seed is None:
         seed = int(time.time() * 1000) % 1000000000000000
 
-    overrides = {
-        config["prompt_node"]: {"inputs": {"text": final_positive_prompt}},
-        config["negative_prompt_node"]: {"inputs": {"text": config.get("negative_prompt", "")}},
-        config["seed_node"]: {"inputs": {"seed": seed}}
-    }
-    
-    if "latent_image_node" in config:
-        overrides[config["latent_image_node"]] = {
-            "inputs": {"width": width, "height": height}
-        }
+    overrides: Dict[str, Any] = {}
+
+    # prompt / negative / seed 노드는 존재할 때만 반영
+    try:
+        pn = config.get("prompt_node")
+        if pn:
+            overrides[pn] = {"inputs": {"text": final_positive_prompt or ""}}
+    except Exception:
+        pass
+    try:
+        nn = config.get("negative_prompt_node")
+        if nn:
+            overrides[nn] = {"inputs": {"text": config.get("negative_prompt", "")}}
+    except Exception:
+        pass
+    try:
+        sn = config.get("seed_node")
+        if sn is not None:
+            overrides[sn] = {"inputs": {"seed": seed}}
+    except Exception:
+        pass
+
+    # latent 이미지 사이즈 지정은 노드와 width/height 모두 있을 때만
+    try:
+        ln = config.get("latent_image_node")
+        if ln and width is not None and height is not None:
+            overrides[ln] = {"inputs": {"width": width, "height": height}}
+    except Exception:
+        pass
     
     # --- Optional ControlNet overrides ---
     try:

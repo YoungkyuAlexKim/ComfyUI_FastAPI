@@ -44,6 +44,35 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         },
     },
 
+    "ILXL_Pixelator": {
+        "display_name": "픽셀레이터(입력 이미지 변환)",
+        "description": "입력 이미지를 픽셀 아트 스타일로 변환합니다(자동 태깅 고정).",
+
+        # 사용자 프롬프트는 '추가 프롬프트'로만 사용(선택)
+        "default_user_prompt": "",
+
+        # 이미지 입력 노드 매핑: LoadImage(32).inputs.image ← Comfy input 파일명
+        "image_input": {"image_node": "32", "input_field": "image"},
+
+        # 시드 노드: 메인 KSampler(3)
+        "seed_node": "3",
+
+        # 정사각형 고정(800x800)
+        "sizes": {"square": {"width": 800, "height": 800}},
+
+        # ILXL 기본 시스템(추가) 프롬프트는 63번 노드 텍스트에 해당
+        "style_prompt": "masterpiece, best quality, amazing quality, 4k, very aesthetic, ultra-detailed, (pixel art, dithering, pixelated, sprite art, 8-bit:1.2)",
+
+        # UI 스키마(프런트 조건부 렌더링용)
+        "ui": {
+            "showAutoTagsReadOnly": True,
+            "showSystemPromptReadOnly": True,
+            "showNegative": False,
+            "aspectOptions": ["square"],
+            "additionalPromptTargetNode": "63"
+        },
+    },
+
     # 멀티 ControlNet 매핑 샘플 (참고용 주석)
     # 실제 노드 ID는 워크플로우 JSON에서 확인해 입력하세요.
     # "PhotoWithMultiControls": {

@@ -42,6 +42,10 @@ class WorkflowItem(BaseModel):
     style_prompt: str
     negative_prompt: str
     recommended_prompt: str
+    # Extended schema for flexible frontend rendering
+    ui: Optional[Dict[str, Any]] = None
+    sizes: Optional[Dict[str, Any]] = None
+    image_input: Optional[Dict[str, Any]] = None
 
 
 class WorkflowsResponse(BaseModel):

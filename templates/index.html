@@ -53,6 +53,21 @@
                         </div>
                         <div class="card-content">
                             <div class="form-grid">
+                                <!-- Input Image (for image-to-image workflows) - moved above prompt -->
+                                <div class="form-group" id="input-image-wrap" style="display:none;">
+                                    <label class="form-label">
+                                        <i class="fas fa-image"></i> 입력 이미지 (필수)
+                                    </label>
+                                    <div id="input-image-drop" style="width:100%; max-width:100%; height:240px; border:1px dashed var(--bg-surface); border-radius:12px; overflow:hidden; background:var(--bg-tertiary); display:flex; align-items:center; justify-content:center; position:relative;">
+                                        <img id="input-image-preview" alt="입력 이미지" style="display:none; width:100%; height:100%; object-fit:cover;" />
+                                        <div id="input-image-empty" style="color:var(--text-muted); font-size:14px;">클릭하거나 드래그하여 이미지 선택</div>
+                                    </div>
+                                    <div style="display:flex; gap:8px; margin-top:8px;">
+                                        <button type="button" class="chip-btn" id="input-image-choose"><i class="fas fa-folder-open"></i> 선택</button>
+                                        <button type="button" class="chip-btn" id="input-image-clear"><i class="fas fa-xmark"></i> 지우기</button>
+                                    </div>
+                                </div>
+
                                 <div class="form-group">
                                     <label class="form-label" for="user_prompt">
                                         <i class="fas fa-comment-dots"></i> 프롬프트 (내용)
@@ -99,6 +114,8 @@
                                         </button>
                                     </div>
                                 </div>
+
+                                
                             </div>
 
                             <!-- Generator Toolbar -->
@@ -243,6 +260,9 @@
                                     </button>
                                     <button id="tab-controls" type="button" class="chip-btn">
                                         <i class="fas fa-pen-ruler"></i> 내 컨트롤 이미지
+                                    </button>
+                                    <button id="tab-inputs" type="button" class="chip-btn">
+                                        <i class="fas fa-image"></i> 입력 이미지
                                     </button>
                                 </div>
                                 <button id="control-upload-icon" type="button" class="icon-btn" title="컨트롤 업로드" aria-label="컨트롤 업로드" style="display:none;">
@@ -691,13 +711,44 @@
                 if (descEl) descEl.style.display = showDesc ? '' : 'none';
             } catch(_) {}
 
-            // 워크플로우별 기본 프롬프트 설정
+            // 워크플로우별 기본 프롬프트 설정 및 UI 가시성
             const defaultPrompt = workflowDefaultPrompts[workflow.id] || '';
             ui.userPromptInput.value = defaultPrompt;
             autoResizeTextarea(ui.userPromptInput);
 
             ui.stylePromptInput.value = workflow.style_prompt;
             ui.negativePromptInput.value = workflow.negative_prompt;
+
+            // --- 조건부 UI 렌더링 (워크플로우 스키마 기반) ---
+            const uiSchema = workflow.ui || {};
+            // 네거티브 프롬프트 표시/숨김
+            try {
+                const negWrap = document.getElementById('negative-prompt-wrap');
+                if (negWrap) negWrap.style.display = (uiSchema.showNegative === false) ? 'none' : '';
+            } catch(_) {}
+            // 비율 옵션 제한
+            try {
+                const allowed = Array.isArray(uiSchema.aspectOptions) ? uiSchema.aspectOptions : ['square','landscape','portrait'];
+                document.querySelectorAll('.aspect-ratio-btn').forEach(btn => {
+                    const ok = allowed.includes(btn.dataset.ratio);
+                    btn.style.display = ok ? '' : 'none';
+                    if (!ok && btn.classList.contains('selected')) {
+                        const fallback = allowed[0] || 'square';
+                        const fbBtn = document.querySelector(`.aspect-ratio-btn[data-ratio="${fallback}"]`);
+                        if (fbBtn) {
+                            fbBtn.click();
+                        }
+                    }
+                });
+            } catch(_) {}
+            // 입력 이미지 섹션 표시 여부
+            try {
+                const inWrap = document.getElementById('input-image-wrap');
+                if (inWrap) inWrap.style.display = workflow.image_input ? '' : 'none';
+                if (workflow.image_input) updateInputImagePreview();
+            } catch(_) {}
+            // 자동태그/시스템 프롬프트 읽기전용 안내(표시는 유지, 기본적으로 readonly 구성)
+            // 추가 프롬프트는 user_prompt 입력란을 사용합니다.
             
             if (workflow.recommended_prompt) {
                 ui.promptSuggestionText.innerHTML = `<i class="fas fa-gem suggestion-icon" aria-hidden="true"></i> 추천 <span class=\"suggestion-hint\">(클릭하여 추가)</span> <span class=\"suggestion-tags\">${workflow.recommended_prompt}</span>`;
@@ -707,6 +758,130 @@
                 ui.promptSuggestionText.style.display = 'none';
             }
         }
+
+        // ---- Input Image Picker (minimal) ----
+        async function fetchAllCandidates(){
+            try {
+                const [controlsRes, imagesRes, inputsRes] = await Promise.all([
+                    fetch('/api/v1/controls?page=1&size=500', { cache: 'no-store' }),
+                    fetch('/api/v1/images?page=1&size=48', { cache: 'no-store' }),
+                    fetch('/api/v1/inputs?page=1&size=48', { cache: 'no-store' })
+                ]);
+                const controls = await controlsRes.json().catch(()=>({ items:[] }));
+                const images = await imagesRes.json().catch(()=>({ items:[] }));
+                const inputs = await inputsRes.json().catch(()=>({ items:[] }));
+                const list = [];
+                if (Array.isArray(inputs.items)) list.push(...inputs.items.map(x => ({ id:x.id, url:x.thumb_url||x.url })));
+                if (Array.isArray(controls.items)) list.push(...controls.items.map(x => ({ id:x.id, url:x.thumb_url||x.url })));
+                if (Array.isArray(images.items)) list.push(...images.items.map(x => ({ id:x.id, url:x.thumb_url||x.url })));
+                return list;
+            } catch(_) { return []; }
+        }
+
+        function getInputImageId(){ try { return localStorage.getItem('inputImageId') || null; } catch(_) { return null; } }
+        function setInputImageId(id){ try { if(id) localStorage.setItem('inputImageId', id); else localStorage.removeItem('inputImageId'); } catch(_) {}
+            updateInputImagePreview(); }
+
+        async function updateInputImagePreview(){
+            const img = document.getElementById('input-image-preview');
+            const empty = document.getElementById('input-image-empty');
+            if (!currentWorkflow || !currentWorkflow.image_input) { if (img) img.style.display='none'; if (empty) empty.style.display=''; return; }
+            const id = getInputImageId();
+            if (!id) { if (img) img.style.display='none'; if (empty) empty.style.display=''; return; }
+            const list = await fetchAllCandidates();
+            const it = list.find(x => x.id === id);
+            if (it && it.url) {
+                if (img) { img.src = it.url; img.style.display='block'; }
+                if (empty) empty.style.display='none';
+            } else {
+                if (img) img.style.display='none';
+                if (empty) empty.style.display='';
+            }
+        }
+
+        function openInputPicker(){
+            const existing = document.getElementById('input-picker');
+            if (existing) existing.remove();
+            const wrap = document.createElement('div');
+            wrap.id = 'input-picker';
+            wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;';
+            wrap.innerHTML = `
+              <div style="width:min(960px,96vw); max-height:90vh; background:var(--bg-card); border:1px solid var(--bg-surface); border-radius:12px; overflow:hidden; display:flex; flex-direction:column;">
+                <div style="padding:10px 12px; border-bottom:1px solid var(--bg-surface); display:flex; align-items:center; justify-content:space-between;">
+                  <strong><i class="fas fa-image"></i> 입력 이미지 선택</strong>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="chip-btn" id="ip-upload-btn"><i class="fas fa-upload"></i> 업로드</button>
+                    <input id="ip-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+                    <button class="chip-btn" id="ip-close">닫기</button>
+                  </div>
+                </div>
+                <div style="padding:12px; overflow:auto;">
+                  <div id="ip-grid" style="display:grid; grid-template-columns:repeat(6,1fr); gap:8px;"></div>
+                </div>
+              </div>`;
+            document.body.appendChild(wrap);
+            wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
+            wrap.querySelector('#ip-close').addEventListener('click', ()=> wrap.remove());
+            // upload
+            const ipUpload = wrap.querySelector('#ip-upload');
+            wrap.querySelector('#ip-upload-btn').addEventListener('click', ()=> ipUpload.click());
+            ipUpload.addEventListener('change', async (e)=>{
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+                try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    const res = await fetch('/api/v1/inputs/upload', { method: 'POST', body: fd });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || '업로드 실패');
+                    setInputImageId(data.id);
+                    wrap.remove();
+                    showStatus('입력 이미지가 업로드되었습니다.', 'success');
+                } catch (err) {
+                    showStatus('업로드 실패', 'error');
+                }
+            });
+            (async ()=>{
+                const grid = wrap.querySelector('#ip-grid');
+                const items = await fetchAllCandidates();
+                grid.innerHTML = items.map(it => `
+                  <div class="thumb" data-id="${it.id}" style="aspect-ratio:1/1; background:var(--bg-tertiary); border-radius:8px; overflow:hidden; cursor:pointer;">
+                    <img src="${it.url}" alt="${it.id}" style="width:100%; height:100%; object-fit:cover; display:block;"/>
+                  </div>
+                `).join('');
+                grid.querySelectorAll('.thumb').forEach(el => {
+                    el.addEventListener('click', ()=>{ setInputImageId(el.dataset.id); wrap.remove(); showStatus('입력 이미지가 선택되었습니다.', 'info'); });
+                });
+            })();
+        }
+
+        (function bindInputImageUI(){
+            const choose = document.getElementById('input-image-choose');
+            const clear = document.getElementById('input-image-clear');
+            const drop = document.getElementById('input-image-drop');
+            if (choose) choose.addEventListener('click', ()=> openInputPicker());
+            if (clear) clear.addEventListener('click', ()=> setInputImageId(null));
+            if (drop) {
+                drop.addEventListener('click', ()=> openInputPicker());
+                drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.style.outline='2px dashed var(--primary-400)'; });
+                drop.addEventListener('dragleave', ()=>{ drop.style.outline='none'; });
+                drop.addEventListener('drop', async (e)=>{
+                    e.preventDefault();
+                    drop.style.outline='none';
+                    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+                    if (!file) return;
+                    try {
+                        const fd = new FormData();
+                        fd.append('file', file);
+                        const res = await fetch('/api/v1/inputs/upload', { method: 'POST', body: fd });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.detail || '업로드 실패');
+                        setInputImageId(data.id);
+                        showStatus('입력 이미지가 업로드되었습니다.', 'success');
+                    } catch (_) { showStatus('업로드 실패', 'error'); }
+                });
+            }
+        })();
 
         function handleSuggestionClick() {
             if (!currentWorkflow || !currentWorkflow.recommended_prompt) return;
@@ -809,7 +984,12 @@
 
         async function handleGenerateClick() {
             if (!currentWorkflow) return showStatus('워크플로우를 먼저 선택해주세요.', 'error');
-            if (!ui.userPromptInput.value.trim()) return showStatus('그리고 싶은 내용을 프롬프트에 입력해주세요.', 'error');
+            // Allow empty prompt when workflow defines image_input (auto-tagging workflows)
+            if (!ui.userPromptInput.value.trim()) {
+                if (!(currentWorkflow && currentWorkflow.image_input)) {
+                    return showStatus('그리고 싶은 내용을 프롬프트에 입력해주세요.', 'error');
+                }
+            }
 
             // Preflight health check (silent guard)
             try {
@@ -838,6 +1018,20 @@
                 workflow_id: currentWorkflow.id,
                 seed: ui.seedInput.value ? parseInt(ui.seedInput.value, 10) : null
             };
+
+            // Image-to-image workflows: require input image selection
+            try {
+                if (currentWorkflow && currentWorkflow.image_input) {
+                    let inputImageId = null;
+                    try { inputImageId = localStorage.getItem('inputImageId') || null; } catch(_) {}
+                    if (inputImageId) {
+                        requestData.input_image_id = inputImageId;
+                    } else {
+                        // Soft warning only for now (POC): allow proceed but notify
+                        showStatus('입력 이미지가 선택되지 않았습니다. 기본 샘플 또는 실패할 수 있습니다.', 'warning');
+                    }
+                }
+            } catch(_) {}
 
             // ControlNet options
             try {
@@ -1277,23 +1471,30 @@
             gallery.grid.appendChild(frag);
         }
 
-        let gallerySource = 'generated'; // 'generated' | 'controls'
+        let gallerySource = 'generated'; // 'generated' | 'controls' | 'inputs'
         const tabGenerated = document.getElementById('tab-generated');
         const tabControls = document.getElementById('tab-controls');
+        const tabInputs = document.getElementById('tab-inputs');
         const galleryTitle = document.getElementById('gallery-title');
         const controlUpload = document.getElementById('control-upload');
         const controlUploadIcon = document.getElementById('control-upload-icon');
 
         tabGenerated.addEventListener('click', () => switchGallery('generated'));
         tabControls.addEventListener('click', () => switchGallery('controls'));
+        if (tabInputs) tabInputs.addEventListener('click', () => switchGallery('inputs'));
 
         function switchGallery(src){
             gallerySource = src;
             tabGenerated.classList.toggle('active', src === 'generated');
             tabControls.classList.toggle('active', src === 'controls');
+            if (tabInputs) tabInputs.classList.toggle('active', src === 'inputs');
                 if (src === 'controls') {
                 galleryTitle.innerHTML = '<i class="fas fa-pen-ruler"></i> 내 컨트롤 이미지';
                 if (controlUploadIcon) controlUploadIcon.style.display = '';
+                setSelectionMode(false);
+            } else if (src === 'inputs') {
+                galleryTitle.innerHTML = '<i class="fas fa-image"></i> 입력 이미지';
+                if (controlUploadIcon) controlUploadIcon.style.display = 'none';
                 setSelectionMode(false);
             } else {
                 galleryTitle.innerHTML = '<i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지';
@@ -1333,7 +1534,9 @@
                 const params = new URLSearchParams();
                 params.set('page', String(currentPage));
                 params.set('size', String(PAGE_SIZE));
-                const endpoint = (gallerySource === 'controls') ? '/api/v1/controls' : '/api/v1/images';
+                let endpoint = '/api/v1/images';
+                if (gallerySource === 'controls') endpoint = '/api/v1/controls';
+                if (gallerySource === 'inputs') endpoint = '/api/v1/inputs';
                 const res = await fetch(`${endpoint}?${params.toString()}`);
                 if (!res.ok) throw new Error(`Failed to fetch images (${res.status})`);
                 const data = await res.json();

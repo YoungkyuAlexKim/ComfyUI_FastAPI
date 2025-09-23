@@ -157,10 +157,10 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         control = None
 
     prompt_overrides = get_prompt_overrides(
-        user_prompt=request.user_prompt,
-        aspect_ratio=request.aspect_ratio,
-        workflow_name=request.workflow_id,
-        seed=request.seed,
+        user_prompt=getattr(request, "user_prompt", ""),
+        aspect_ratio=getattr(request, "aspect_ratio", "square"),
+        workflow_name=getattr(request, "workflow_id", "BasicWorkFlow_PixelArt"),
+        seed=getattr(request, "seed", None),
         control=control,
     )
 
@@ -271,6 +271,98 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         pass
 
     try:
+        # --- Optional: image-to-image workflow handling ---
+        try:
+            wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+            io_cfg = wf_cfg.get("image_input") if isinstance(wf_cfg, dict) else None
+            # image_input: { image_node: str (node_id), input_field: str (default 'image'), source: 'control'|'gallery'|'upload' }
+            # Here we support: request.input_image_id (user gallery/controls saved PNG)
+            if io_cfg and isinstance(io_cfg, dict):
+                image_node = io_cfg.get("image_node")
+                input_field = io_cfg.get("input_field", "image")
+                image_filename = None
+                # Strategy: if request has input_image_filename already uploaded to Comfy input, use it
+                try:
+                    image_filename = getattr(request, "input_image_filename", None)
+                except Exception:
+                    image_filename = None
+                # Else, if request.input_image_id refers to user control/gallery PNG, upload it
+                if not image_filename:
+                    try:
+                        img_id = getattr(request, "input_image_id", None)
+                    except Exception:
+                        img_id = None
+                    if isinstance(img_id, str) and img_id:
+                        # Prefer inputs path, then gallery image, then control path
+                        local_png = None
+                        # 1) inputs store
+                        try:
+                            from .media_store import _locate_input_png_path
+                            local_png = _locate_input_png_path(job.owner_id, img_id)
+                        except Exception:
+                            local_png = None
+                        try:
+                            from .media_store import _locate_image_meta_path
+                            # derive png path from meta
+                            meta_path = _locate_image_meta_path(job.owner_id, img_id)
+                            if meta_path and os.path.exists(meta_path):
+                                base_dir = os.path.dirname(meta_path)
+                                cand = os.path.join(base_dir, f"{img_id}.png")
+                                if os.path.exists(cand):
+                                    local_png = cand
+                        except Exception:
+                            pass
+                        if not local_png:
+                            local_png = _locate_control_png_path(job.owner_id, img_id)
+                        if local_png and os.path.exists(local_png):
+                            try:
+                                with open(local_png, "rb") as f:
+                                    data = f.read()
+                                stored = client.upload_image_to_input(f"{img_id}_{job.id}.png", data, "image/png")
+                                if isinstance(stored, str) and stored:
+                                    try:
+                                        _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
+                                    except Exception:
+                                        pass
+                                    image_filename = stored
+                                    try:
+                                        time.sleep(0.1)
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                pass
+                if image_node and image_filename:
+                    prompt_overrides[image_node] = {"inputs": {input_field: image_filename}}
+        except Exception:
+            pass
+
+        # Merge additional prompt into target text node if configured (e.g., node 63 for ILXL)
+        try:
+            wf_cfg2 = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+            ui_cfg = wf_cfg2.get("ui") if isinstance(wf_cfg2, dict) else None
+            target_node = ui_cfg.get("additionalPromptTargetNode") if isinstance(ui_cfg, dict) else None
+            if target_node and isinstance(target_node, str) and len(target_node) > 0:
+                base_text = ""
+                try:
+                    base_text = wf_cfg2.get("style_prompt", "") or ""
+                except Exception:
+                    base_text = ""
+                add_text = getattr(request, "user_prompt", "") or ""
+                def _split(s: str) -> list[str]:
+                    return [t.strip() for t in s.split(',') if isinstance(t, str) and t.strip()]
+                merged: list[str] = []
+                seen = set()
+                for t in _split(base_text) + _split(add_text):
+                    tl = t.lower()
+                    if tl in seen:
+                        continue
+                    seen.add(tl)
+                    merged.append(t)
+                merged_text = ", ".join(merged)
+                prompt_overrides[target_node] = {"inputs": {"text": merged_text}}
+        except Exception:
+            pass
+
         resp = client.queue_prompt(workflow_path, prompt_overrides)
         prompt_id = resp.get('prompt_id') if isinstance(resp, dict) else None
         if not prompt_id:

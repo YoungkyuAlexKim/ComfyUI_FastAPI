@@ -31,7 +31,11 @@ async def get_workflows():
             "node_count": node_count,
             "style_prompt": config.get("style_prompt", ""),
             "negative_prompt": config.get("negative_prompt", ""),
-            "recommended_prompt": config.get("recommended_prompt", "")
+            "recommended_prompt": config.get("recommended_prompt", ""),
+            # expose ui schema & capabilities for flexible frontend rendering
+            "ui": config.get("ui", {}),
+            "sizes": config.get("sizes", {}),
+            "image_input": config.get("image_input", None),
         })
     return {"workflows": workflows}
 

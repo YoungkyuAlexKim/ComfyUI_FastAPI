@@ -512,6 +512,22 @@
 }
 
 /* Dark Theme Gallery Components */
+.gallery-tabs { display:flex; gap:8px; align-items:center; flex-wrap: nowrap; overflow:auto; scrollbar-width: none; }
+.gallery-tabs::-webkit-scrollbar { display:none; }
+.gallery-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+/* Vertical icon+label style for gallery tab buttons */
+.gallery-tabs .chip-btn {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 10px;
+    min-width: 108px; /* keeps one line without wrapping */
+    text-align: center;
+    white-space: nowrap;
+}
+.gallery-tabs .chip-btn i { display:block; font-size: 14px; line-height: 1; }
 .gallery-item {
     position: relative;
     border: 1px solid var(--bg-surface);
@@ -1671,7 +1687,7 @@
 }
 
 /* Gallery drawer (slide-out) */
-.main-content.gallery-collapsible { position: relative; --drawer-width: min(420px, 92vw); transition: padding var(--transition-normal); }
+.main-content.gallery-collapsible { position: relative; --drawer-width: min(600px, 92vw); transition: padding var(--transition-normal); }
 .gallery-toggle {
     position: fixed;
     top: 50%;
@@ -1718,7 +1734,7 @@
 /* Shift main content on wide screens when drawer is open */
 @media (min-width: 1100px) {
     .gallery-collapsible { transition: padding var(--transition-normal); }
-    .gallery-collapsible.gallery-open { padding-right: min(420px, 32vw); }
+    .gallery-collapsible.gallery-open { padding-right: var(--drawer-width); }
     .gallery-collapsible .gallery-toggle { right: 0; }
 }
 

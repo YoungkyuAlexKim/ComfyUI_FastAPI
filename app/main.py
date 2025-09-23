@@ -51,6 +51,7 @@ from .routers.admin import router as admin_router
 from .routers.workflows import router as workflows_router
 from .routers.images import router as images_router
 from .routers.controls import router as controls_router
+from .routers.inputs import router as inputs_router
 from .routers.health import router as health_router
 from .ws.manager import manager
 from .ws.routes import router as ws_router
@@ -75,6 +76,7 @@ app.include_router(ws_router)
 app.include_router(workflows_router)
 app.include_router(images_router)
 app.include_router(controls_router)
+app.include_router(inputs_router)
 app.include_router(health_router)
 
 # --- HTTP request logging middleware ---
@@ -143,6 +145,9 @@ class GenerateRequest(BaseModel):
     aspect_ratio: str  # 'width', 'height' 대신 'aspect_ratio' 사용
     workflow_id: str
     seed: Optional[int] = None
+    # Direct image-to-image input (non-ControlNet)
+    input_image_id: Optional[str] = None  # 기존에 저장된 이미지/컨트롤의 id
+    input_image_filename: Optional[str] = None  # 이미 Comfy input에 업로드된 파일명(있으면 재업로드 생략)
     # ControlNet options
     control_enabled: Optional[bool] = None  # True => strength 1.0, False/None => 0.0
     control_image_id: Optional[str] = None  # previously saved control image id
