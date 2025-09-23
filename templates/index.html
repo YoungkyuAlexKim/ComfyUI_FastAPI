@@ -165,15 +165,6 @@
                                         <button id="open-canvas-btn" type="button" class="chip-btn" title="캔버스 열기" aria-label="캔버스 열기">
                                             <i class="fas fa-pencil"></i> 캔버스 열기
                                         </button>
-                                        <button id="open-btn" type="button" class="icon-btn" title="새 탭에서 열기" aria-label="새 탭에서 열기">
-                                            <i class="fas fa-up-right-from-square"></i>
-                                        </button>
-                                        <button id="download-btn" type="button" class="icon-btn" title="다운로드" aria-label="다운로드">
-                                            <i class="fas fa-download"></i>
-                                        </button>
-                                        <button id="copylink-btn" type="button" class="icon-btn" title="링크 복사" aria-label="링크 복사">
-                                            <i class="fas fa-link"></i>
-                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -561,13 +552,9 @@
         // Initialize ControlNet slot on load
         refreshControlSlotFromStorage();
 
-        // Result actions
-        const openBtn = document.getElementById('open-btn');
-        const downloadBtn = document.getElementById('download-btn');
-        const copyLinkBtn = document.getElementById('copylink-btn');
+        // Result actions (simplified: only in-image download button remains)
         let lastImageUrlOriginal = '';
         function setResultActionsEnabled(enabled){
-            [openBtn, downloadBtn, copyLinkBtn].forEach((b)=>{ if (b) b.disabled = !enabled; });
             const rdb = document.getElementById('result-download-btn');
             if (rdb) {
                 if (enabled && lastImageUrlOriginal) { rdb.style.display = 'inline-flex'; rdb.disabled = false; }
@@ -575,18 +562,6 @@
             }
         }
         setResultActionsEnabled(false);
-        if (openBtn) openBtn.addEventListener('click', async () => { if (!lastImageUrlOriginal) return; const ok = await headOk(lastImageUrlOriginal); if (ok) window.open(lastImageUrlOriginal, '_blank'); else showStatus('파일이 삭제되었거나 만료되었습니다.', 'error'); });
-        if (downloadBtn) downloadBtn.addEventListener('click', async () => {
-            if (!lastImageUrlOriginal) return;
-            const ok = await headOk(lastImageUrlOriginal);
-            if (!ok) { showStatus('파일이 삭제되었거나 만료되었습니다.', 'error'); return; }
-            const a = document.createElement('a');
-            a.href = lastImageUrlOriginal;
-            a.download = (lastImageUrlOriginal.split('/').pop() || 'image.png');
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        });
         const resultDownloadBtn = document.getElementById('result-download-btn');
         if (resultDownloadBtn) resultDownloadBtn.addEventListener('click', async () => {
             if (!lastImageUrlOriginal) return;
@@ -598,12 +573,6 @@
             document.body.appendChild(a);
             a.click();
             a.remove();
-        });
-        if (copyLinkBtn) copyLinkBtn.addEventListener('click', async () => {
-            if (!lastImageUrlOriginal) return;
-            const ok = await headOk(lastImageUrlOriginal);
-            if (!ok) { showStatus('파일이 삭제되었거나 만료되었습니다.', 'error'); return; }
-            try { await navigator.clipboard.writeText(new URL(lastImageUrlOriginal, window.location.origin).toString()); showStatus('링크가 복사되었습니다.', 'info'); } catch(_) { showStatus('클립보드 복사 실패', 'error'); }
         });
 
         // Track the latest job started by this client
