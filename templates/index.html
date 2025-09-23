@@ -404,6 +404,8 @@
         const anonId = document.querySelector('.app-container')?.getAttribute('data-anon-id') || '';
         const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
         let ws = null;
+        // Selected input image (runtime state) to avoid stale localStorage reads under fast interactions
+        let selectedInputImageId = null;
         let wsRetry = 0;
         function connectWS(){
             try {
@@ -761,26 +763,21 @@
 
         // ---- Input Image Picker (minimal) ----
         async function fetchAllCandidates(){
+            // Inputs-only for picker: keep UX focused on required source
             try {
-                const [controlsRes, imagesRes, inputsRes] = await Promise.all([
-                    fetch('/api/v1/controls?page=1&size=500', { cache: 'no-store' }),
-                    fetch('/api/v1/images?page=1&size=48', { cache: 'no-store' }),
-                    fetch('/api/v1/inputs?page=1&size=48', { cache: 'no-store' })
-                ]);
-                const controls = await controlsRes.json().catch(()=>({ items:[] }));
-                const images = await imagesRes.json().catch(()=>({ items:[] }));
-                const inputs = await inputsRes.json().catch(()=>({ items:[] }));
-                const list = [];
-                if (Array.isArray(inputs.items)) list.push(...inputs.items.map(x => ({ id:x.id, url:x.thumb_url||x.url })));
-                if (Array.isArray(controls.items)) list.push(...controls.items.map(x => ({ id:x.id, url:x.thumb_url||x.url })));
-                if (Array.isArray(images.items)) list.push(...images.items.map(x => ({ id:x.id, url:x.thumb_url||x.url })));
-                return list;
+                const res = await fetch('/api/v1/inputs?page=1&size=96', { cache: 'no-store' });
+                const data = await res.json().catch(()=>({ items:[] }));
+                const items = Array.isArray(data.items) ? data.items : [];
+                return items.map(x => ({ id: x.id, url: x.thumb_url || x.url }));
             } catch(_) { return []; }
         }
 
-        function getInputImageId(){ try { return localStorage.getItem('inputImageId') || null; } catch(_) { return null; } }
-        function setInputImageId(id){ try { if(id) localStorage.setItem('inputImageId', id); else localStorage.removeItem('inputImageId'); } catch(_) {}
-            updateInputImagePreview(); }
+        function getInputImageId(){ try { return selectedInputImageId || localStorage.getItem('inputImageId') || null; } catch(_) { return selectedInputImageId || null; } }
+        function setInputImageId(id){
+            selectedInputImageId = id || null;
+            try { if(id) localStorage.setItem('inputImageId', id); else localStorage.removeItem('inputImageId'); } catch(_) {}
+            updateInputImagePreview();
+        }
 
         async function updateInputImagePreview(){
             const img = document.getElementById('input-image-preview');
@@ -806,7 +803,7 @@
             wrap.id = 'input-picker';
             wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;';
             wrap.innerHTML = `
-              <div style="width:min(960px,96vw); max-height:90vh; background:var(--bg-card); border:1px solid var(--bg-surface); border-radius:12px; overflow:hidden; display:flex; flex-direction:column;">
+              <div style="width:min(840px,92vw); height:min(72vh,720px); background:var(--bg-card); border:1px solid var(--bg-surface); border-radius:12px; overflow:hidden; display:flex; flex-direction:column;">
                 <div style="padding:10px 12px; border-bottom:1px solid var(--bg-surface); display:flex; align-items:center; justify-content:space-between;">
                   <strong><i class="fas fa-image"></i> 입력 이미지 선택</strong>
                   <div style="display:flex; gap:8px; align-items:center;">
@@ -815,8 +812,8 @@
                     <button class="chip-btn" id="ip-close">닫기</button>
                   </div>
                 </div>
-                <div style="padding:12px; overflow:auto;">
-                  <div id="ip-grid" style="display:grid; grid-template-columns:repeat(6,1fr); gap:8px;"></div>
+                <div style="padding:12px; overflow:auto; flex:1;">
+                  <div id="ip-grid" style="display:grid; grid-template-columns: repeat(auto-fill, 128px); grid-auto-rows: 128px; gap:10px; justify-content:flex-start;"></div>
                 </div>
               </div>`;
             document.body.appendChild(wrap);
@@ -1018,12 +1015,15 @@
                 workflow_id: currentWorkflow.id,
                 seed: ui.seedInput.value ? parseInt(ui.seedInput.value, 10) : null
             };
+            try {
+                const dbgInputId = (typeof getInputImageId === 'function') ? getInputImageId() : null;
+                console.debug('[gen] input_image_id', dbgInputId || null);
+            } catch (_) {}
 
             // Image-to-image workflows: require input image selection
             try {
                 if (currentWorkflow && currentWorkflow.image_input) {
-                    let inputImageId = null;
-                    try { inputImageId = localStorage.getItem('inputImageId') || null; } catch(_) {}
+                    let inputImageId = getInputImageId();
                     if (inputImageId) {
                         requestData.input_image_id = inputImageId;
                     } else {

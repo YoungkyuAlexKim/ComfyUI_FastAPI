@@ -52,8 +52,22 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             self.control_enabled = d.get("control_enabled")
             self.control_image_id = d.get("control_image_id")
             self.controls = d.get("controls")
+            # Include optional image-to-image fields
+            self.input_image_id = d.get("input_image_id")
+            self.input_image_filename = d.get("input_image_filename")
 
     request = _Req(req_dict)
+    try:
+        logger.info({
+            "event": "gen_request",
+            "job_id": job.id,
+            "owner_id": job.owner_id,
+            "workflow_id": getattr(request, "workflow_id", None),
+            "input_image_id": getattr(request, "input_image_id", None),
+            "input_image_filename": getattr(request, "input_image_filename", None),
+        })
+    except Exception:
+        pass
     workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
     control = None
     multi_controls: List[dict] = []
@@ -272,69 +286,131 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
 
     try:
         # --- Optional: image-to-image workflow handling ---
-        try:
-            wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
-            io_cfg = wf_cfg.get("image_input") if isinstance(wf_cfg, dict) else None
-            # image_input: { image_node: str (node_id), input_field: str (default 'image'), source: 'control'|'gallery'|'upload' }
-            # Here we support: request.input_image_id (user gallery/controls saved PNG)
-            if io_cfg and isinstance(io_cfg, dict):
-                image_node = io_cfg.get("image_node")
-                input_field = io_cfg.get("input_field", "image")
+        wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+        io_cfg = wf_cfg.get("image_input") if isinstance(wf_cfg, dict) else None
+        # image_input: { image_node: str (node_id), input_field: str (default 'image') }
+        # Support: request.input_image_id (user gallery/controls saved PNG) or request.input_image_filename (already uploaded to Comfy)
+        if io_cfg and isinstance(io_cfg, dict):
+            image_node = io_cfg.get("image_node")
+            input_field = io_cfg.get("input_field", "image")
+            image_filename = None
+            resolve_source = None
+            # If request has input_image_filename already uploaded to Comfy input, use it
+            try:
+                image_filename = getattr(request, "input_image_filename", None)
+            except Exception:
                 image_filename = None
-                # Strategy: if request has input_image_filename already uploaded to Comfy input, use it
+            if image_filename:
+                resolve_source = "preuploaded"
+            # Else, if request.input_image_id refers to user input/gallery/control PNG, upload it
+            if not image_filename:
                 try:
-                    image_filename = getattr(request, "input_image_filename", None)
+                    img_id = getattr(request, "input_image_id", None)
                 except Exception:
-                    image_filename = None
-                # Else, if request.input_image_id refers to user control/gallery PNG, upload it
-                if not image_filename:
+                    img_id = None
+                if isinstance(img_id, str) and img_id:
+                    local_png = None
+                    # 1) inputs store
                     try:
-                        img_id = getattr(request, "input_image_id", None)
+                        from .media_store import _locate_input_png_path
+                        local_png = _locate_input_png_path(job.owner_id, img_id)
+                        if local_png:
+                            resolve_source = "inputs"
                     except Exception:
-                        img_id = None
-                    if isinstance(img_id, str) and img_id:
-                        # Prefer inputs path, then gallery image, then control path
                         local_png = None
-                        # 1) inputs store
+                    # 2) generated images (gallery)
+                    try:
+                        from .media_store import _locate_image_meta_path
+                        meta_path = _locate_image_meta_path(job.owner_id, img_id)
+                        if meta_path and os.path.exists(meta_path):
+                            base_dir = os.path.dirname(meta_path)
+                            cand = os.path.join(base_dir, f"{img_id}.png")
+                            if os.path.exists(cand):
+                                local_png = cand
+                                resolve_source = "images"
+                    except Exception:
+                        pass
+                    # 3) controls
+                    if not local_png:
+                        local_png = _locate_control_png_path(job.owner_id, img_id)
+                        if local_png:
+                            resolve_source = "controls"
+                    try:
+                        logger.info({
+                            "event": "image_input_resolved",
+                            "job_id": job.id,
+                            "owner_id": job.owner_id,
+                            "input_image_id": img_id,
+                            "local_png": local_png,
+                            "source": resolve_source,
+                        })
+                    except Exception:
+                        pass
+                    if local_png and os.path.exists(local_png):
                         try:
-                            from .media_store import _locate_input_png_path
-                            local_png = _locate_input_png_path(job.owner_id, img_id)
-                        except Exception:
-                            local_png = None
-                        try:
-                            from .media_store import _locate_image_meta_path
-                            # derive png path from meta
-                            meta_path = _locate_image_meta_path(job.owner_id, img_id)
-                            if meta_path and os.path.exists(meta_path):
-                                base_dir = os.path.dirname(meta_path)
-                                cand = os.path.join(base_dir, f"{img_id}.png")
-                                if os.path.exists(cand):
-                                    local_png = cand
-                        except Exception:
-                            pass
-                        if not local_png:
-                            local_png = _locate_control_png_path(job.owner_id, img_id)
-                        if local_png and os.path.exists(local_png):
+                            with open(local_png, "rb") as f:
+                                data = f.read()
+                            stored = client.upload_image_to_input(f"{img_id}_{job.id}.png", data, "image/png")
+                            if isinstance(stored, str) and stored:
+                                try:
+                                    _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
+                                except Exception:
+                                    pass
+                                image_filename = stored
+                                try:
+                                    logger.info({
+                                        "event": "image_input_uploaded",
+                                        "job_id": job.id,
+                                        "owner_id": job.owner_id,
+                                        "stored": stored,
+                                        "source": resolve_source,
+                                    })
+                                except Exception:
+                                    pass
+                                try:
+                                    time.sleep(0.1)
+                                except Exception:
+                                    pass
+                        except Exception as e:
                             try:
-                                with open(local_png, "rb") as f:
-                                    data = f.read()
-                                stored = client.upload_image_to_input(f"{img_id}_{job.id}.png", data, "image/png")
-                                if isinstance(stored, str) and stored:
-                                    try:
-                                        _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
-                                    except Exception:
-                                        pass
-                                    image_filename = stored
-                                    try:
-                                        time.sleep(0.1)
-                                    except Exception:
-                                        pass
+                                logger.info({"event": "image_input_upload_failed", "job_id": job.id, "owner_id": job.owner_id, "error": str(e)})
                             except Exception:
                                 pass
-                if image_node and image_filename:
-                    prompt_overrides[image_node] = {"inputs": {input_field: image_filename}}
-        except Exception:
-            pass
+                    else:
+                        # As a fallback, if id looks like a filename already in Comfy input, pass-through
+                        try:
+                            if (not local_png) and ("/" not in img_id) and ("\\" not in img_id) and img_id.lower().endswith('.png'):
+                                image_filename = img_id
+                                resolve_source = "filename_passthrough"
+                        except Exception:
+                            pass
+            # Hard gate: when image input is configured, an image must be resolved
+            if not image_filename:
+                try:
+                    logger.info({
+                        "event": "image_input_gate_error",
+                        "job_id": job.id,
+                        "owner_id": job.owner_id,
+                        "workflow_id": getattr(request, "workflow_id", None),
+                        "reason": "missing_input_image",
+                    })
+                except Exception:
+                    pass
+                raise RuntimeError("입력 이미지가 준비되지 않았습니다. 입력 이미지를 선택/업로드 후 다시 시도해 주세요.")
+
+            if image_node and image_filename:
+                prompt_overrides[image_node] = {"inputs": {input_field: image_filename}}
+                try:
+                    logger.info({
+                        "event": "image_input_override_set",
+                        "job_id": job.id,
+                        "owner_id": job.owner_id,
+                        "image_node": image_node,
+                        "input_field": input_field,
+                        "image_filename": image_filename,
+                    })
+                except Exception:
+                    pass
 
         # Merge additional prompt into target text node if configured (e.g., node 63 for ILXL)
         try:
