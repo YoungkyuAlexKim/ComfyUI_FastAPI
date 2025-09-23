@@ -1685,6 +1685,146 @@
         const lightboxImage = document.getElementById('lightbox-image');
         const lightboxCloseBtn = document.getElementById('lightbox-close');
 
+        // Lightbox zoom/pan (IIFE)
+        (function(){
+            const wrap = document.getElementById('lb-zoom-wrap');
+            const btnIn = document.getElementById('lb-zoom-in');
+            const btnOut = document.getElementById('lb-zoom-out');
+            const btnReset = document.getElementById('lb-zoom-reset');
+            if (!wrap || !lightboxImage) return;
+
+            let isInitialized = false;
+            let scale = 1;
+            let tx = 0;
+            let ty = 0;
+            let baseW = 0;
+            let baseH = 0;
+            let dragging = false;
+            let startX = 0;
+            let startY = 0;
+            let startTx = 0;
+            let startTy = 0;
+
+            const MIN = 0.1;
+            const MAX = 5;
+            const STEP = 0.25; // 25%
+            const mediaEl = document.querySelector('.lightbox-media');
+
+            function snapQuarter(v){ return Math.round(v * 4) / 4; }
+
+            function applyTransform(){
+                lightboxImage.style.transformOrigin = 'center center';
+                lightboxImage.style.transform = `scale(${scale}) translate(${tx}px, ${ty}px)`;
+                if (mediaEl) mediaEl.classList.toggle('zoomed', scale > 1.001);
+            }
+
+            function clampPan(){
+                const vw = wrap.clientWidth || 0;
+                const vh = wrap.clientHeight || 0;
+                const scaledW = baseW * scale;
+                const scaledH = baseH * scale;
+                const maxX = Math.max(0, (scaledW - vw) / 2);
+                const maxY = Math.max(0, (scaledH - vh) / 2);
+                if (!Number.isFinite(tx)) tx = 0;
+                if (!Number.isFinite(ty)) ty = 0;
+                tx = Math.min(maxX, Math.max(-maxX, tx));
+                ty = Math.min(maxY, Math.max(-maxY, ty));
+            }
+
+            function recomputeBase(){
+                // Temporarily clear transform to measure contained size at scale=1
+                const prev = lightboxImage.style.transform;
+                lightboxImage.style.transform = 'none';
+                const rect = lightboxImage.getBoundingClientRect();
+                baseW = rect.width;
+                baseH = rect.height;
+                lightboxImage.style.transform = prev;
+                if (!baseW || !baseH) {
+                    baseW = wrap.clientWidth;
+                    baseH = wrap.clientHeight;
+                }
+            }
+
+            function zoomBy(d){
+                const newScale = Math.min(MAX, Math.max(MIN, snapQuarter(scale + d)));
+                if (newScale === scale) return;
+                scale = newScale;
+                clampPan();
+                applyTransform();
+            }
+
+            function reset(){
+                scale = 1;
+                tx = 0;
+                ty = 0;
+                applyTransform();
+            }
+
+            function onWheel(e){
+                if (!wrap) return;
+                e.preventDefault();
+                // Determine cursor position relative to wrap center
+                const rect = wrap.getBoundingClientRect();
+                const mx = e.clientX - (rect.left + rect.width / 2);
+                const my = e.clientY - (rect.top + rect.height / 2);
+                const s0 = scale;
+                const dir = e.deltaY < 0 ? 1 : -1;
+                const s1 = Math.min(MAX, Math.max(MIN, snapQuarter(s0 + dir * STEP)));
+                if (s1 === s0) return;
+                // Adjust translation to keep cursor content under the pointer
+                const k = s1 / s0;
+                tx = tx * k + mx * (1 - k);
+                ty = ty * k + my * (1 - k);
+                scale = s1;
+                clampPan();
+                applyTransform();
+            }
+
+            function onPointerDown(e){
+                if (scale <= 1) return; // no pan at base scale
+                dragging = true;
+                wrap.classList.add('dragging');
+                try { wrap.setPointerCapture(e.pointerId); } catch(_) {}
+                startX = e.clientX; startY = e.clientY;
+                startTx = tx; startTy = ty;
+                e.preventDefault();
+            }
+            function onPointerMove(e){
+                if (!dragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                tx = startTx + dx;
+                ty = startTy + dy;
+                clampPan();
+                applyTransform();
+            }
+            function onPointerUp(e){
+                dragging = false;
+                wrap.classList.remove('dragging');
+                try { wrap.releasePointerCapture(e.pointerId); } catch(_) {}
+            }
+
+            function initOnce(){
+                if (isInitialized) return;
+                isInitialized = true;
+                wrap.classList.add('lb-pan-surface');
+                wrap.addEventListener('pointerdown', onPointerDown);
+                window.addEventListener('pointermove', onPointerMove);
+                window.addEventListener('pointerup', onPointerUp);
+                btnIn?.addEventListener('click', () => zoomBy(+STEP));
+                btnOut?.addEventListener('click', () => zoomBy(-STEP));
+                btnReset?.addEventListener('click', reset);
+                wrap.addEventListener('wheel', onWheel, { passive: false });
+            }
+
+            // Expose minimal API for open/close hooks
+            window.LBZoom = {
+                init: () => { initOnce(); },
+                reset: () => { reset(); },
+                onImageReady: () => { recomputeBase(); clampPan(); applyTransform(); }
+            };
+        })();
+
         let lightboxCurrentUrl = '';
         function openLightbox(src, alt = '', metaItem = null) {
             lightboxImage.src = src;
@@ -1722,12 +1862,21 @@
                 bodyEl.style.opacity = '0';
                 requestAnimationFrame(() => { bodyEl.style.opacity = ''; });
             }
+            // Initialize zoom/pan and reset state
+            try {
+                window.LBZoom?.init();
+                window.LBZoom?.reset();
+                const onReady = () => { window.LBZoom?.onImageReady(); };
+                if (lightboxImage.complete && lightboxImage.naturalWidth) { onReady(); }
+                else { lightboxImage.addEventListener('load', onReady, { once: true }); }
+            } catch (_) {}
         }
 
         function closeLightbox() {
             lightbox.classList.remove('open');
             lightbox.setAttribute('aria-hidden', 'true');
             document.body.style.overflow = '';
+            try { window.LBZoom?.reset(); } catch(_) {}
         }
 
         ui.resultImage.addEventListener('click', () => {
@@ -1818,7 +1967,20 @@
             </button>
             <div class="lightbox-body">
                 <div class="lightbox-media">
-                    <img id="lightbox-image" alt="확대된 이미지" />
+                    <div class="lb-zoom-wrap" id="lb-zoom-wrap">
+                        <img id="lightbox-image" alt="확대된 이미지" />
+                    </div>
+                    <div class="lightbox-zoom-toolbar" aria-label="확대/축소 도구">
+                        <button class="chip-btn icon-only" id="lb-zoom-out" type="button" aria-label="축소">
+                            <i class="fas fa-magnifying-glass-minus"></i>
+                        </button>
+                        <button class="chip-btn icon-only" id="lb-zoom-reset" type="button" aria-label="원래 크기">
+                            <i class="fas fa-arrows-rotate"></i>
+                        </button>
+                        <button class="chip-btn icon-only" id="lb-zoom-in" type="button" aria-label="확대">
+                            <i class="fas fa-magnifying-glass-plus"></i>
+                        </button>
+                    </div>
                 </div>
                 <aside class="lightbox-meta" id="lightbox-meta" aria-live="polite">
                     <h4 class="meta-title"><i class="fas fa-circle-info"></i> 이미지 정보</h4>
