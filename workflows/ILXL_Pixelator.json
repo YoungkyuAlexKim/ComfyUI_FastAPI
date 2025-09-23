@@ -1,7 +1,7 @@
 {
   "3": {
     "inputs": {
-      "seed": 221599555467334,
+      "seed": 57345333236192,
       "steps": 30,
       "cfg": 3.5,
       "sampler_name": "euler_ancestral",
@@ -81,19 +81,6 @@
     "class_type": "VAEDecode",
     "_meta": {
       "title": "VAE 디코드"
-    }
-  },
-  "9": {
-    "inputs": {
-      "filename_prefix": "2025-09-23/ComfyUI_2025-09-23",
-      "images": [
-        "26",
-        0
-      ]
-    },
-    "class_type": "SaveImage",
-    "_meta": {
-      "title": "이미지 저장"
     }
   },
   "14": {
@@ -237,7 +224,7 @@
   },
   "32": {
     "inputs": {
-      "image": "buildingSample.jpg"
+      "image": "492b89d9fd0743529bd9369dfb63ba98_098bbe8355b4481f867b8a8bff4d49e8.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -305,7 +292,7 @@
   },
   "63": {
     "inputs": {
-      "text": "masterpiece, best quality, amazing quality, 4k, very aesthetic, ultra-detailed, (pixel art, dithering, pixelated, sprite art, 8-bit:1.2),",
+      "text": "masterpiece, best quality, amazing quality, 4k, very aesthetic, ultra-detailed, (pixel art, dithering, pixelated, sprite art, 8-bit:1.2),\ngundam_unicorn, ",
       "clip": [
         "14",
         1
@@ -332,6 +319,18 @@
     "class_type": "ImageResize+",
     "_meta": {
       "title": "InputImageResize"
+    }
+  },
+  "65": {
+    "inputs": {
+      "images": [
+        "26",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "최종이미지프리뷰"
     }
   }
 }

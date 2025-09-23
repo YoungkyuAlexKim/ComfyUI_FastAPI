@@ -72,7 +72,8 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     control = None
     multi_controls: List[dict] = []
     uploaded_multi_filenames: List[str] = []
-    uploaded_input_filename: Optional[str] = None
+    uploaded_input_filename: Optional[str] = None  # control single
+    uploaded_image_input_filename: Optional[str] = None  # image_input single
 
     # Prepare ControlNet overrides if enabled
     try:
@@ -357,6 +358,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                                 except Exception:
                                     pass
                                 image_filename = stored
+                                uploaded_image_input_filename = stored
                                 try:
                                     logger.info({
                                         "event": "image_input_uploaded",
@@ -465,6 +467,13 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                         candidate = os.path.join(COMFY_INPUT_DIR, uploaded_input_filename)
                         if os.path.exists(candidate):
                             os.remove(candidate)
+                    except Exception:
+                        pass
+                if uploaded_image_input_filename:
+                    try:
+                        candidate2 = os.path.join(COMFY_INPUT_DIR, uploaded_image_input_filename)
+                        if os.path.exists(candidate2):
+                            os.remove(candidate2)
                     except Exception:
                         pass
                 try:
