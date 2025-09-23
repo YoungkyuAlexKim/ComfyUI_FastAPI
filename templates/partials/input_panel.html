@@ -1,0 +1,146 @@
+<!-- Input Panel -->
+<div class="input-panel">
+    <div class="input-card">
+        <div class="card-header">
+            <div class="workflow-banner" id="workflow-banner" role="img" aria-label="워크플로우 배너">
+                <div class="workflow-banner-scrim"></div>
+                <div class="workflow-banner-text">
+                    <h2 class="workflow-name-display" id="workflow-name-display">워크플로우를 선택해주세요</h2>
+                    <p class="workflow-description-display" id="workflow-description-display">왼쪽에서 사용할 워크플로우를 선택하면 여기에 정보가 표시됩니다</p>
+                </div>
+            </div>
+        </div>
+        <div class="card-content">
+            <div class="form-grid">
+                <!-- Input Image (for image-to-image workflows) -->
+                <div class="form-group" id="input-image-wrap" style="display:none;">
+                    <label class="form-label">
+                        <i class="fas fa-image"></i> 입력 이미지 (필수)
+                    </label>
+                    <div id="input-image-drop" style="width:100%; max-width:100%; height:240px; border:1px dashed var(--bg-surface); border-radius:12px; overflow:hidden; background:var(--bg-tertiary); display:flex; align-items:center; justify-content:center; position:relative;">
+                        <img id="input-image-preview" alt="입력 이미지" style="display:none; width:100%; height:100%; object-fit:cover;" />
+                        <div id="input-image-empty" style="color:var(--text-muted); font-size:14px;">클릭하거나 드래그하여 이미지 선택</div>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                        <button type="button" class="chip-btn" id="input-image-choose"><i class="fas fa-folder-open"></i> 선택</button>
+                        <button type="button" class="chip-btn" id="input-image-clear"><i class="fas fa-xmark"></i> 지우기</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="user_prompt">
+                        <i class="fas fa-comment-dots"></i> 프롬프트 (내용)
+                    </label>
+                    <p class="prompt-suggestion" id="prompt-suggestion-text" style="display: none;" title=""></p>
+                    <div class="input-with-action">
+                        <textarea class="form-input" id="user_prompt" placeholder="그리고 싶은 내용을 입력하세요 (예: 한복을 입은 소녀)..." rows="5">{{ default_user_prompt }}</textarea>
+                        <button class="translate-btn--icon" data-target="user_prompt" data-tooltip="Danbooru 태그로 변환" aria-label="Danbooru 태그로 변환">
+                            <i class="fas fa-pencil-alt"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="style_prompt">
+                        <i class="fas fa-palette"></i> 시스템 프롬프트 (스타일 & 품질)
+                    </label>
+                    <textarea class="form-input" id="style_prompt" rows="2" readonly>{{ default_style_prompt }}</textarea>
+                </div>
+
+                <div class="form-group" id="negative-prompt-wrap">
+                    <label class="form-label" for="negative_prompt">
+                        <i class="fas fa-ban"></i> 시스템 부정 프롬프트
+                    </label>
+                    <textarea class="form-input" id="negative_prompt" rows="2" readonly>{{ default_negative_prompt }}</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-crop-alt"></i> 이미지 비율
+                    </label>
+                    <div class="aspect-ratio-group" id="aspect-ratio-group">
+                        <button class="aspect-ratio-btn selected" data-ratio="square">
+                            <i class="fas fa-square"></i>
+                            <span class="label">Square</span>
+                        </button>
+                        <button class="aspect-ratio-btn" data-ratio="landscape">
+                            <i class="fas fa-window-maximize"></i>
+                            <span class="label">Landscape</span>
+                        </button>
+                        <button class="aspect-ratio-btn" data-ratio="portrait">
+                            <i class="fas fa-mobile-screen-button"></i>
+                            <span class="label">Portrait</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generator Toolbar -->
+            <div class="generator-toolbar">
+                <div class="seed-row" id="seed-row" style="display:flex; align-items:center; gap:8px; margin:8px 0;">
+                    <label class="seed-label" for="seed" style="display:inline-flex; align-items:center; gap:6px;">
+                        <i class="fas fa-dice"></i> 시드값
+                    </label>
+                    <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0" style="max-width:220px;">
+                </div>
+
+                <div class="output-toolbar">
+                    <button class="generate-btn" id="generate-btn">
+                        <i class="fas fa-sparkles"></i> 이미지 생성하기
+                    </button>
+                    <button class="cancel-btn" id="cancel-btn" disabled>
+                        <i class="fas fa-stop-circle"></i> 생성 취소
+                    </button>
+                </div>
+
+                <div class="progress-section" id="progress-section">
+                    <div class="progress-title" style="display:none;">
+                        <i class="fas fa-bolt"></i> 진행률
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                    <div class="progress-right" id="progress-right" aria-live="polite" style="display:none;"></div>
+                    <div class="progress-bubble" id="progress-bubble" aria-live="polite" style="display:none;"></div>
+                    <div class="progress-text" id="progress-text" aria-live="polite" style="display:none;"></div>
+                    <div class="queue-info" id="queue-info" style="display:none;">
+                        <span class="badge" id="queue-position"></span>
+                        <span id="queue-eta"></span>
+                    </div>
+                </div>
+
+                <div class="output-toolbar">
+                    <div class="output-tools">
+                        <label class="control-toggle">
+                            <input type="checkbox" id="control-enabled" />
+                            <span>ControlNet 사용</span>
+                        </label>
+                        <button id="open-canvas-btn" type="button" class="chip-btn" title="캔버스 열기" aria-label="캔버스 열기">
+                            <i class="fas fa-pencil"></i> 캔버스 열기
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="controlnet-strip">
+                <div id="control-floating" title="컨트롤 이미지(클릭하여 캔버스 열기)">
+                    <div id="control-slot-inner">
+                        <img id="control-floating-img" alt="선택된 컨트롤" />
+                        <div id="control-floating-empty">
+                            <i class="fas fa-pen"></i>
+                        </div>
+                    </div>
+                    <button id="control-clear" type="button" title="컨트롤 제거" aria-label="컨트롤 제거">
+                        <i class="fas fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="status-container" id="status-container">
+                <p id="status-message"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+

@@ -1,0 +1,64 @@
+<!-- Gallery Toggle Button (edge) -->
+<button id="gallery-toggle" class="gallery-toggle" type="button" aria-label="갤러리 열기" title="갤러리 열기">
+    <i class="fas fa-images"></i>
+</button>
+
+<!-- Gallery Panel (slide-out) -->
+<div class="gallery-panel" id="gallery-panel" aria-hidden="true">
+    <button id="gallery-close" class="gallery-close" type="button" aria-label="갤러리 닫기" title="갤러리 닫기">
+        <i class="fas fa-times"></i>
+    </button>
+    <div class="gallery-section" id="gallery-section" data-skeleton-count="12">
+        <div class="gallery-card">
+            <div class="gallery-header">
+                <div class="gallery-tabs">
+                    <button id="tab-generated" type="button" class="chip-btn active">
+                        <i class="fas fa-images"></i> 생성 이미지
+                    </button>
+                    <button id="tab-controls" type="button" class="chip-btn">
+                        <i class="fas fa-pen-ruler"></i> 내 컨트롤 이미지
+                    </button>
+                    <button id="tab-inputs" type="button" class="chip-btn">
+                        <i class="fas fa-image"></i> 입력 이미지
+                    </button>
+                </div>
+                <button id="control-upload-icon" type="button" class="icon-btn" title="이미지 업로드" aria-label="이미지 업로드" style="display:none;">
+                    <i class="fas fa-upload"></i>
+                </button>
+                <input id="control-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+                <input id="inputs-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+            </div>
+
+            <div class="gallery-title-row">
+                <h3 class="gallery-title" id="gallery-title">
+                    <i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지
+                </h3>
+            </div>
+
+            <div class="gallery-actions" id="gallery-actions">
+                <button class="chip-btn chip-btn--ghost icon-only" id="select-toggle-btn" type="button" aria-label="선택" title="선택">
+                    <i class="fas fa-list-check"></i>
+                </button>
+                <div>
+                    <span id="selected-count" style="display:none;">0개 선택됨</span>
+                    <button class="chip-btn icon-only" id="select-all-btn" type="button" style="display:none;" aria-label="모두선택" title="모두선택">
+                        <i class="fas fa-check-double"></i>
+                    </button>
+                    <button class="chip-btn chip-btn--ghost icon-only" id="clear-selection-btn" type="button" style="display:none;" aria-label="선택해제" title="선택해제">
+                        <i class="fas fa-circle-xmark"></i>
+                    </button>
+                    <button class="chip-btn chip-btn--danger icon-only" id="delete-selected-btn" type="button" style="display:none;" aria-label="선택 삭제" title="선택 삭제" disabled>
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="gallery-grid" id="gallery-grid"></div>
+            <button class="gallery-load-more" id="gallery-load-more" style="display:none;">
+                <i class="fas fa-chevron-down"></i> 더 보기
+            </button>
+        </div>
+    </div>
+</div>
+
+

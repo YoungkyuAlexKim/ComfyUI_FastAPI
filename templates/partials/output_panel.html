@@ -1,0 +1,39 @@
+<!-- Output Panel -->
+<div class="output-panel">
+    <!-- Output Card -->
+    <div class="output-card">
+        <div class="placeholder-section" id="placeholder-section">
+            <div class="placeholder-card">
+                <div class="placeholder-container">
+                    <div class="placeholder-icon">
+                        <i class="fas fa-image"></i>
+                    </div>
+                    <p class="placeholder-text">
+                        그리고 싶은 내용을 프롬프트에 입력하고<br>"이미지 생성하기" 버튼을 눌러보세요!
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="result-section" id="result-section" style="display: none;">
+            <div class="result-card">
+                <div class="result-content">
+                    <div class="image-container" id="result-image-container">
+                        <img id="result-image" src="" alt="생성된 이미지 결과" class="result-image">
+                        <button id="result-download-btn" class="result-download-btn" type="button" title="다운로드" aria-label="다운로드" style="display:none;">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                    <p class="result-hint" id="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
+                </div>
+            </div>
+        </div>
+        <div class="preview-overlay" id="preview-overlay">
+            <div class="preview-overlay-content">
+                <div class="loading-spinner"></div>
+                <div class="preview-overlay-tip typing-caret" id="preview-tip"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+

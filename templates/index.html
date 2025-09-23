@@ -1,203 +1,12 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LC AI Canvas - AI 이미지 생성</title>
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" href="/static/favicon/favicon-32.png" sizes="32x32">
-    <link rel="icon" type="image/png" href="/static/favicon/favicon-16.png" sizes="16x16">
-    <link rel="apple-touch-icon" href="/static/favicon/apple-touch-icon.png" sizes="180x180">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="/static/css/styles.css?v=20250919_02" rel="stylesheet">
-</head>
-<body>
+{% extends "base.html" %}
+{% block content %}
     <div class="app-container" data-anon-id="{{ anon_id }}">
         <div class="app-layout">
-            <aside class="sidebar">
-                <div class="sidebar-header">
-                    <div class="brand-banner" id="brand-banner" role="img" aria-label="앱 배너">
-                        <div class="brand-banner-text" id="brand-banner-text">
-                            <h1 class="app-title"><i class="fas fa-bars"></i> LC AI Canvas</h1>
-                        </div>
-                    </div>
-                </div>
-                <div class="workflow-section">
-                    <div class="workflow-section-header">
-                        <h3 class="sidebar-title"><i class="fas fa-cogs"></i> 워크플로우</h3>
-                    </div>
-                    <div class="workflow-list" id="workflow-list"></div>
-                </div>
-                <div class="sidebar-footer">
-                    <div class="current-workflow" id="current-workflow">
-                        <small class="workflow-info">
-                            <i class="fas fa-info-circle"></i> 선택된 워크플로우: <span id="selected-workflow-name">없음</span>
-                        </small>
-                    </div>
-                </div>
-            </aside>
+            {% include "partials/sidebar.html" %}
 
             <main class="main-content gallery-collapsible">
-                <!-- Input Panel -->
-                <div class="input-panel">
-                    <div class="input-card">
-                        <div class="card-header">
-                            <div class="workflow-banner" id="workflow-banner" role="img" aria-label="워크플로우 배너">
-                                <div class="workflow-banner-scrim"></div>
-                                <div class="workflow-banner-text">
-                                    <h2 class="workflow-name-display" id="workflow-name-display">워크플로우를 선택해주세요</h2>
-                                    <p class="workflow-description-display" id="workflow-description-display">왼쪽에서 사용할 워크플로우를 선택하면 여기에 정보가 표시됩니다</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="card-content">
-                            <div class="form-grid">
-                                <!-- Input Image (for image-to-image workflows) - moved above prompt -->
-                                <div class="form-group" id="input-image-wrap" style="display:none;">
-                                    <label class="form-label">
-                                        <i class="fas fa-image"></i> 입력 이미지 (필수)
-                                    </label>
-                                    <div id="input-image-drop" style="width:100%; max-width:100%; height:240px; border:1px dashed var(--bg-surface); border-radius:12px; overflow:hidden; background:var(--bg-tertiary); display:flex; align-items:center; justify-content:center; position:relative;">
-                                        <img id="input-image-preview" alt="입력 이미지" style="display:none; width:100%; height:100%; object-fit:cover;" />
-                                        <div id="input-image-empty" style="color:var(--text-muted); font-size:14px;">클릭하거나 드래그하여 이미지 선택</div>
-                                    </div>
-                                    <div style="display:flex; gap:8px; margin-top:8px;">
-                                        <button type="button" class="chip-btn" id="input-image-choose"><i class="fas fa-folder-open"></i> 선택</button>
-                                        <button type="button" class="chip-btn" id="input-image-clear"><i class="fas fa-xmark"></i> 지우기</button>
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label" for="user_prompt">
-                                        <i class="fas fa-comment-dots"></i> 프롬프트 (내용)
-                                    </label>
-                                    <p class="prompt-suggestion" id="prompt-suggestion-text" style="display: none;" title=""></p>
-                                    <div class="input-with-action">
-                                        <textarea class="form-input" id="user_prompt" placeholder="그리고 싶은 내용을 입력하세요 (예: 한복을 입은 소녀)..." rows="5">{{ default_user_prompt }}</textarea>
-                                        <button class="translate-btn--icon" data-target="user_prompt" data-tooltip="Danbooru 태그로 변환" aria-label="Danbooru 태그로 변환">
-                                            <i class="fas fa-pencil-alt"></i>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label" for="style_prompt">
-                                        <i class="fas fa-palette"></i> 시스템 프롬프트 (스타일 & 품질)
-                                    </label>
-                                    <textarea class="form-input" id="style_prompt" rows="2" readonly>{{ default_style_prompt }}</textarea>
-                                </div>
-
-                                <div class="form-group" id="negative-prompt-wrap">
-                                    <label class="form-label" for="negative_prompt">
-                                        <i class="fas fa-ban"></i> 시스템 부정 프롬프트
-                                    </label>
-                                    <textarea class="form-input" id="negative_prompt" rows="2" readonly>{{ default_negative_prompt }}</textarea>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label">
-                                        <i class="fas fa-crop-alt"></i> 이미지 비율
-                                    </label>
-                                    <div class="aspect-ratio-group" id="aspect-ratio-group">
-                                        <button class="aspect-ratio-btn selected" data-ratio="square">
-                                            <i class="fas fa-square"></i>
-                                            <span class="label">Square</span>
-                                        </button>
-                                        <button class="aspect-ratio-btn" data-ratio="landscape">
-                                            <i class="fas fa-window-maximize"></i>
-                                            <span class="label">Landscape</span>
-                                        </button>
-                                        <button class="aspect-ratio-btn" data-ratio="portrait">
-                                            <i class="fas fa-mobile-screen-button"></i>
-                                            <span class="label">Portrait</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                
-                            </div>
-
-                            <!-- Generator Toolbar -->
-                            <div class="generator-toolbar">
-                                <!-- Compact Seed Row (moved above buttons) -->
-                                <div class="seed-row" id="seed-row" style="display:flex; align-items:center; gap:8px; margin:8px 0;">
-                                    <label class="seed-label" for="seed" style="display:inline-flex; align-items:center; gap:6px;">
-                                        <i class="fas fa-dice"></i> 시드값
-                                    </label>
-                                    <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0" style="max-width:220px;">
-                                </div>
-                                <!-- Top row: Generate / Cancel -->
-                                <div class="output-toolbar">
-                                    <button class="generate-btn" id="generate-btn">
-                                        <i class="fas fa-sparkles"></i> 이미지 생성하기
-                                    </button>
-                                    <button class="cancel-btn" id="cancel-btn" disabled>
-                                        <i class="fas fa-stop-circle"></i> 생성 취소
-                                    </button>
-                                </div>
-
-                                <!-- Injected Progress Section (moved here between rows) -->
-                                <div class="progress-section" id="progress-section">
-                                    <div class="progress-title" style="display:none;">
-                                        <i class="fas fa-bolt"></i> 진행률
-                                    </div>
-                                    <div class="progress-container">
-                                        <div class="progress-bar" id="progress-bar"></div>
-                                    </div>
-                                    <!-- Percent labels (controlled by APP_CONFIG.progress.percentMode) -->
-                                    <div class="progress-right" id="progress-right" aria-live="polite" style="display:none;"></div>
-                                    <div class="progress-bubble" id="progress-bubble" aria-live="polite" style="display:none;"></div>
-                                    <div class="progress-text" id="progress-text" aria-live="polite" style="display:none;"></div>
-                                    <div class="queue-info" id="queue-info" style="display:none;">
-                                        <span class="badge" id="queue-position"></span>
-                                        <span id="queue-eta"></span>
-                                    </div>
-                                </div>
-
-                                <!-- Bottom row: ControlNet toggle, Canvas, and icons -->
-                                <div class="output-toolbar">
-                                    <div class="output-tools">
-                                        <label class="control-toggle">
-                                            <input type="checkbox" id="control-enabled" />
-                                            <span>ControlNet 사용</span>
-                                        </label>
-                                        <button id="open-canvas-btn" type="button" class="chip-btn" title="캔버스 열기" aria-label="캔버스 열기">
-                                            <i class="fas fa-pencil"></i> 캔버스 열기
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- ControlNet Strip -->
-                            <div class="controlnet-strip">
-                                <div id="control-floating" title="컨트롤 이미지(클릭하여 캔버스 열기)">
-                                    <div id="control-slot-inner">
-                                        <img id="control-floating-img" alt="선택된 컨트롤" />
-                                        <div id="control-floating-empty">
-                                            <i class="fas fa-pen"></i>
-                                        </div>
-                                    </div>
-                                    <button id="control-clear" type="button" title="컨트롤 제거" aria-label="컨트롤 제거">
-                                        <i class="fas fa-xmark"></i>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="status-container" id="status-container">
-                                <p id="status-message"></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Output Panel -->
-                <div class="output-panel">
-
-                    
-
-                    <!-- Output Card -->
-                    <div class="output-card">
+                {% include "partials/input_panel.html" %}
+                {% include "partials/output_panel.html" %}
                         <div class="placeholder-section" id="placeholder-section">
                             <div class="placeholder-card">
                                 <div class="placeholder-container">
@@ -229,75 +38,12 @@
                                 <div class="preview-overlay-tip typing-caret" id="preview-tip"></div>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Gallery Toggle Button (edge) -->
-                <button id="gallery-toggle" class="gallery-toggle" type="button" aria-label="갤러리 열기" title="갤러리 열기">
-                    <i class="fas fa-images"></i>
-                </button>
-
-                <!-- Gallery Panel (slide-out) -->
-                <div class="gallery-panel" id="gallery-panel" aria-hidden="true">
-                    <button id="gallery-close" class="gallery-close" type="button" aria-label="갤러리 닫기" title="갤러리 닫기">
-                        <i class="fas fa-times"></i>
-                    </button>
-                    <div class="gallery-section" id="gallery-section" data-skeleton-count="12">
-                        <div class="gallery-card">
-                            <div class="gallery-header">
-                                <div class="gallery-tabs">
-                                    <button id="tab-generated" type="button" class="chip-btn active">
-                                        <i class="fas fa-images"></i> 생성 이미지
-                                    </button>
-                                    <button id="tab-controls" type="button" class="chip-btn">
-                                        <i class="fas fa-pen-ruler"></i> 내 컨트롤 이미지
-                                    </button>
-                                    <button id="tab-inputs" type="button" class="chip-btn">
-                                        <i class="fas fa-image"></i> 입력 이미지
-                                    </button>
-                                </div>
-                                <button id="control-upload-icon" type="button" class="icon-btn" title="이미지 업로드" aria-label="이미지 업로드" style="display:none;">
-                                    <i class="fas fa-upload"></i>
-                                </button>
-                                <input id="control-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
-                                <input id="inputs-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
-                            </div>
-
-                            <div class="gallery-title-row">
-                                <h3 class="gallery-title" id="gallery-title">
-                                    <i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지
-                                </h3>
-                            </div>
-
-                            <div class="gallery-actions" id="gallery-actions">
-                                <button class="chip-btn chip-btn--ghost icon-only" id="select-toggle-btn" type="button" aria-label="선택" title="선택">
-                                    <i class="fas fa-list-check"></i>
-                                </button>
-                                <div>
-                                    <span id="selected-count" style="display:none;">0개 선택됨</span>
-                                    <button class="chip-btn icon-only" id="select-all-btn" type="button" style="display:none;" aria-label="모두선택" title="모두선택">
-                                        <i class="fas fa-check-double"></i>
-                                    </button>
-                                    <button class="chip-btn chip-btn--ghost icon-only" id="clear-selection-btn" type="button" style="display:none;" aria-label="선택해제" title="선택해제">
-                                        <i class="fas fa-circle-xmark"></i>
-                                    </button>
-                                    <button class="chip-btn chip-btn--danger icon-only" id="delete-selected-btn" type="button" style="display:none;" aria-label="선택 삭제" title="선택 삭제" disabled>
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="gallery-grid" id="gallery-grid"></div>
-                            <button class="gallery-load-more" id="gallery-load-more" style="display:none;">
-                                <i class="fas fa-chevron-down"></i> 더 보기
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                {% include "partials/gallery_panel.html" %}
             </main>
         </div>
     </div>
-
+{% endblock %}
+{% block scripts %}
     <script id="workflows-sizes-data" type="application/json">{{ workflows_sizes_json | safe }}</script>
     <script id="workflow-default-prompts-data" type="application/json">{{ workflow_default_prompts_json | safe }}</script>
     <script id="workflow-control-slots-data" type="application/json">{{ workflow_control_slots_json | safe }}</script>
@@ -2330,9 +2076,6 @@
         switchGallery('generated');
     });
     </script>
-    <script src="/static/js/app_config.js"></script>
-    <script src="/static/js/loading_tips.js"></script>
-    <script src="/static/js/tag_weighting.js"></script>
     
     <!-- Lightbox (이미지 확대 보기) -->
     <div class="lightbox-overlay" id="image-lightbox" aria-hidden="true" role="dialog" aria-modal="true">
@@ -2378,5 +2121,4 @@
     </div>
     <script src="/static/js/prompt_translate.js"></script>
     <script src="/static/js/control_canvas.js"></script>
-</body>
-</html>
+{% endblock %}
