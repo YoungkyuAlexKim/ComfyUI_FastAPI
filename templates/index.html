@@ -865,6 +865,37 @@
                 drop.addEventListener('drop', async (e)=>{
                     e.preventDefault();
                     drop.style.outline='none';
+                    // Handle server-side copy if dragging from gallery; otherwise fallback to file upload
+                    const txt = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || '';
+                    let payload = null;
+                    try { payload = JSON.parse(txt); } catch(_) {}
+                    if (payload && payload.id && payload.source) {
+                        if (!currentWorkflow || !currentWorkflow.image_input) {
+                            showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
+                            return;
+                        }
+                        // Inputs: set directly; Generated/Controls: server-side copy to inputs first
+                        if (payload.source === 'inputs') {
+                            setInputImageId(payload.id);
+                            showStatus('입력 이미지가 선택되었습니다.', 'info');
+                            return;
+                        }
+                        try {
+                            const res = await fetch('/api/v1/inputs/copy', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ source: payload.source, id: payload.id })
+                            });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.detail || '복사 실패');
+                            setInputImageId(data.id);
+                            showStatus('입력 보관함으로 복사되었습니다.', 'success');
+                        } catch (err) {
+                            showStatus(err?.message || '복사 실패', 'error');
+                        }
+                        return;
+                    }
+                    // Fallback: file drop
                     const file = e.dataTransfer.files && e.dataTransfer.files[0];
                     if (!file) return;
                     try {
@@ -875,7 +906,7 @@
                         if (!res.ok) throw new Error(data.detail || '업로드 실패');
                         setInputImageId(data.id);
                         showStatus('입력 이미지가 업로드되었습니다.', 'success');
-                    } catch (_) { showStatus('업로드 실패', 'error'); }
+                    } catch (err) { showStatus(err?.message || '업로드 실패', 'error'); }
                 });
             }
         })();
@@ -1563,6 +1594,13 @@
                 a.className = 'gallery-item';
                 a.dataset.imageId = it.id;
                 a.setAttribute('aria-label', '이미지 보기');
+                // Drag payload with source
+                a.setAttribute('draggable', (!selectionMode).toString());
+                a.addEventListener('dragstart', (ev) => {
+                    if (selectionMode) { ev.preventDefault(); return; }
+                    const payload = { id: it.id, url: it.url, thumb: it.thumb_url || null, source: gallerySource };
+                    try { ev.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch(_) {}
+                });
                 const img = document.createElement('img');
                 img.className = 'gallery-thumb';
                 img.src = it.thumb_url || it.url;
@@ -1574,10 +1612,7 @@
                 sel.innerHTML = '<i class="fas fa-check"></i>';
                 a.appendChild(sel);
 
-                a.setAttribute('draggable', 'true');
-                a.addEventListener('dragstart', (ev) => {
-                    try { ev.dataTransfer.setData('text/plain', JSON.stringify({ id: it.id, url: it.url, thumb: it.thumb_url })); } catch(_) {}
-                });
+                // selection-mode handling below
                 if (selectionMode && selectedIds.has(it.id)) a.classList.add('selected');
                 a.addEventListener('click', (evt) => {
                     if (gallerySource === 'controls') {

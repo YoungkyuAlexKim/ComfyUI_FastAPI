@@ -1776,14 +1776,15 @@
     padding-bottom: var(--space-sm);
     overflow-y: auto;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    /* 고정 크기 그리드: 아이템이 1개여도 타일 크기를 유지하고 좌측 정렬 */
+    grid-template-columns: repeat(auto-fill, minmax(128px, 128px));
     gap: 10px;
-    align-content: start; /* 남는 세로 공간은 아래에 모으고, 행 간 간격은 gap만 적용 */
-    justify-content: stretch;
+    align-content: start;
+    justify-content: start;
     align-items: stretch;
     justify-items: stretch;
-    grid-auto-rows: auto; /* aspect-ratio에 맡기고, 확대/축소 시 행 높이 왜곡 방지 */
-    grid-auto-flow: row; /* 확대 시 밀집 재배치로 인한 간격 깨짐 방지 */
+    grid-auto-rows: auto;
+    grid-auto-flow: row;
     box-sizing: border-box;
 }
 

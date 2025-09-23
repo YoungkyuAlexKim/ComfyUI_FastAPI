@@ -9,6 +9,7 @@ from ..config import SERVER_CONFIG
 from ..services.media_store import (
     _gather_user_images,
     _gather_user_controls,
+    _gather_user_inputs,
     _update_image_status,
     _update_control_status,
     _user_base_dir,
@@ -192,6 +193,35 @@ async def admin_images(user_id: str, page: int = 1, size: int = 24, include: str
 async def admin_controls(user_id: str, page: int = 1, size: int = 24, include: str = "all"):
     include_trash = True
     items = _gather_user_controls(user_id, include_trash=include_trash)
+    if include == "active":
+        items = [it for it in items if it.get("status") == "active"]
+    elif include == "trash":
+        items = [it for it in items if it.get("status") != "active"]
+
+    size = max(1, min(100, size))
+    page = max(1, page)
+    start = (page - 1) * size
+    end = start + size
+    total = len(items)
+    slice_items = items[start:end]
+    response_items = []
+    from datetime import datetime, timezone  # local import
+    for it in slice_items:
+        response_items.append({
+            "id": it["id"],
+            "url": it["url"],
+            "thumb_url": it.get("thumb_url"),
+            "status": it.get("status"),
+            "created_at": datetime.fromtimestamp(it["mtime"], tz=timezone.utc).isoformat(),
+        })
+    total_pages = (total + size - 1) // size
+    return {"items": response_items, "page": page, "size": size, "total": total, "total_pages": total_pages}
+
+
+@router.get("/api/v1/admin/inputs", tags=["Admin"])
+async def admin_inputs(user_id: str, page: int = 1, size: int = 24, include: str = "all"):
+    include_trash = True
+    items = _gather_user_inputs(user_id, include_trash=include_trash)
     if include == "active":
         items = [it for it in items if it.get("status") == "active"]
     elif include == "trash":

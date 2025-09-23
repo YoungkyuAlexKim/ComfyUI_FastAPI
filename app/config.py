@@ -83,6 +83,7 @@ PROGRESS_LOG_CONFIG = {
 # Control image upload: maximum allowed size in bytes (default: 10MB)
 UPLOAD_CONFIG = {
     "controls_max_bytes": int(os.getenv("CONTROLS_MAX_BYTES", str(10 * 1024 * 1024))),
+    "inputs_max_bytes": int(os.getenv("INPUTS_MAX_BYTES", str(10 * 1024 * 1024))),
 }
 
 # --- 4. 관련 함수 ---
