@@ -95,6 +95,11 @@
         // 예: 이미지에 텍스트가 내장된 경우 아래를 false로 설정
         showTitle: false,     // 배너 이미지에 텍스트가 포함돼 있다면 false
         showDescription: false // 배너 이미지에 텍스트가 포함돼 있다면 false
+      },
+      'ILXL_Pixelator': {
+        url: '/static/img/banner/img_banner_workflow_pixelator.png',
+        showTitle: false,
+        showDescription: false
       }
     }
   };
