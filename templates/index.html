@@ -549,7 +549,7 @@
         // Empty slot click opens canvas for quick start
         const controlEmptyEl = document.getElementById('control-floating-empty');
         if (controlEmptyEl) controlEmptyEl.addEventListener('click', () => {
-            try { document.getElementById('open-canvas-btn')?.click(); } catch(_) {}
+            try { openControlPicker(); } catch(_) {}
         });
 
         // Reflect checkbox changes: if checked with no selection → keep empty slot; if unchecked we still keep slot visible
@@ -838,8 +838,9 @@
             const wrap = document.createElement('div');
             wrap.id = 'input-picker';
             wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;';
+            wrap.classList.add('fade-in-overlay');
             wrap.innerHTML = `
-              <div style="width:min(840px,92vw); height:min(72vh,720px); background:var(--bg-card); border:1px solid var(--bg-surface); border-radius:12px; overflow:hidden; display:flex; flex-direction:column;">
+              <div class="fade-in-panel" style="width:min(840px,92vw); height:min(72vh,720px); background:var(--bg-card); border:1px solid var(--bg-surface); border-radius:12px; overflow:hidden; display:flex; flex-direction:column;">
                 <div style="padding:10px 12px; border-bottom:1px solid var(--bg-surface); display:flex; align-items:center; justify-content:space-between;">
                   <strong><i class="fas fa-image"></i> 입력 이미지 선택</strong>
                   <div style="display:flex; gap:8px; align-items:center;">
@@ -853,8 +854,18 @@
                 </div>
               </div>`;
             document.body.appendChild(wrap);
-            wrap.addEventListener('click', (e)=>{ if(e.target===wrap) wrap.remove(); });
-            wrap.querySelector('#ip-close').addEventListener('click', ()=> wrap.remove());
+            const closeWithFade = () => {
+                try {
+                    const panel = wrap.firstElementChild;
+                    wrap.classList.remove('fade-in-overlay');
+                    panel && panel.classList && panel.classList.remove('fade-in-panel');
+                    wrap.classList.add('fade-out-overlay');
+                    panel && panel.classList && panel.classList.add('fade-out-panel');
+                    setTimeout(()=>{ try { wrap.remove(); } catch(_) {} }, 180);
+                } catch(_) { try { wrap.remove(); } catch(__) {} }
+            };
+            wrap.addEventListener('click', (e)=>{ if(e.target===wrap) closeWithFade(); });
+            wrap.querySelector('#ip-close').addEventListener('click', closeWithFade);
             // upload
             const ipUpload = wrap.querySelector('#ip-upload');
             wrap.querySelector('#ip-upload-btn').addEventListener('click', ()=> ipUpload.click());
@@ -868,7 +879,7 @@
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.detail || '업로드 실패');
                     setInputImageId(data.id);
-                    wrap.remove();
+                    closeWithFade();
                     showStatus('입력 이미지가 업로드되었습니다.', 'success');
                 } catch (err) {
                     showStatus('업로드 실패', 'error');
@@ -883,11 +894,94 @@
                   </div>
                 `).join('');
                 grid.querySelectorAll('.thumb').forEach(el => {
-                    el.addEventListener('click', ()=>{ setInputImageId(el.dataset.id); wrap.remove(); showStatus('입력 이미지가 선택되었습니다.', 'info'); });
+                    el.addEventListener('click', ()=>{ setInputImageId(el.dataset.id); closeWithFade(); showStatus('입력 이미지가 선택되었습니다.', 'info'); });
                 });
             })();
         }
 
+        async function openControlPicker(){
+            if (!currentWorkflow || !(currentWorkflow.ui && currentWorkflow.ui.showControlNet)) {
+                showStatus('이 워크플로우에서는 ControlNet을 사용할 수 없어요.', 'warning');
+                return;
+            }
+            const existing = document.getElementById('control-picker');
+            if (existing) existing.remove();
+            const wrap = document.createElement('div');
+            wrap.id = 'control-picker';
+            wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;';
+            wrap.classList.add('fade-in-overlay');
+            wrap.innerHTML = `
+                <div class="fade-in-panel" style="width:820px;max-width:95vw;background:var(--bg-card);border-radius:12px;box-shadow:var(--shadow-2xl);overflow:hidden;display:flex;flex-direction:column;">
+                  <div style="padding:12px 16px;border-bottom:1px solid var(--neutral-200);display:flex;align-items:center;justify-content:space-between;">
+                    <strong><i class="fas fa-pen-ruler"></i> 컨트롤 이미지 선택</strong>
+                    <button id="cp-close" class="icon-btn" aria-label="닫기"><i class="fas fa-times"></i></button>
+                  </div>
+                  <div style="padding:12px; max-height:60vh; overflow:auto;">
+                    <div id="cp-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,128px));gap:10px;justify-content:start;">
+                      <div style="color:var(--text-muted);">불러오는 중…</div>
+                    </div>
+                  </div>
+                  <div style="padding:12px;border-top:1px solid var(--neutral-200);display:flex;justify-content:flex-end;gap:8px;">
+                    <button class="btn-ghost" id="cp-cancel">닫기</button>
+                  </div>
+                </div>`;
+            document.body.appendChild(wrap);
+            const close = ()=>{ try { wrap.remove(); } catch(_) {} };
+            const closeWithFade = () => {
+                try {
+                    const panel = wrap.firstElementChild;
+                    wrap.classList.remove('fade-in-overlay');
+                    panel && panel.classList && panel.classList.remove('fade-in-panel');
+                    wrap.classList.add('fade-out-overlay');
+                    panel && panel.classList && panel.classList.add('fade-out-panel');
+                    setTimeout(()=>{ try { wrap.remove(); } catch(_) {} }, 180);
+                } catch(_) { close(); }
+            };
+            wrap.querySelector('#cp-close')?.addEventListener('click', closeWithFade);
+            wrap.addEventListener('click', (e)=>{ if (e.target === wrap) closeWithFade(); });
+            wrap.querySelector('#cp-cancel')?.addEventListener('click', closeWithFade);
+            const grid = wrap.querySelector('#cp-grid');
+            try {
+                const res = await fetch('/api/v1/controls?page=1&size=500');
+                const data = await res.json();
+                const items = Array.isArray(data.items) ? data.items : [];
+                if (!items.length) {
+                    grid.innerHTML = '<div style="color:var(--text-muted);">컨트롤 이미지가 없습니다. 우측 상단 업로드 버튼으로 추가해 보세요.</div>';
+                    return;
+                }
+                grid.innerHTML = items.map(it => `
+                  <button class="thumb" data-id="${it.id}" style="aspect-ratio:1/1; background:var(--bg-tertiary); border-radius:8px; overflow:hidden; cursor:pointer; border:1px solid var(--neutral-200);">
+                    <img src="${it.thumb_url || it.url}" alt="${it.id}" style="width:100%; height:100%; object-fit:cover; display:block;"/>
+                  </button>
+                `).join('');
+                grid.querySelectorAll('.thumb').forEach(el => {
+                    el.addEventListener('click', ()=>{
+                        const id = el.getAttribute('data-id');
+                        try { setControlSlot('default', id); } catch(_) {}
+                        try {
+                            const floatingImg = document.getElementById('control-floating-img');
+                            const floatingEmpty = document.getElementById('control-floating-empty');
+                            const floatingClear = document.getElementById('control-clear');
+                            const thumb = el.querySelector('img')?.getAttribute('src');
+                            if (floatingImg && thumb) {
+                                floatingImg.style.display = 'block';
+                                floatingImg.classList.add('show');
+                                floatingImg.src = '';
+                                floatingImg.src = thumb;
+                            }
+                            if (floatingEmpty) floatingEmpty.style.display = 'none';
+                            if (floatingClear) floatingClear.style.display = 'flex';
+                            const chk = document.getElementById('control-enabled');
+                            if (chk) chk.checked = true;
+                        } catch(_) {}
+                        showStatus('컨트롤이 선택되었습니다. ControlNet 토글을 켜면 적용됩니다.', 'info');
+                        closeWithFade();
+                    });
+                });
+            } catch(_) {
+                grid.innerHTML = '<div style="color:var(--text-muted);">목록을 불러오지 못했습니다.</div>';
+            }
+        }
         (function bindInputImageUI(){
             const choose = document.getElementById('input-image-choose');
             const clear = document.getElementById('input-image-clear');
@@ -1706,35 +1800,8 @@
                 if (selectionMode && selectedIds.has(it.id)) a.classList.add('selected');
                 a.addEventListener('click', (evt) => {
                     if (gallerySource === 'controls') {
-                        // Guard: when current workflow does not expose ControlNet, block assignment
-                        const canUseControl = !!(currentWorkflow && currentWorkflow.ui && currentWorkflow.ui.showControlNet);
-                        if (!canUseControl) {
-                            showStatus('이 워크플로우에서는 ControlNet을 사용할 수 없어요.', 'warning');
-                            return;
-                        }
-                        const slots = getCurrentWorkflowSlots();
-                        if (Array.isArray(slots) && slots.length > 1) {
-                            openSlotPopover(evt.currentTarget, it, slots);
-                        } else {
-                            // Single-slot (default) immediate assign
-                            try { setControlSlot('default', it.id); } catch(_) {}
-                            try {
-                                const floatingImg = document.getElementById('control-floating-img');
-                                const floatingEmpty = document.getElementById('control-floating-empty');
-                                const floatingClear = document.getElementById('control-clear');
-                                if (floatingImg) {
-                                    floatingImg.style.display = 'block';
-                                    floatingImg.classList.add('show');
-                                    floatingImg.src = '';
-                                    floatingImg.src = it.thumb_url || it.url;
-                                }
-                                if (floatingEmpty) floatingEmpty.style.display = 'none';
-                                if (floatingClear) floatingClear.style.display = 'flex';
-                                const chk = document.getElementById('control-enabled');
-                                if (chk) chk.checked = true;
-                            } catch(_) {}
-                            showStatus('컨트롤이 선택되었습니다. ControlNet 토글을 켜면 적용됩니다.', 'info');
-                        }
+                        // 쓰기 동작 제거: 클릭 시 라이트박스만 열고, 슬롯 배정은 모달에서 수행
+                        openLightboxAt(i);
                     } else if (gallerySource === 'inputs') {
                         // Explicitly prevent assigning inputs into ControlNet slot via click path
                         // Inputs are used as image_input; click should open lightbox instead
@@ -1837,11 +1904,6 @@
                     const txt = e.dataTransfer.getData('text/plain');
                     const data = JSON.parse(txt || '{}');
                     if (!data || !data.id) return;
-                    const current = getControlSlots();
-                    if (current.default) {
-                        const ok = window.confirm('기본 슬롯의 이미지를 교체하시겠어요?');
-                        if (!ok) return;
-                    }
                     setControlSlot('default', data.id);
                     const floatingImg = document.getElementById('control-floating-img');
                     const floatingEmpty = document.getElementById('control-floating-empty');

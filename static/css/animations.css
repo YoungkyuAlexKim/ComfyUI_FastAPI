@@ -10,3 +10,41 @@
         transform: translateY(0);
     }
 }
+
+/* Generic fade-in for overlays/modals */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in-overlay {
+    animation: fadeIn 180ms ease-out;
+}
+
+.fade-in-panel {
+    animation: fadeInUp 220ms cubic-bezier(.22,.8,.2,1);
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+@keyframes fadeOutDown {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+}
+
+.fade-out-overlay {
+    animation: fadeOut 160ms ease-in forwards;
+}
+
+.fade-out-panel {
+    animation: fadeOutDown 200ms cubic-bezier(.22,.8,.2,1) forwards;
+}
