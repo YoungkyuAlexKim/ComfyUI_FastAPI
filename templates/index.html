@@ -312,6 +312,21 @@
 
     <script>
     document.addEventListener("DOMContentLoaded", function() {
+        // --- Global DnD guard to prevent browser from opening files when dropped outside ---
+        (function installGlobalDnDGuards(){
+            const prevent = (e)=>{ try{ e.preventDefault(); e.stopPropagation(); }catch(_){} };
+            ['dragover','drop'].forEach(evt => {
+                window.addEventListener(evt, (e)=>{
+                    // If drop target is our input drop zone, allow handler to run there.
+                    const target = e.target;
+                    const isEl = target && typeof target === 'object' && 'closest' in target;
+                    const withinDrop = !!(isEl && (target.id === 'input-image-drop' || target.closest('#input-image-drop')));
+                    if (!withinDrop && (e.dataTransfer && (e.dataTransfer.types?.includes?.('Files') || e.dataTransfer.files?.length))) {
+                        prevent(e);
+                    }
+                });
+            });
+        })();
         let currentWorkflow = null;
         let selectedAspectRatio = (function(){ try { return localStorage.getItem('selectedAspectRatio') || 'square'; } catch (_) { return 'square'; } })();
         const workflowsSizes = JSON.parse(document.getElementById('workflows-sizes-data').textContent);
@@ -749,6 +764,24 @@
                 if (inWrap) inWrap.style.display = workflow.image_input ? '' : 'none';
                 if (workflow.image_input) updateInputImagePreview();
             } catch(_) {}
+            // ControlNet UI 표시/숨김: 설정 값(ui.showControlNet)만 따른다
+            try {
+                const hasFlag = workflow && workflow.ui && (typeof workflow.ui.showControlNet !== 'undefined');
+                const show = hasFlag ? !!workflow.ui.showControlNet : false;
+                const controlToggleWrap = document.querySelector('.control-toggle')?.parentElement || document.querySelector('.control-toggle');
+                const controlStrip = document.querySelector('.controlnet-strip');
+                const tabControls = document.getElementById('tab-controls');
+                const controlUploadIcon = document.getElementById('control-upload-icon');
+                const controlUpload = document.getElementById('control-upload');
+                const openCanvasBtn = document.getElementById('open-canvas-btn');
+                const affect = (el, show)=>{ if (!el) return; el.style.display = show ? '' : 'none'; };
+                affect(controlToggleWrap, show);
+                affect(controlStrip, show);
+                affect(tabControls, show);
+                affect(controlUploadIcon, show);
+                affect(controlUpload, show);
+                // 캔버스 열기 버튼은 ControlNet과 무관 → 그대로 둡니다
+            } catch(_) {}
             // 자동태그/시스템 프롬프트 읽기전용 안내(표시는 유지, 기본적으로 readonly 구성)
             // 추가 프롬프트는 user_prompt 입력란을 사용합니다.
             
@@ -896,14 +929,41 @@
                         return;
                     }
                     // Fallback: file drop
+                    if (!currentWorkflow || !currentWorkflow.image_input) {
+                        showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
+                        return;
+                    }
                     const file = e.dataTransfer.files && e.dataTransfer.files[0];
                     if (!file) return;
+                    try {
+                        if (e.dataTransfer.files && e.dataTransfer.files.length > 1) {
+                            showStatus('여러 장을 드롭했네요. 첫 한 장만 등록할게요.', 'info');
+                        }
+                        const okTypes = ['image/png','image/jpeg','image/jpg','image/webp'];
+                        const nameLower = (file.name || '').toLowerCase();
+                        const typeOk = okTypes.includes(file.type) || nameLower.endsWith('.png') || nameLower.endsWith('.jpg') || nameLower.endsWith('.jpeg') || nameLower.endsWith('.webp');
+                        if (!typeOk) {
+                            showStatus('PNG, JPG, WEBP 형식만 등록할 수 있어요.', 'warning');
+                            return;
+                        }
+                        const MAX_BYTES = 2621440; // 2.5MB client hint (server enforces too)
+                        if (typeof file.size === 'number' && file.size > MAX_BYTES) {
+                            showStatus('파일이 커요. 2.5MB 이하로 줄여서 올려주세요.', 'warning');
+                            // 계속 시도하고 싶으면 아래 return을 제거하세요. 지금은 UX 상 선제 차단.
+                            return;
+                        }
+                    } catch(_) {}
                     try {
                         const fd = new FormData();
                         fd.append('file', file);
                         const res = await fetch('/api/v1/inputs/upload', { method: 'POST', body: fd });
                         const data = await res.json();
-                        if (!res.ok) throw new Error(data.detail || '업로드 실패');
+                        if (!res.ok) {
+                            if (res.status === 413) {
+                                throw new Error('파일이 커요. 2.5MB 이하로 업로드해주세요.');
+                            }
+                            throw new Error(data.detail || '업로드 실패');
+                        }
                         setInputImageId(data.id);
                         showStatus('입력 이미지가 업로드되었습니다.', 'success');
                     } catch (err) { showStatus(err?.message || '업로드 실패', 'error'); }

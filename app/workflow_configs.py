@@ -42,6 +42,10 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
                 "end_percent": 0.33,
             },
         },
+        # UI schema
+        "ui": {
+            "showControlNet": True
+        },
     },
 
     "ILXL_Pixelator": {
@@ -69,7 +73,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showSystemPromptReadOnly": True,
             "showNegative": False,
             "aspectOptions": ["square"],
-            "additionalPromptTargetNode": "63"
+            "additionalPromptTargetNode": "63",
+            "showControlNet": False
         },
     },
 
