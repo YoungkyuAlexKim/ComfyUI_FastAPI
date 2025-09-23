@@ -265,10 +265,11 @@
                                         <i class="fas fa-image"></i> 입력 이미지
                                     </button>
                                 </div>
-                                <button id="control-upload-icon" type="button" class="icon-btn" title="컨트롤 업로드" aria-label="컨트롤 업로드" style="display:none;">
+                                <button id="control-upload-icon" type="button" class="icon-btn" title="이미지 업로드" aria-label="이미지 업로드" style="display:none;">
                                     <i class="fas fa-upload"></i>
                                 </button>
                                 <input id="control-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+                                <input id="inputs-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" />
                             </div>
 
                             <div class="gallery-title-row">
@@ -777,9 +778,11 @@
                 const affect = (el, show)=>{ if (!el) return; el.style.display = show ? '' : 'none'; };
                 affect(controlToggleWrap, show);
                 affect(controlStrip, show);
-                affect(tabControls, show);
-                affect(controlUploadIcon, show);
-                affect(controlUpload, show);
+                // 갤러리 탭(컨트롤)은 항상 표시
+                if (tabControls) tabControls.style.display = '';
+                // 업로드 아이콘만 표시 제어, 실제 파일 input은 항상 hidden 유지
+                if (controlUploadIcon) controlUploadIcon.style.display = show ? '' : 'none';
+                if (controlUpload) controlUpload.style.display = 'none';
                 // 캔버스 열기 버튼은 ControlNet과 무관 → 그대로 둡니다
             } catch(_) {}
             // 자동태그/시스템 프롬프트 읽기전용 안내(표시는 유지, 기본적으로 readonly 구성)
@@ -1568,6 +1571,7 @@
         const tabInputs = document.getElementById('tab-inputs');
         const galleryTitle = document.getElementById('gallery-title');
         const controlUpload = document.getElementById('control-upload');
+        const inputsUpload = document.getElementById('inputs-upload');
         const controlUploadIcon = document.getElementById('control-upload-icon');
 
         tabGenerated.addEventListener('click', () => switchGallery('generated'));
@@ -1579,17 +1583,22 @@
             tabGenerated.classList.toggle('active', src === 'generated');
             tabControls.classList.toggle('active', src === 'controls');
             if (tabInputs) tabInputs.classList.toggle('active', src === 'inputs');
-                if (src === 'controls') {
+            if (src === 'controls') {
                 galleryTitle.innerHTML = '<i class="fas fa-pen-ruler"></i> 내 컨트롤 이미지';
-                if (controlUploadIcon) controlUploadIcon.style.display = '';
+                // 컨트롤넷 워크플로우에서만 업로드 아이콘 노출
+                const showCN = !!(currentWorkflow && currentWorkflow.ui && currentWorkflow.ui.showControlNet);
+                if (controlUploadIcon) controlUploadIcon.style.display = showCN ? '' : 'none';
+                if (controlUploadIcon) controlUploadIcon.onclick = () => controlUpload?.click();
                 setSelectionMode(false);
             } else if (src === 'inputs') {
                 galleryTitle.innerHTML = '<i class="fas fa-image"></i> 입력 이미지';
-                if (controlUploadIcon) controlUploadIcon.style.display = 'none';
+                if (controlUploadIcon) controlUploadIcon.style.display = '';
+                if (controlUploadIcon) controlUploadIcon.onclick = () => inputsUpload?.click();
                 setSelectionMode(false);
             } else {
                 galleryTitle.innerHTML = '<i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지';
                 if (controlUploadIcon) controlUploadIcon.style.display = 'none';
+                if (controlUploadIcon) controlUploadIcon.onclick = null;
             }
             currentPage = 1;
             fetchGallery(true);
@@ -1611,10 +1620,31 @@
                 if (controlUpload) controlUpload.value = '';
             }
         }
-        if (controlUploadIcon) controlUploadIcon.addEventListener('click', () => controlUpload && controlUpload.click());
         controlUpload.addEventListener('change', (e) => {
             const file = e.target.files && e.target.files[0];
             if (file) uploadControlFile(file);
+        });
+
+        async function uploadInputsFile(file){
+            if (!file) return;
+            try {
+                const fd = new FormData();
+                fd.append('file', file);
+                const res = await fetch('/api/v1/inputs/upload', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || '업로드 실패');
+                showStatus('입력 이미지가 저장되었습니다.', 'success');
+                if (gallerySource === 'inputs') fetchGallery(true);
+            } catch (e) {
+                showStatus(`업로드 실패: ${e.message}`, 'error');
+            } finally {
+                const el = document.getElementById('inputs-upload');
+                if (el) el.value = '';
+            }
+        }
+        if (inputsUpload) inputsUpload.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (file) uploadInputsFile(file);
         });
 
         async function fetchGallery(initial = false) {
@@ -1676,6 +1706,12 @@
                 if (selectionMode && selectedIds.has(it.id)) a.classList.add('selected');
                 a.addEventListener('click', (evt) => {
                     if (gallerySource === 'controls') {
+                        // Guard: when current workflow does not expose ControlNet, block assignment
+                        const canUseControl = !!(currentWorkflow && currentWorkflow.ui && currentWorkflow.ui.showControlNet);
+                        if (!canUseControl) {
+                            showStatus('이 워크플로우에서는 ControlNet을 사용할 수 없어요.', 'warning');
+                            return;
+                        }
                         const slots = getCurrentWorkflowSlots();
                         if (Array.isArray(slots) && slots.length > 1) {
                             openSlotPopover(evt.currentTarget, it, slots);
@@ -1699,6 +1735,10 @@
                             } catch(_) {}
                             showStatus('컨트롤이 선택되었습니다. ControlNet 토글을 켜면 적용됩니다.', 'info');
                         }
+                    } else if (gallerySource === 'inputs') {
+                        // Explicitly prevent assigning inputs into ControlNet slot via click path
+                        // Inputs are used as image_input; click should open lightbox instead
+                        openLightboxAt(i);
                     } else {
                         openLightboxAt(i);
                     }
@@ -2238,7 +2278,13 @@
             const panel = document.getElementById('gallery-panel');
             const toggle = document.getElementById('gallery-toggle');
             if (!root || !panel || !toggle) return;
-            function openDrawer(){ root.classList.add('gallery-open'); panel.setAttribute('aria-hidden','false'); toggle.setAttribute('aria-label','갤러리 닫기'); }
+            function openDrawer(){
+                root.classList.add('gallery-open');
+                panel.setAttribute('aria-hidden','false');
+                toggle.setAttribute('aria-label','갤러리 닫기');
+                // Ensure upload icon reflects current active tab on initial open
+                switchGallery(gallerySource || 'generated');
+            }
             function closeDrawer(){ root.classList.remove('gallery-open'); panel.setAttribute('aria-hidden','true'); toggle.setAttribute('aria-label','갤러리 열기'); }
             function isOpen(){ return root.classList.contains('gallery-open'); }
             toggle.addEventListener('click', ()=>{ isOpen() ? closeDrawer() : openDrawer(); });
