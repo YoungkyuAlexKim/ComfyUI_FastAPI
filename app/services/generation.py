@@ -233,32 +233,29 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     except Exception:
         pass
 
-    # Gate: if control enabled, ensure image override present
-    try:
-        if getattr(request, "control_enabled", False):
-            wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
-            cn_cfg = wf_cfg.get("controlnet") if isinstance(wf_cfg, dict) else None
-            image_node = cn_cfg.get("image_node") if isinstance(cn_cfg, dict) else None
-            has_single = bool(isinstance(control, dict) and control.get("image_filename"))
-            has_override = bool(
-                image_node and isinstance(prompt_overrides, dict) and image_node in prompt_overrides and
-                isinstance(prompt_overrides[image_node], dict) and isinstance(prompt_overrides[image_node].get("inputs"), dict) and
-                prompt_overrides[image_node]["inputs"].get("image")
-            )
-            has_multi = bool(multi_controls)
-            if not (has_single or has_override or has_multi):
-                logger.info({
-                    "event": "controlnet_gate_failed",
-                    "owner_id": job.owner_id,
-                    "job_id": job.id,
-                    "reason": "no image override present",
-                    "control_enabled": True,
-                    "image_node": image_node,
-                    "overrides_keys": list(prompt_overrides.keys()) if isinstance(prompt_overrides, dict) else None,
-                })
-                raise RuntimeError("ControlNet image not prepared. Please re-select the control image and try again.")
-    except Exception:
-        pass
+    # Gate: if control enabled, ensure image override present (strict)
+    if getattr(request, "control_enabled", False):
+        wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+        cn_cfg = wf_cfg.get("controlnet") if isinstance(wf_cfg, dict) else None
+        image_node = cn_cfg.get("image_node") if isinstance(cn_cfg, dict) else None
+        has_single = bool(isinstance(control, dict) and control.get("image_filename"))
+        has_override = bool(
+            image_node and isinstance(prompt_overrides, dict) and image_node in prompt_overrides and
+            isinstance(prompt_overrides[image_node], dict) and isinstance(prompt_overrides[image_node].get("inputs"), dict) and
+            prompt_overrides[image_node]["inputs"].get("image")
+        )
+        has_multi = bool(multi_controls)
+        if not (has_single or has_override or has_multi):
+            logger.info({
+                "event": "controlnet_gate_failed",
+                "owner_id": job.owner_id,
+                "job_id": job.id,
+                "reason": "no image override present",
+                "control_enabled": True,
+                "image_node": image_node,
+                "overrides_keys": list(prompt_overrides.keys()) if isinstance(prompt_overrides, dict) else None,
+            })
+            raise RuntimeError("입력한 컨트롤 이미지가 준비되지 않았습니다. 내 컨트롤에서 이미지를 다시 선택해 주세요.")
 
     # Debug logging for ControlNet application
     try:
