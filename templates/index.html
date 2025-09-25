@@ -257,6 +257,17 @@
         if (controlEmptyEl) controlEmptyEl.addEventListener('click', () => {
             try { openControlPicker(); } catch(_) {}
         });
+        // Also open picker when clicking the whole ControlNet slot (except the clear button)
+        const controlSlotEl = document.getElementById('control-floating');
+        if (controlSlotEl) controlSlotEl.addEventListener('click', (e) => {
+            try {
+                if (e && e.target && typeof e.target.closest === 'function') {
+                    const hitClear = e.target.closest('#control-clear');
+                    if (hitClear) return; // let clear handler run
+                }
+            } catch(_) {}
+            try { openControlPicker(); } catch(_) {}
+        });
 
         // Reflect checkbox changes: if checked with no selection → keep empty slot; if unchecked we still keep slot visible
         const controlToggle = document.getElementById('control-enabled');
@@ -1798,7 +1809,8 @@
 
             function applyTransform(){
                 lightboxImage.style.transformOrigin = 'center center';
-                lightboxImage.style.transform = `scale(${scale}) translate(${tx}px, ${ty}px)`;
+                // Apply translate first, then scale so pan uses screen-space pixels
+                lightboxImage.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
                 if (mediaEl) mediaEl.classList.toggle('zoomed', scale > 1.001);
             }
 
@@ -1868,7 +1880,7 @@
                 if (scale <= 1) return; // no pan at base scale
                 dragging = true;
                 wrap.classList.add('dragging');
-                try { wrap.setPointerCapture(e.pointerId); } catch(_) {}
+                try { if (wrap.setPointerCapture) wrap.setPointerCapture(e.pointerId); } catch(_) {}
                 startX = e.clientX; startY = e.clientY;
                 startTx = tx; startTy = ty;
                 e.preventDefault();
@@ -1885,13 +1897,15 @@
             function onPointerUp(e){
                 dragging = false;
                 wrap.classList.remove('dragging');
-                try { wrap.releasePointerCapture(e.pointerId); } catch(_) {}
+                try { if (wrap.releasePointerCapture) wrap.releasePointerCapture(e.pointerId); } catch(_) {}
             }
 
             function initOnce(){
                 if (isInitialized) return;
                 isInitialized = true;
                 wrap.classList.add('lb-pan-surface');
+                // Ensure wrap receives pointer events and toolbar does not block panning
+                wrap.style.pointerEvents = 'auto';
                 wrap.addEventListener('pointerdown', onPointerDown);
                 window.addEventListener('pointermove', onPointerMove);
                 window.addEventListener('pointerup', onPointerUp);
@@ -2053,20 +2067,9 @@
                 <i class="fas fa-times"></i>
             </button>
             <div class="lightbox-body">
-                <div class="lightbox-media">
+                <div class="lightbox-media" style="position:relative; overflow:visible;">
                     <div class="lb-zoom-wrap" id="lb-zoom-wrap">
                         <img id="lightbox-image" alt="확대된 이미지" />
-                    </div>
-                    <div class="lightbox-zoom-toolbar" aria-label="확대/축소 도구">
-                        <button class="chip-btn icon-only" id="lb-zoom-out" type="button" aria-label="축소">
-                            <i class="fas fa-magnifying-glass-minus"></i>
-                        </button>
-                        <button class="chip-btn icon-only" id="lb-zoom-reset" type="button" aria-label="원래 크기">
-                            <i class="fas fa-arrows-rotate"></i>
-                        </button>
-                        <button class="chip-btn icon-only" id="lb-zoom-in" type="button" aria-label="확대">
-                            <i class="fas fa-magnifying-glass-plus"></i>
-                        </button>
                     </div>
                 </div>
                 <aside class="lightbox-meta" id="lightbox-meta" aria-live="polite">
@@ -2085,6 +2088,17 @@
                         </div>
                     </div>
                 </aside>
+            </div>
+            <div class="lightbox-zoom-toolbar" aria-label="확대/축소 도구">
+                <button class="chip-btn icon-only" id="lb-zoom-out" type="button" aria-label="축소">
+                    <i class="fas fa-magnifying-glass-minus"></i>
+                </button>
+                <button class="chip-btn icon-only" id="lb-zoom-reset" type="button" aria-label="원래 크기">
+                    <i class="fas fa-arrows-rotate"></i>
+                </button>
+                <button class="chip-btn icon-only" id="lb-zoom-in" type="button" aria-label="확대">
+                    <i class="fas fa-magnifying-glass-plus"></i>
+                </button>
             </div>
         </div>
     </div>

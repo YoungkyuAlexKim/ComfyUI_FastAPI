@@ -48,6 +48,52 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         },
     },
 
+    "BasicWorkFlow_MKStyle": {
+        "display_name": "MK 스타일(얼굴 디테일러)",
+        "description": "MK 스타일 템플릿 + 업스케일/리파인 + 얼굴 디테일러 적용",
+
+        # 사용자 프롬프트는 시스템 프롬프트에 병합되는 형태(선택 입력)
+        "default_user_prompt": "",
+
+        # 노드 ID 매핑 (JSON 기준)
+        # - 포지티브/네거티브 프롬프트 인코딩: 6 / 7
+        # - 시드: 초기 KSampler(3)
+        # - 빈 잠재 이미지: 5 (1024x1024)
+        "prompt_node": "6",
+        "negative_prompt_node": "7",
+        "seed_node": "3",
+        "latent_image_node": "5",
+
+        # 고정 프롬프트(시스템 스타일)
+        "style_prompt": "CQArt, masterpiece, best quality, amazing quality",
+        "negative_prompt": "bad quality, worst quality, worst detail, signature",
+
+        # 비율 기반 사이즈(기본 정사각 1024x1024)
+        # 16:9 계열은 GPU 친화적으로 64 배수에 가깝게 조정
+        "sizes": {
+            "square": {"width": 1024, "height": 1024},
+            "landscape": {"width": 1344, "height": 768},
+            "portrait": {"width": 768, "height": 1344},
+        },
+
+        # ControlNet 매핑(단일)
+        "controlnet": {
+            "enabled": True,
+            "apply_node": "23",
+            "image_node": "28",
+            "defaults": {
+                "strength": 0,
+                "start_percent": 0.0,
+                "end_percent": 0.33,
+            },
+        },
+
+        # UI 힌트
+        "ui": {
+            "showControlNet": True
+        },
+    },
+
     "ILXL_Pixelator": {
         "display_name": "픽셀레이터(입력 이미지 변환)",
         "description": "입력 이미지를 픽셀 아트 스타일로 변환합니다(자동 태깅 고정).",

@@ -1328,14 +1328,25 @@
     overflow: auto;
     color: var(--text-primary); /* 밝은 텍스트 */
 }
-.lb-zoom-wrap { position: relative; overflow: hidden; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.lb-zoom-wrap { position: relative; overflow: hidden; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1; }
 .lb-zoom-wrap img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
-.lightbox-media { position: relative; }
+.lightbox-media { position: relative; z-index: 0; overflow: visible; }
 .lightbox-media.zoomed { padding: 0; }
-.lightbox-media .lightbox-zoom-toolbar { position: absolute; left: 12px; bottom: 12px; display: inline-flex; gap: 8px; z-index: 2; }
+.lightbox-media .lightbox-zoom-toolbar { position: absolute; left: 12px; bottom: 12px; display: inline-flex !important; gap: 8px; z-index: 10000; pointer-events: auto; opacity: 1 !important; visibility: visible !important; transform: translateZ(0); }
+
+/* Global toolbar anchored to lightbox content bottom-left */
+.lightbox-content > .lightbox-zoom-toolbar {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    display: inline-flex;
+    gap: 8px;
+    z-index: 10000;
+    pointer-events: auto;
+}
 .lightbox-media .lightbox-zoom-toolbar .chip-btn { background: rgba(0,0,0,0.45); border-color: rgba(255,255,255,0.2); color: #fff; }
 .lightbox-media .lightbox-zoom-toolbar .chip-btn:hover { background: rgba(0,0,0,0.65); }
-.lb-pan-surface { cursor: grab; }
+.lb-pan-surface { cursor: grab; touch-action: none; user-select: none; }
 .lb-pan-surface.dragging { cursor: grabbing; }
 .meta-title { margin: 0 0 8px 0; font-size: 14px; color: var(--text-primary); display:flex; align-items:center; gap:6px; }
 .meta-fields { display:grid; grid-template-columns: 1fr; gap: 8px; }
