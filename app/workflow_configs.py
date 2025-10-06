@@ -42,9 +42,33 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
                 "end_percent": 0.33,
             },
         },
+        # 카드 UI 슬롯 메타(단일 슬롯)
+        "control_slots": {
+            "default": {
+                "apply_node": "23",
+                "image_node": "28",
+                "label": "Scribble",
+                "type": "scribble",
+                "ui": {
+                    "strength": {"min": 0.0, "max": 1.5, "step": 0.05, "default": 0.0},
+                    "start_percent": {"min": 0.0, "max": 1.0, "step": 0.01, "default": 0.0},
+                    "end_percent": {"min": 0.0, "max": 1.0, "step": 0.01, "default": 0.33}
+                }
+            }
+        },
         # UI schema
         "ui": {
-            "showControlNet": True
+            "showControlNet": True,
+            # 추천 프롬프트 템플릿(초보자용 클릭 추가)
+            # 프론트에서 chips 형태로 노출되며 클릭 시 사용자 프롬프트에 병합됩니다.
+            "promptTemplates": [
+                "1girl, solo, solid_oval_eyes, simple background",
+                "chibi, full_body, simple background",
+                "close-up, portrait, detailed eyes",
+                "dynamic pose, action, motion lines",
+                "fantasy armor, sword, standing",
+                "cute, small animal companion"
+            ]
         },
     },
 
@@ -76,7 +100,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "portrait": {"width": 768, "height": 1344},
         },
 
-        # ControlNet 매핑(단일)
+        # ControlNet 매핑(단일) + 슬롯 메타(UI 범위/기본값)
         "controlnet": {
             "enabled": True,
             "apply_node": "23",
@@ -87,11 +111,64 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
                 "end_percent": 0.33,
             },
         },
+        # 슬롯 단위 제어(멀티/단일 모두 지원). 기본 슬롯명: "default"
+        "control_slots": {
+            "default": {
+                "apply_node": "23",
+                "image_node": "28",
+                "label": "Scribble",
+                "type": "scribble",
+                "ui": {
+                    "strength": {"min": 0.0, "max": 1.5, "step": 0.05, "default": 0.0},
+                    "start_percent": {"min": 0.0, "max": 1.0, "step": 0.01, "default": 0.0},
+                    "end_percent": {"min": 0.0, "max": 1.0, "step": 0.01, "default": 0.33}
+                }
+            }
+        },
 
         # UI 힌트
         "ui": {
-            "showControlNet": True
+        "showControlNet": True,
+        # LoRA 강도 조절 UI 노출 (슬라이더)
+        "showLora": True,
+        # 당분간 캐릭터 LoRA 슬라이더는 숨김, 스타일만 노출
+        "showStyleLora": True,
+        "showCharacterLora": False
         },
+        # LoRA 매핑(노드/입력 키)
+        # - 캐릭터 로라: 워크플로우 노드 14
+        # - 스타일 로라: 워크플로우 노드 42
+        # - 입력 필드명은 pysssss LoraLoader 기준
+        "loras": {
+            "character": {
+                "node": "14",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_clip",
+                # 기본값 및 UI 범위 (프론트 참고용)
+                "defaults": {"unet": 0.0, "clip": 0.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05
+            },
+            "style": {
+                "node": "42",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_clip",
+                # 워크플로우 JSON 기본값 반영(0.8)
+                "defaults": {"unet": 0.8, "clip": 0.8},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05
+            }
+        }
+        ,
+        # LoRA 슬라이더 사용자 힌트(워크플로우별 커스텀 문구)
+        "lora_hint": {
+            "style": "강도가 높아질 수록 민국님 그림체에 점점 더 가까워집니다. 강도가 낮아질수록 모델 잠재력이 높아집니다",
+            "character": ""
+        }
     },
 
     "ILXL_Pixelator": {

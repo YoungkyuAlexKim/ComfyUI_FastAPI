@@ -94,8 +94,8 @@
   "14": {
     "inputs": {
       "lora_name": "Characters\\Illustrious\\Aoba_Suzukaze.safetensors",
-      "strength_model": 0.8,
-      "strength_clip": 0.8,
+      "strength_model": 0,
+      "strength_clip": 0,
       "prompt": "aoba-su, 1girl, purple eyes, twintails, purple hair, bangs, long hair, very long hair, hair ornament, flower, hair flower,\n\naoba-su, aoba-business, 1girl, purple eyes, twintails, purple hair, bangs, long hair, very long hair, hair ornament, flower, hair flower, formal jacket, shirt, white shirt, long sleeves, suit, ribbon, neck ribbon, skirt, socks, shoes, white socks, kneehighs,\n\naoba-su, aoba-business alt, 1girl, purple eyes, twintails, purple hair, bangs, long hair, very long hair, hair ornament, flower, hair flower, formal, shirt, white shirt, short sleeve, suit, ribbon, neck ribbon, skirt, socks, shoes, white socks, kneehighs,\n\naoba-su, aoba-casual, 1girl, purple eyes, twintails, purple hair, bangs, long hair, very long hair, ribbon, hair ribbon, dress, blue dress, short sleeves, collarbone",
       "example": "notes",
       "model": [

@@ -36,6 +36,12 @@ async def get_workflows():
             "ui": config.get("ui", {}),
             "sizes": config.get("sizes", {}),
             "image_input": config.get("image_input", None),
+            # Control slots meta for UI (ranges/defaults per slot)
+            "control_slots": config.get("control_slots", None),
+            # LoRA slots metadata (if provided)
+            "lora_slots": config.get("loras", None),
+            # LoRA slider hint (if provided)
+            "lora_hint": config.get("lora_hint", None),
         })
     return {"workflows": workflows}
 

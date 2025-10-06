@@ -1,7 +1,7 @@
 {
   "3": {
     "inputs": {
-      "seed": 792371386314862,
+      "seed": 982018821834363,
       "steps": 30,
       "cfg": 3.5,
       "sampler_name": "euler_ancestral",
@@ -51,7 +51,7 @@
   },
   "6": {
     "inputs": {
-      "text": "CQArt, masterpiece, best quality, amazing quality, ",
+      "text": "CQArt, masterpiece, best quality, amazing quality, \n\n1girl, brown hair, short hair, armored_dress, \ncowboy_shot, tachi-e, \nown_hands_together, looking_at_viewer, happy, ",
       "clip": [
         "14",
         1
@@ -93,17 +93,17 @@
   },
   "14": {
     "inputs": {
-      "lora_name": "styles\\IllustriousAA\\CQArt_Illust.safetensors",
-      "strength_model": 0.8,
-      "strength_clip": 1,
-      "prompt": "CQArt",
+      "lora_name": "Characters\\Illustrious\\Aoba_Suzukaze.safetensors",
+      "strength_model": 0,
+      "strength_clip": 0,
+      "prompt": "aoba-su, 1girl, purple eyes, twintails, purple hair, bangs, long hair, very long hair, hair ornament, flower, hair flower,\n\naoba-su, aoba-business, 1girl, purple eyes, twintails, purple hair, bangs, long hair, very long hair, hair ornament, flower, hair flower, formal jacket, shirt, white shirt, long sleeves, suit, ribbon, neck ribbon, skirt, socks, shoes, white socks, kneehighs,\n\naoba-su, aoba-business alt, 1girl, purple eyes, twintails, purple hair, bangs, long hair, very long hair, hair ornament, flower, hair flower, formal, shirt, white shirt, short sleeve, suit, ribbon, neck ribbon, skirt, socks, shoes, white socks, kneehighs,\n\naoba-su, aoba-casual, 1girl, purple eyes, twintails, purple hair, bangs, long hair, very long hair, ribbon, hair ribbon, dress, blue dress, short sleeves, collarbone",
       "example": "notes",
       "model": [
-        "4",
+        "42",
         0
       ],
       "clip": [
-        "4",
+        "42",
         1
       ]
     },
@@ -251,7 +251,7 @@
   },
   "28": {
     "inputs": {
-      "image": "scribble0.png"
+      "image": "50fdc1168ab6447da899d18209ca7aae.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -333,7 +333,7 @@
       "guide_size": 512,
       "guide_size_for": true,
       "max_size": 1024,
-      "seed": 8591819486953,
+      "seed": 506160412331375,
       "steps": 20,
       "cfg": 8,
       "sampler_name": "euler",
@@ -382,6 +382,27 @@
     "class_type": "PreviewImage",
     "_meta": {
       "title": "이미지 미리보기(최종)"
+    }
+  },
+  "42": {
+    "inputs": {
+      "lora_name": "styles\\IllustriousAA\\CQArt_Illust.safetensors",
+      "strength_model": 0.8,
+      "strength_clip": 0.8,
+      "prompt": "CQArt",
+      "example": "notes",
+      "model": [
+        "4",
+        0
+      ],
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "LoraLoader|pysssss",
+    "_meta": {
+      "title": "Style Lora Loader 🐍"
     }
   }
 }

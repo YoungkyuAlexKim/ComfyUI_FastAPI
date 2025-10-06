@@ -16,6 +16,7 @@
     <script id="workflows-sizes-data" type="application/json">{{ workflows_sizes_json | safe }}</script>
     <script id="workflow-default-prompts-data" type="application/json">{{ workflow_default_prompts_json | safe }}</script>
     <script id="workflow-control-slots-data" type="application/json">{{ workflow_control_slots_json | safe }}</script>
+    <script id="workflow-prompt-templates-data" type="application/json">{{ workflow_prompt_templates_json | safe }}</script>
 
     <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -39,6 +40,7 @@
         const workflowsSizes = JSON.parse(document.getElementById('workflows-sizes-data').textContent);
         const workflowDefaultPrompts = JSON.parse(document.getElementById('workflow-default-prompts-data').textContent);
         const workflowControlSlots = JSON.parse(document.getElementById('workflow-control-slots-data').textContent);
+        const workflowPromptTemplates = JSON.parse(document.getElementById('workflow-prompt-templates-data').textContent || '{}');
 
         const ui = {
             workflowList: document.getElementById('workflow-list'),
@@ -179,15 +181,23 @@
         } catch(_) {}
 
         ui.generateBtn.addEventListener('click', handleGenerateClick);
-        // 부정 프롬프트 영역 표시 여부 설정값 반영
+        // LoRA slider number sync
         try {
-            const showNeg = !!(window.APP_CONFIG && window.APP_CONFIG.ui && window.APP_CONFIG.ui.showNegativePrompt);
-            const negWrap = document.getElementById('negative-prompt-wrap');
-            if (negWrap) negWrap.style.display = showNeg ? '' : 'none';
-        } catch (_) {}
+            function bindPair(rangeId, numId){
+                const r = document.getElementById(rangeId);
+                const n = document.getElementById(numId);
+                if (!r || !n) return;
+                r.addEventListener('input', ()=>{ n.value = r.value; });
+                n.addEventListener('input', ()=>{ r.value = n.value; });
+            }
+            bindPair('lora-style-strength','lora-style-strength-num');
+            bindPair('lora-char-strength','lora-char-strength-num');
+        } catch(_) {}
+        // Negative prompt UI is removed; LoRA UI handled per workflow in render
         const cancelBtn = document.getElementById('cancel-btn');
         cancelBtn.addEventListener('click', handleCancelClick);
-        ui.promptSuggestionText.addEventListener('click', handleSuggestionClick);
+        // legacy 추천(클릭하여 추가) 버튼 제거
+        try { if (ui.promptSuggestionText) ui.promptSuggestionText.style.display = 'none'; } catch(_) {}
         const seedRandomBtn = document.getElementById('seed-random-btn');
         if (seedRandomBtn) seedRandomBtn.addEventListener('click', () => {
             const v = Math.floor(Math.random() * 1e12);
@@ -430,15 +440,140 @@
             autoResizeTextarea(ui.userPromptInput);
 
             ui.stylePromptInput.value = workflow.style_prompt;
-            ui.negativePromptInput.value = workflow.negative_prompt;
+            try { if (ui.negativePromptInput) ui.negativePromptInput.value = workflow.negative_prompt; } catch(_) {}
 
             // --- 조건부 UI 렌더링 (워크플로우 스키마 기반) ---
             const uiSchema = workflow.ui || {};
-            // 네거티브 프롬프트 표시/숨김
+            // LoRA 강도 UI 표시/초기화 (워크플로우 제공 메타 기반) - single value
             try {
-                const negWrap = document.getElementById('negative-prompt-wrap');
-                if (negWrap) negWrap.style.display = (uiSchema.showNegative === false) ? 'none' : '';
+                const loraMeta = workflow.lora_slots || null;
+                const wrap = document.getElementById('lora-strengths-wrap');
+                const rowStyle = document.getElementById('lora-row-style');
+                const rowChar = document.getElementById('lora-row-character');
+                const hint = document.getElementById('lora-hint');
+                const showLora = !!(workflow.ui && workflow.ui.showLora);
+                const showStyle = !!(workflow.ui && (workflow.ui.showStyleLora !== false));
+                const showChar = !!(workflow.ui && !!workflow.ui.showCharacterLora);
+                if (!wrap) { /* no-op */ }
+                else if (showLora && loraMeta && typeof loraMeta === 'object') {
+                    wrap.style.display = '';
+                    // Style
+                    if (loraMeta.style && showStyle) {
+                        rowStyle.style.display = '';
+                        const d = (loraMeta.style.defaults||{});
+                        const min = Number.isFinite(loraMeta.style.min) ? loraMeta.style.min : 0;
+                        const max = Number.isFinite(loraMeta.style.max) ? loraMeta.style.max : 1.5;
+                        const step = Number.isFinite(loraMeta.style.step) ? loraMeta.style.step : 0.05;
+                        const s = document.getElementById('lora-style-strength');
+                        const sNum = document.getElementById('lora-style-strength-num');
+                        [s, sNum].forEach(el=>{ if (el) { el.min = String(min); el.max = String(max); el.step = String(step); }});
+                        const defVal = Number.isFinite(d.unet) ? d.unet : (Number.isFinite(d.clip) ? d.clip : 0.8);
+                        if (s) s.value = String(defVal);
+                        if (sNum) sNum.value = String(defVal);
+                    } else {
+                        rowStyle.style.display = 'none';
+                    }
+                    // Character
+                    if (loraMeta.character && showChar) {
+                        rowChar.style.display = '';
+                        const d2 = (loraMeta.character.defaults||{});
+                        const min2 = Number.isFinite(loraMeta.character.min) ? loraMeta.character.min : 0;
+                        const max2 = Number.isFinite(loraMeta.character.max) ? loraMeta.character.max : 1.5;
+                        const step2 = Number.isFinite(loraMeta.character.step) ? loraMeta.character.step : 0.05;
+                        const s2 = document.getElementById('lora-char-strength');
+                        const sNum2 = document.getElementById('lora-char-strength-num');
+                        [s2, sNum2].forEach(el=>{ if (el) { el.min = String(min2); el.max = String(max2); el.step = String(step2); }});
+                        const defVal2 = Number.isFinite(d2.unet) ? d2.unet : (Number.isFinite(d2.clip) ? d2.clip : 0.0);
+                        if (s2) s2.value = String(defVal2);
+                        if (sNum2) sNum2.value = String(defVal2);
+                    } else {
+                        rowChar.style.display = 'none';
+                    }
+                    if (hint) {
+                        hint.style.display = '';
+                        try {
+                            const hints = workflow.lora_hint || {};
+                            const styleMsg = hints.style || '';
+                            // 캐릭터는 현재 숨김이므로 우선 스타일 문구만 표시
+                            hint.textContent = styleMsg || '워크플로우에 따라 LoRA 강도 조절이 제공됩니다.';
+                        } catch(_) {}
+                    }
+                } else {
+                    wrap.style.display = 'none';
+                    if (rowStyle) rowStyle.style.display = 'none';
+                    if (rowChar) rowChar.style.display = 'none';
+                    if (hint) hint.style.display = 'none';
+                }
             } catch(_) {}
+            // 추천 프롬프트 템플릿 chips (사용자 입력란 아래)
+            try {
+                const wrap = document.getElementById('prompt-templates');
+                const chips = document.getElementById('prompt-template-chips');
+                if (wrap && chips) {
+                    // 우선순위: 별도 파일(app/prompt_templates.py) → workflow.ui.promptTemplates
+                    const arr = (Array.isArray(workflowPromptTemplates[workflow.id]) && workflowPromptTemplates[workflow.id].length > 0)
+                        ? workflowPromptTemplates[workflow.id]
+                        : ((workflow.ui && Array.isArray(workflow.ui.promptTemplates)) ? workflow.ui.promptTemplates : []);
+                    chips.innerHTML = '';
+                    if (arr.length > 0) {
+                        wrap.style.display = '';
+                        // 기존 레거시 추천 문구는 완전 숨김 유지
+                        try { const old = document.getElementById('prompt-suggestion-text'); if (old) old.style.display = 'none'; } catch(_) {}
+                        arr.slice(0, 12).forEach((item) => {
+                            const title = (item && item.title) ? String(item.title) : (typeof item === 'string' ? item : '추천 프롬프트');
+                            // 텍스트와 옵션(전체 포함 치환)을 해석
+                            const baseText = (item && item.text) ? String(item.text) : (typeof item === 'string' ? item : '');
+                            const options = (item && Array.isArray(item.options)) ? item.options.slice() : [];
+                            const btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.className = 'chip-btn';
+                            btn.textContent = title;
+                            const tip = '클릭: 덮어쓰기 | Shift+클릭: 추가(중복 제거)';
+                            btn.title = tip; // 네이티브 툴팁(접근성/백업)
+                            btn.setAttribute('data-tooltip', tip); // 빠른 커스텀 툴팁
+                            btn.addEventListener('click', (e) => {
+                                const ta = ui.userPromptInput;
+                                // 옵션 치환: [ITEM] → 모든 옵션을 콤마로 연결해 치환, 없다면 뒤에 모두 추가
+                                let add = String(baseText || '');
+                                if (options.length > 0) {
+                                    const all = options.join(', ');
+                                    if (add.includes('[ITEM]')) {
+                                        add = add.replace('[ITEM]', all);
+                                    } else {
+                                        const sep = add && !add.endsWith(',') ? ', ' : '';
+                                        add = add + sep + all;
+                                    }
+                                }
+                                if (!e.shiftKey) {
+                                    // 기본: 덮어쓰기
+                                    ta.value = add;
+                                } else {
+                                    // Shift+클릭: 추가(중복 제거)
+                                    const cur = (ta.value || '').trim();
+                                    const merge = (a, b) => {
+                                        const norm = (s) => s.split(',').map(t=>t.trim()).filter(Boolean);
+                                        const A = norm(a); const B = norm(b);
+                                        const seen = new Set(); const out = [];
+                                        for (const t of [...A, ...B]) {
+                                            const key = t.toLowerCase();
+                                            if (seen.has(key)) continue;
+                                            seen.add(key); out.push(t);
+                                        }
+                                        return out.join(', ');
+                                    };
+                                    ta.value = cur ? merge(cur, add) : add;
+                                }
+                                try { ta.dispatchEvent(new Event('input')); } catch(_) {}
+                                ta.focus();
+                            });
+                            chips.appendChild(btn);
+                        });
+                    } else {
+                        wrap.style.display = 'none';
+                    }
+                }
+            } catch(_) {}
+
             // 비율 옵션 제한
             try {
                 const allowed = Array.isArray(uiSchema.aspectOptions) ? uiSchema.aspectOptions : ['square','landscape','portrait'];
@@ -460,7 +595,7 @@
                 if (inWrap) inWrap.style.display = workflow.image_input ? '' : 'none';
                 if (workflow.image_input) updateInputImagePreview();
             } catch(_) {}
-            // ControlNet UI 표시/숨김: 설정 값(ui.showControlNet)만 따른다
+            // ControlNet UI 표시/숨김: 설정 값(ui.showControlNet)만 따른다 (legacy 제거)
             try {
                 const hasFlag = workflow && workflow.ui && (typeof workflow.ui.showControlNet !== 'undefined');
                 const show = hasFlag ? !!workflow.ui.showControlNet : false;
@@ -480,16 +615,107 @@
                 if (controlUpload) controlUpload.style.display = 'none';
                 // 캔버스 열기 버튼은 ControlNet과 무관 → 그대로 둡니다
             } catch(_) {}
-            // 자동태그/시스템 프롬프트 읽기전용 안내(표시는 유지, 기본적으로 readonly 구성)
-            // 추가 프롬프트는 user_prompt 입력란을 사용합니다.
-            
-            if (workflow.recommended_prompt) {
-                ui.promptSuggestionText.innerHTML = `<i class="fas fa-gem suggestion-icon" aria-hidden="true"></i> 추천 <span class=\"suggestion-hint\">(클릭하여 추가)</span> <span class=\"suggestion-tags\">${workflow.recommended_prompt}</span>`;
-                ui.promptSuggestionText.setAttribute('title', workflow.recommended_prompt || '');
-                ui.promptSuggestionText.style.display = 'block';
-            } else {
-                ui.promptSuggestionText.style.display = 'none';
-            }
+
+            // ControlNet 슬롯 카드(썸네일+3 슬라이더) 렌더 + 썸네일 클릭 시 선택 모달
+            try {
+                const grid = document.getElementById('control-slots-grid');
+                if (!grid) { /* no-op */ }
+                else {
+                    grid.innerHTML = '';
+                    const enabled = !!(workflow && workflow.ui && workflow.ui.showControlNet);
+                    const meta = (workflow && workflow.control_slots) || null;
+                    if (!enabled || !meta || typeof meta !== 'object' || Object.keys(meta).length === 0) {
+                        grid.style.display = 'none';
+                    } else {
+                        const wfId = workflow.id;
+                        const slots = Object.keys(meta);
+                        slots.forEach(slot => {
+                            const m = meta[slot] || {};
+                            const ui = m.ui || {};
+                            const s = ui.strength || {min:0,max:1.5,step:0.05,default:0};
+                            const sp = ui.start_percent || {min:0,max:1,step:0.01,default:0};
+                            const ep = ui.end_percent || {min:0,max:1,step:0.01,default:0.33};
+                            const card = document.createElement('div');
+                            card.className = 'control-slot-card';
+                            const title = document.createElement('div');
+                            title.className = 'control-slot-title';
+                            try {
+                                const label = (m && (m.label || m.type)) || slot;
+                                title.textContent = label;
+                                title.setAttribute('title', slot);
+                            } catch(_) { title.textContent = slot; }
+                            const thumb = document.createElement('button');
+                            thumb.className = 'control-slot-thumb';
+                            thumb.type = 'button';
+                            const img = document.createElement('img');
+                            const empty = document.createElement('div'); empty.className='empty'; empty.innerHTML = '<i class="fas fa-pen"></i>';
+                            // try find current slot thumb from controls list (default 슬롯만 우선 지원)
+                            try {
+                                const id = (getControlSlots()||{})[slot] || getDefaultControlId();
+                                if (id) {
+                                    // lazy fetch (best-effort)
+                                    fetch('/api/v1/controls?page=1&size=24').then(r=>r.json()).then(d=>{
+                                        const items = Array.isArray(d.items)? d.items:[];
+                                        const it = items.find(x=>x.id===id);
+                                        if (it && (it.thumb_url||it.url)) { img.src = it.thumb_url || it.url; empty.remove(); thumb.appendChild(img); }
+                                    }).catch(()=>{});
+                                }
+                            } catch(_) {}
+                            // open picker on click
+                            thumb.addEventListener('click', ()=>{
+                                // reuse existing control picker
+                                openControlPicker();
+                            });
+                            thumb.appendChild(empty);
+
+                            const sliders = document.createElement('div');
+                            sliders.className = 'control-slot-sliders';
+
+                            function addOne(key, cfg, nice){
+                                const w = document.createElement('div');
+                                w.className = 'slot-field';
+                                const span = document.createElement('span');
+                                span.className = 'slot-label';
+                                span.textContent = nice;
+                                const range = document.createElement('input'); range.type='range';
+                                const num = document.createElement('input'); num.type='number'; num.className='slot-num';
+                                const idBase = `controls:${wfId}:${slot}:${key}`;
+                                [range,num].forEach(el=>{ el.min=String(cfg.min); el.max=String(cfg.max); el.step=String(cfg.step); el.id = `${idBase}:${el===num?'num':'range'}`; });
+                                const saved = (function(){ try{ const v=localStorage.getItem(idBase); return v!==null? parseFloat(v): NaN;}catch(_){return NaN;} })();
+                                const val = Number.isFinite(saved) ? saved : cfg.default;
+                                range.value = String(val);
+                                num.value = String(val);
+                                range.addEventListener('input', ()=>{ num.value = range.value; localStorage.setItem(idBase, range.value); });
+                                num.addEventListener('input', ()=>{ range.value = num.value; localStorage.setItem(idBase, num.value); });
+                                w.appendChild(span); w.appendChild(range); w.appendChild(num);
+                                sliders.appendChild(w);
+                            }
+                            addOne('strength', s, '강도');
+                            addOne('start_percent', sp, '시작');
+                            addOne('end_percent', ep, '종료');
+
+                            const note = document.createElement('div');
+                            note.className = 'control-slot-note';
+                            note.textContent = '이미지가 없으면 강도=0으로 적용됩니다';
+
+                            card.appendChild(title);
+                            card.appendChild(thumb);
+                            card.appendChild(sliders);
+                            card.appendChild(note);
+                            grid.appendChild(card);
+                        });
+                        grid.style.display = slots.length ? '' : 'none';
+                    }
+                }
+            } catch(_) {}
+            // 레거시 추천(클릭하여 추가) 문구 완전 비표시
+            try {
+                if (ui && ui.promptSuggestionText) {
+                    ui.promptSuggestionText.innerHTML = '';
+                    ui.promptSuggestionText.style.display = 'none';
+                    ui.promptSuggestionText.removeAttribute('title');
+                }
+            } catch(_) {}
         }
 
         // ---- Input Image Picker (minimal) ----
@@ -898,6 +1124,22 @@
                 workflow_id: currentWorkflow.id,
                 seed: ui.seedInput.value ? parseInt(ui.seedInput.value, 10) : null
             };
+            // LoRA strengths payload (single value per slot, if visible)
+            try {
+                const wrap = document.getElementById('lora-strengths-wrap');
+                if (wrap && wrap.style.display !== 'none') {
+                    const arr = [];
+                    if (document.getElementById('lora-row-style')?.style.display !== 'none') {
+                        const v = parseFloat(document.getElementById('lora-style-strength-num').value || document.getElementById('lora-style-strength').value || '0');
+                        if (Number.isFinite(v)) arr.push({ slot: 'style', value: v });
+                    }
+                    if (document.getElementById('lora-row-character')?.style.display !== 'none') {
+                        const v2 = parseFloat(document.getElementById('lora-char-strength-num').value || document.getElementById('lora-char-strength').value || '0');
+                        if (Number.isFinite(v2)) arr.push({ slot: 'character', value: v2 });
+                    }
+                    if (arr.length) requestData.loras = arr;
+                }
+            } catch(_) {}
             try {
                 const dbgInputId = (typeof getInputImageId === 'function') ? getInputImageId() : null;
                 console.debug('[gen] input_image_id', dbgInputId || null);
@@ -955,7 +1197,7 @@
                         requestData.control_image_id = lastSelectedControlId;
                     }
                 }
-                // Forward-compatible: send multi-slot shape in parallel (backend safely ignores extra fields)
+                // Forward-compatible: send multi-slot shape with per-slot params
                 try {
                     if (enabled) {
                         const slots = getControlSlots();
@@ -964,9 +1206,25 @@
                         const entries = Object.entries(slots).filter(([slot, id]) => typeof id === 'string' && id && validIds.has(id));
                         const wfSlots = getCurrentWorkflowSlots();
                         const isMultiWF = Array.isArray(wfSlots) && wfSlots.length > 1;
-                        // 멀티 워크플로우일 때만 controls 배열 전송
-                        if (isMultiWF && entries.length) {
-                            requestData.controls = entries.map(([slot, id]) => ({ slot, image_id: id }));
+                        const meta = (currentWorkflow && currentWorkflow.control_slots) || {};
+                        // controls 배열 전송 (멀티든 단일이든 공통)
+                        if (entries.length) {
+                            requestData.controls = entries.map(([slot, id]) => {
+                                const getVal = (k, defVal) => {
+                                    try { const v = localStorage.getItem(`controls:${currentWorkflow.id}:${slot}:${k}`); return v!==null? parseFloat(v): defVal; } catch(_) { return defVal; }
+                                };
+                                const uiCfg = (meta[slot] && meta[slot].ui) || {};
+                                const sDef = (uiCfg.strength && uiCfg.strength.default) ?? 0.0;
+                                const spDef = (uiCfg.start_percent && uiCfg.start_percent.default) ?? 0.0;
+                                const epDef = (uiCfg.end_percent && uiCfg.end_percent.default) ?? 0.33;
+                                return {
+                                    slot,
+                                    image_id: id,
+                                    strength: getVal('strength', sDef),
+                                    start_percent: getVal('start_percent', spDef),
+                                    end_percent: getVal('end_percent', epDef),
+                                };
+                            });
                         }
                         // 단일 워크플로우(또는 기본 슬롯 비어있는 경우) 폴백: 첫 유효 항목을 control_image_id로 사용
                         if (!requestData.control_image_id && entries.length) {

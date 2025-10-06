@@ -179,6 +179,46 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         control=control,
     )
 
+    # --- Optional: LoRA per-slot strengths override ---
+    try:
+        loras_req = req_dict.get("loras") if isinstance(req_dict, dict) else None
+        if isinstance(loras_req, list) and loras_req:
+            wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+            lora_map = wf_cfg.get("loras") if isinstance(wf_cfg, dict) else None
+            if isinstance(lora_map, dict):
+                for item in loras_req:
+                    if not isinstance(item, dict):
+                        continue
+                    slot = item.get("slot")
+                    if not slot or slot not in lora_map:
+                        continue
+                    meta = lora_map[slot] or {}
+                    node = meta.get("node")
+                    unet_key = meta.get("unet_input", "strength_model")
+                    clip_key = meta.get("clip_input", "strength_clip")
+                    name_key = meta.get("name_input", "lora_name")
+                    if not node:
+                        continue
+                    node_over = prompt_overrides.get(node, {"inputs": {}})
+                    if "inputs" not in node_over or not isinstance(node_over["inputs"], dict):
+                        node_over["inputs"] = {}
+                    # Single value => apply to both UNet/CLIP
+                    if "value" in item and isinstance(item["value"], (int, float)):
+                        val = float(item["value"])
+                        node_over["inputs"][unet_key] = val
+                        node_over["inputs"][clip_key] = val
+                    else:
+                        # Backward-compat: accept separate unet/clip
+                        if "unet" in item and isinstance(item["unet"], (int, float)):
+                            node_over["inputs"][unet_key] = float(item["unet"]) 
+                        if "clip" in item and isinstance(item["clip"], (int, float)):
+                            node_over["inputs"][clip_key] = float(item["clip"]) 
+                    if isinstance(item.get("name"), str) and item.get("name"):
+                        node_over["inputs"][name_key] = item["name"]
+                    prompt_overrides[node] = node_over
+    except Exception:
+        pass
+
     # Diagnostics: final control application intent
     try:
         cn_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}).get("controlnet")
@@ -198,7 +238,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     except Exception:
         pass
 
-    # Apply multi-control overrides
+    # Apply multi-control overrides (with per-slot params)
     try:
         if multi_controls:
             wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
@@ -209,8 +249,6 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             except Exception:
                 defaults = {}
             if slots_cfg and isinstance(prompt_overrides, dict):
-                start_pct = float(defaults.get("start_percent", 0.0))
-                end_pct = float(defaults.get("end_percent", 0.33))
                 for mc in multi_controls:
                     slot = mc.get("slot")
                     mapping = slots_cfg.get(slot) if isinstance(slots_cfg, dict) else None
@@ -218,14 +256,67 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                         continue
                     apply_node = mapping.get("apply_node")
                     image_node = mapping.get("image_node")
-                    strength = float(mc.get("strength", 1.0))
                     image_filename = mc.get("image_filename")
+                    # Per-slot UI defaults (optional)
+                    ui_cfg = (mapping.get("ui") if isinstance(mapping, dict) else {}) or {}
+                    def _d(key, fallback):
+                        try:
+                            return float(((ui_cfg.get(key) or {}).get("default")))
+                        except Exception:
+                            return float(fallback)
+                    start_def = _d("start_percent", defaults.get("start_percent", 0.0))
+                    end_def = _d("end_percent", defaults.get("end_percent", 0.33))
+                    strength_def = _d("strength", defaults.get("strength", 0.0))
+                    # If request.controls contains this slot, use its params
+                    req_strength = None
+                    req_start = None
+                    req_end = None
+                    try:
+                        if isinstance(req_dict.get("controls"), list):
+                            for it in req_dict["controls"]:
+                                if isinstance(it, dict) and it.get("slot") == slot:
+                                    if "strength" in it and isinstance(it["strength"], (int, float)):
+                                        req_strength = float(it["strength"]) 
+                                    if "start_percent" in it and isinstance(it["start_percent"], (int, float)):
+                                        req_start = float(it["start_percent"]) 
+                                    if "end_percent" in it and isinstance(it["end_percent"], (int, float)):
+                                        req_end = float(it["end_percent"]) 
+                                    break
+                    except Exception:
+                        pass
+                    # Clamp and compose, force strength=0 if no image_filename
+                    def _clamp(v, lo, hi, default_v):
+                        try:
+                            x = float(v) if v is not None else float(default_v)
+                            return max(float(lo), min(float(hi), x))
+                        except Exception:
+                            return float(default_v)
+                    # Resolve ranges
+                    def _range_of(key, fallback_min, fallback_max):
+                        try:
+                            cfg = ui_cfg.get(key) or {}
+                            lo = float(cfg.get("min", fallback_min))
+                            hi = float(cfg.get("max", fallback_max))
+                            return (lo, hi)
+                        except Exception:
+                            return (fallback_min, fallback_max)
+                    s_lo, s_hi = _range_of("strength", 0.0, 1.5)
+                    p_lo, p_hi = _range_of("start_percent", 0.0, 1.0)
+                    e_lo, e_hi = _range_of("end_percent", 0.0, 1.0)
+                    strength_val = _clamp(req_strength, s_lo, s_hi, strength_def)
+                    start_val = _clamp(req_start, p_lo, p_hi, start_def)
+                    end_val = _clamp(req_end, e_lo, e_hi, end_def)
+                    if not image_filename:
+                        strength_val = 0.0
+                    # Ensure start <= end
+                    if start_val > end_val:
+                        start_val, end_val = end_val, start_val
                     if apply_node:
                         prompt_overrides[apply_node] = {
                             "inputs": {
-                                "strength": strength,
-                                "start_percent": start_pct,
-                                "end_percent": end_pct,
+                                "strength": strength_val,
+                                "start_percent": start_val,
+                                "end_percent": end_val,
                             }
                         }
                     if image_node and image_filename:
@@ -245,17 +336,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             prompt_overrides[image_node]["inputs"].get("image")
         )
         has_multi = bool(multi_controls)
-        if not (has_single or has_override or has_multi):
-            logger.info({
-                "event": "controlnet_gate_failed",
-                "owner_id": job.owner_id,
-                "job_id": job.id,
-                "reason": "no image override present",
-                "control_enabled": True,
-                "image_node": image_node,
-                "overrides_keys": list(prompt_overrides.keys()) if isinstance(prompt_overrides, dict) else None,
-            })
-            raise RuntimeError("입력한 컨트롤 이미지가 준비되지 않았습니다. 내 컨트롤에서 이미지를 다시 선택해 주세요.")
+        # Relaxed gating: if enabled but no image, we keep strength at 0 and proceed
 
     # Debug logging for ControlNet application
     try:

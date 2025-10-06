@@ -228,10 +228,7 @@
 
 /* Dark Theme ControlNet Strip */
 .controlnet-strip {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: var(--space-md);
+    display: block;
     padding: var(--space-lg) 0;
     background: transparent;
     border-radius: 0;

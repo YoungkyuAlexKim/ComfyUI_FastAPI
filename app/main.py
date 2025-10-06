@@ -153,6 +153,9 @@ class GenerateRequest(BaseModel):
     control_image_id: Optional[str] = None  # previously saved control image id
     # Forward-compatible: optional multi-slot controls (ignored when not configured)
     controls: Optional[List[dict]] = None
+    # Optional LoRA strengths (per-slot) – forward-compatible
+    # Example: [{"slot":"character","unet":1.0,"clip":1.0},{"slot":"style","unet":0.8,"clip":0.8}]
+    loras: Optional[List[dict]] = None
 
 WORKFLOW_DIR = "./workflows/"
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
@@ -229,6 +232,7 @@ async def read_root(request: Request):
         "workflows_sizes_json": json.dumps(default_values.get("workflows_sizes", {})), # ✨ 사이즈 정보 추가
         "workflow_default_prompts_json": json.dumps(default_values.get("workflow_default_prompts", {})), # 워크플로우별 기본 프롬프트
         "workflow_control_slots_json": json.dumps(default_values.get("workflow_control_slots", {})),
+        "workflow_prompt_templates_json": json.dumps(default_values.get("workflow_prompt_templates", {})),
     })
     _ensure_anon_id_cookie(request, response)
     return response

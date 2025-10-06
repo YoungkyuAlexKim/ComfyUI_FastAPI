@@ -12,6 +12,11 @@ except Exception:
     pass
 
 from .workflow_configs import WORKFLOW_CONFIGS
+try:
+    # 선택: 워크플로우별 추천 프롬프트 템플릿(title/text)
+    from .prompt_templates import PROMPT_TEMPLATES  # type: ignore
+except Exception:
+    PROMPT_TEMPLATES = {}
 
 # --- 2. 기본 값 ---
 DEFAULT_VALUES = {
@@ -229,4 +234,9 @@ def get_default_values() -> Dict[str, Any]:
     # defaults.pop("width", None) 
     # defaults.pop("height", None)
     
+    # 추천 프롬프트 템플릿(옵션) 주입
+    try:
+        defaults["workflow_prompt_templates"] = PROMPT_TEMPLATES
+    except Exception:
+        defaults["workflow_prompt_templates"] = {}
     return defaults

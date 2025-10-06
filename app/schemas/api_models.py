@@ -46,6 +46,10 @@ class WorkflowItem(BaseModel):
     ui: Optional[Dict[str, Any]] = None
     sizes: Optional[Dict[str, Any]] = None
     image_input: Optional[Dict[str, Any]] = None
+    control_slots: Optional[Dict[str, Any]] = None
+    # Optional: LoRA slots metadata for UI (e.g., character/style)
+    lora_slots: Optional[Dict[str, Any]] = None
+    lora_hint: Optional[Dict[str, Any]] = None
 
 
 class WorkflowsResponse(BaseModel):
