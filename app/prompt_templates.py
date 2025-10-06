@@ -22,7 +22,7 @@ PROMPT_TEMPLATES: Dict[str, List[PromptTemplate]] = {
             "onigiri", "dango", "takoyaki", "ramen", "bread", "apple", "shortcake", "taiyaki"
         ]},
         {"title": "게임 아이템: 무기", "text": "no_humans, item icon, sword, katana, bow_(weapon), axe, spear, staff, shield, simple_background, white_background"},
-        {"title": "몬스터: 슬라임", "text": "no_humans, monster, slime, simple_background"},
+        {"title": "몬스터: 슬라임", "text": "monster, slime, blue_slime, green_slime, red_slime, multiple_slime, grass"},
     ],
     # MK 스타일: 아니메/일러스트 지향 (Danbooru 태그 위주)
     "BasicWorkFlow_MKStyle": [
@@ -34,7 +34,7 @@ PROMPT_TEMPLATES: Dict[str, List[PromptTemplate]] = {
             "onigiri", "dango", "takoyaki", "ramen", "bread", "apple", "shortcake", "taiyaki"
         ]},
         {"title": "게임 아이템: 무기", "text": "no_humans, item icon, sword, katana, bow_(weapon), axe, spear, staff, shield, simple_background, white_background"},
-        {"title": "몬스터: 슬라임", "text": "no_humans, monster, slime, simple_background"},
+        {"title": "몬스터: 슬라임", "text": "monster, slime, blue_slime, green_slime, red_slime, multiple_slime, grass"},
     ],
     # 픽셀레이터(입력 이미지 변환): 추가 프롬프트로 세부 스타일 지정
     "ILXL_Pixelator": [
@@ -46,7 +46,7 @@ PROMPT_TEMPLATES: Dict[str, List[PromptTemplate]] = {
             "onigiri", "dango", "takoyaki", "ramen", "bread", "apple", "shortcake", "taiyaki"
         ]},
         {"title": "게임 아이템: 무기", "text": "no_humans, item icon, sword, katana, bow_(weapon), axe, spear, staff, shield, simple_background, white_background"},
-        {"title": "몬스터: 슬라임", "text": "no_humans, monster, slime, simple_background"},
+        {"title": "몬스터: 슬라임", "text": "monster, slime, blue_slime, green_slime, red_slime, multiple_slime, grass"},
     ],
 }
 
