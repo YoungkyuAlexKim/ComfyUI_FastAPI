@@ -105,6 +105,11 @@
         url: '/static/img/banner/img_banner_workflow_pixelator.png',
         showTitle: false,
         showDescription: false
+      },
+      'BasicWorkFlow_LOSStyle': {
+        url: '/static/img/banner/img_banner_workflow_LOSStyle.png',
+        showTitle: false,
+        showDescription: false
       }
     }
   };

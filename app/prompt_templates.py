@@ -48,6 +48,20 @@ PROMPT_TEMPLATES: Dict[str, List[PromptTemplate]] = {
         {"title": "게임 아이템: 무기", "text": "no_humans, item icon, sword, katana, bow_(weapon), axe, spear, staff, shield, simple_background, white_background"},
         {"title": "몬스터: 슬라임", "text": "monster, slime, blue_slime, green_slime, red_slime, multiple_slime, grass"},
     ],
+    # LOS 스타일: 스타일 LoRA 중심. 기본 품질 태그 포함
+    "BasicWorkFlow_LOSStyle": [
+        {"title": "1인 전신", "text": "1girl, chibi, solid_oval_eyes, solo, full_body, brown hair, bob cut, school uniform, pleated skirt, standing, thick outline, on grass, blue sky, cloud, building, simple background"},
+        {"title": "2인 전신", "text": "2girls, chibi, solid_oval_eyes, blone hair, bob cut, red hair, twin tail, standing, thick outline, street, symmetry,simple background"},
+        {"title": "상황설정1", "text": "1girl, solo, solid_oval_eyes, dress, chibi,bob cut, brown hair, holding slime, blue slime_\(creature\), library, from_above, shadow"},
+        {"title": "상황설정2", "text": "2girls,chibi, solid_oval_eyes, looking away, standing, dress, long hair, red hair, robe, blonde hair, long skirt, hand_to_hand, night, full_moon, on_grass, cloud"},
+        {"title": "상황설정3", "text": "1boy, solo, chibi, solid_oval_eyes, kneeling, praying, armor, hair_slicked_back, black hair, stained_glass, church, dappled_sunlight, light_rays"},
+        {"title": "상황설정4", "text": "1girl, chibi, solid_oval_eyes, short hair, blue_hair, solo_focus, lying, on_back, pajamas, dog, dynamic_angle, indoors, bed, bed_sheet, wooden_wall, stone_wall, inn, black_outline, simple_background"},
+        {"title": "상황설정5", "text": "1boy, solo, chibi, solid_oval_eyes, astronaut, floating, blonde_hair, space, stars, planet, black outline, simple background, fisheye"},
+        {"title": "상황설정6", "text": "1girl, chibi, solid_oval_eyes, solo, brown_hair, ribbon, robe, hat, looking up, full_body, standing, looking_at_viewer, blue slime_\(creature\), night, dutch angle, from above"},
+        {"title": "상황설정7", "text": "1girl, chibi, solid_oval_eyes, solo, blue hair, ribbon, fur-trimmed_coat, hat, full_body, sitting, bench, park, looking_at_viewer, blue slime_\(creature\), night, dutch angle"},
+        {"title": "동적 앵글", "text": "1girl, chibi, solid_oval_eyes, dynamic_angle, dutch_angle, air_view, flying"},
+        {"title": "몬스터: 슬라임", "text": "no_humans, solid_oval_eyes, slime, blue_slime, red_slime, multiple_slime"},
+    ],
 }
 
 

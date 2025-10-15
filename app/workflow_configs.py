@@ -73,7 +73,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
     },
 
     "BasicWorkFlow_MKStyle": {
-        "display_name": "MK 스타일(얼굴 디테일러)",
+        "display_name": "MK 스타일",
         "description": "MK 스타일 템플릿 + 업스케일/리파인 + 얼굴 디테일러 적용",
 
         # 사용자 프롬프트는 시스템 프롬프트에 병합되는 형태(선택 입력)
@@ -169,6 +169,105 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "style": "강도가 높아질 수록 민국님 그림체에 점점 더 가까워집니다. 강도가 낮아질수록 모델 잠재력이 높아집니다",
             "character": ""
         }
+    },
+
+    "BasicWorkFlow_LOSStyle": {
+        "display_name": "레오슬 스타일",
+        "description": "새로 학습한 LOS 스타일 LoRA를 사용하는 기본 워크플로우(페이스 디테일러 없음)",
+
+        # 사용자 프롬프트는 시스템 프롬프트에 병합되는 형태(선택 입력)
+        "default_user_prompt": "no_humans, blue_slime",
+
+        # 노드 ID 매핑 (JSON 기준)
+        # - 포지티브/네거티브 프롬프트 인코딩: 6 / 7
+        # - 시드: 초기 KSampler(3)
+        # - 빈 잠재 이미지: 5
+        "prompt_node": "6",
+        "negative_prompt_node": "7",
+        "seed_node": "3",
+        "latent_image_node": "5",
+
+        # 고정 프롬프트(시스템 스타일)
+        # JSON 내 텍스트를 기반으로 핵심 스타일 키워드와 품질 태그를 유지
+        "style_prompt": "LOSart, masterpiece, best quality, amazing quality",
+        "negative_prompt": "bad quality,worst quality,worst detail",
+
+        # 비율 기반 사이즈(기본 정사각 1024x1024; 가로/세로는 GPU 친화 해상도)
+        "sizes": {
+            "square": {"width": 1024, "height": 1024},
+            "landscape": {"width": 1024, "height": 576},
+            "portrait": {"width": 576, "height": 1024}
+        },
+
+        # ControlNet 매핑(단일)
+        "controlnet": {
+            "enabled": True,
+            "apply_node": "23",
+            "image_node": "28",
+            "defaults": {
+                "strength": 0,
+                "start_percent": 0.0,
+                "end_percent": 0.33
+            }
+        },
+        # 슬롯 단위 제어(멀티/단일 모두 지원). 기본 슬롯명: "default"
+        "control_slots": {
+            "default": {
+                "apply_node": "23",
+                "image_node": "28",
+                "label": "Scribble",
+                "type": "scribble",
+                "ui": {
+                    "strength": {"min": 0.0, "max": 1.5, "step": 0.05, "default": 0.0},
+                    "start_percent": {"min": 0.0, "max": 1.0, "step": 0.01, "default": 0.0},
+                    "end_percent": {"min": 0.0, "max": 1.0, "step": 0.01, "default": 0.33}
+                }
+            }
+        },
+
+        # UI 힌트
+        "ui": {
+            "showControlNet": True,
+            # LoRA 강도 조절 UI 노출 (스타일만 노출)
+            "showLora": True,
+            "showStyleLora": True,
+            "showCharacterLora": False
+        },
+
+        # LoRA 매핑(노드/입력 키)
+        # - 스타일 LoRA: 노드 42 (기본 1.0)
+        # - 캐릭터 LoRA: 노드 14 (기본 0.0)
+        "loras": {
+            "style": {
+                "node": "42",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_clip",
+                "defaults": {"unet": 1, "clip": 1},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05
+            },
+            "character": {
+                "node": "14",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_clip",
+                "defaults": {"unet": 0.0, "clip": 0.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05
+            }
+        },
+
+        # LoRA 슬라이더 사용자 힌트
+        "lora_hint": {
+            "style": "강도가 높을수록 LOS 스타일 성향이 강해집니다. 낮추면 베이스 모델 특성이 반영됩니다.",
+            "character": "캐릭터 LoRA는 선택 사용입니다. 필요 시만 값을 올려주세요."
+        },
+
+        # 추천 프롬프트(초보자용 클릭 추가용 문구)
+        "recommended_prompt": "no_humans, blue_slime, blue_sky, clouds, simple_background, castle"
     },
 
     "ILXL_Pixelator": {
