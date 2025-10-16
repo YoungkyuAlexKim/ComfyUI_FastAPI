@@ -29,6 +29,7 @@ async def get_workflows():
             "name": config.get("display_name", workflow_id.replace("_", " ").title()),
             "description": config.get("description", "워크플로우 설명이 없습니다."),
             "node_count": node_count,
+            "hidden": bool(config.get("hidden", False)),
             "style_prompt": config.get("style_prompt", ""),
             "negative_prompt": config.get("negative_prompt", ""),
             "recommended_prompt": config.get("recommended_prompt", ""),

@@ -361,11 +361,14 @@
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 if (data.workflows && data.workflows.length > 0) {
-                    renderWorkflows(data.workflows);
+                    // Keep all for related lookups; render only visible (hidden=false)
+                    try { window.ALL_WORKFLOWS = data.workflows.slice(); } catch(_) {}
+                    const visible = data.workflows.filter(w => !w.hidden);
+                    renderWorkflows(visible);
                     let storedId = null;
                     try { storedId = localStorage.getItem('selectedWorkflowId') || null; } catch(_) {}
-                    const found = storedId ? data.workflows.find(w => w.id === storedId) : null;
-                    selectWorkflow(found || data.workflows[0]);
+                    const found = storedId ? visible.find(w => w.id === storedId) : null;
+                    selectWorkflow(found || visible[0]);
                 } else {
                     ui.workflowList.innerHTML = `<div class="workflow-error">워크플로우를 찾을 수 없습니다.</div>`;
                 }
@@ -389,6 +392,247 @@
             ui.workflowList.querySelectorAll('.workflow-item').forEach((item, i) => {
                 item.addEventListener('click', () => selectWorkflow(workflows[i]));
             });
+        }
+
+        // --- Txt2Img / Img2Img mode tabs (injected) ---
+        function ensureModeTabs() {
+            let tabs = document.getElementById('txtimg-img2img-tabs');
+            if (tabs) return tabs;
+            // Insert tabs near the prompt area so it stays visible even when result-section is hidden
+            const hostFallback = document.getElementById('prompt-templates')?.parentElement || document.getElementById('placeholder-section')?.parentElement || document.body;
+            tabs = document.createElement('div');
+            tabs.id = 'txtimg-img2img-tabs';
+            tabs.dataset.mode = 'txt2img';
+            tabs.style.cssText = 'display:none; margin:8px 0;';
+            tabs.innerHTML = `
+              <div style="display:inline-flex; gap:6px;">
+                <button id="tab-txt2img" type="button" class="chip-btn active">Txt2Img</button>
+                <button id="tab-img2img" type="button" class="chip-btn"><span aria-hidden="true" style="margin-right:4px">🍌</span>Img2Img</button>
+              </div>`;
+            let inWrap = document.getElementById('input-image-wrap') || document.getElementById('input-image-section') || document.getElementById('img2img-input-wrap');
+            if (!inWrap) {
+                // Create minimal input-image section if missing
+                inWrap = document.createElement('div');
+                inWrap.id = 'input-image-wrap';
+                inWrap.className = 'input-image-wrap';
+                inWrap.style.cssText = 'display:none; margin:8px 0;';
+                inWrap.innerHTML = `
+                  <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    <strong>입력 이미지 (필수)</strong>
+                    <button id="input-image-choose" type="button" class="chip-btn"><i class="fas fa-image"></i> 선택/업로드</button>
+                    <button id="input-image-clear" type="button" class="chip-btn" style="display:none;">지우기</button>
+                  </div>
+                  <div id="input-image-drop" style="border:1px dashed var(--neutral-300); border-radius:8px; padding:8px; min-height:120px; display:flex; align-items:center; justify-content:center; cursor:pointer;">
+                    <img id="input-image-preview" alt="입력 이미지" style="display:none; max-height:160px; border-radius:8px;" />
+                    <div id="input-image-empty" style="color:var(--text-muted);">여기에 이미지를 드래그하거나 클릭하여 선택</div>
+                  </div>`;
+                // Insert after tabs
+                try { tabs.after(inWrap); } catch(_) { hostFallback.appendChild(inWrap); }
+                // Bind basic events for newly created nodes
+                try {
+                    const choose = inWrap.querySelector('#input-image-choose');
+                    const clear = inWrap.querySelector('#input-image-clear');
+                    const drop = inWrap.querySelector('#input-image-drop');
+                    if (choose) choose.addEventListener('click', ()=> openInputPicker());
+                    if (clear) clear.addEventListener('click', ()=> setInputImageId(null));
+                    if (drop) {
+                        drop.addEventListener('click', ()=> openInputPicker());
+                        drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.style.outline='2px dashed var(--primary-400)'; });
+                        drop.addEventListener('dragleave', ()=>{ drop.style.outline='none'; });
+                        drop.addEventListener('drop', async (e)=>{
+                            e.preventDefault();
+                            drop.style.outline='none';
+                            const txt = (e.dataTransfer && e.dataTransfer.getData('text/plain')) || '';
+                            let payload = null;
+                            try { payload = JSON.parse(txt); } catch(_) {}
+                            if (payload && payload.id && payload.source) {
+                const targetWf = getTargetWorkflowForMode();
+                if (!targetWf || !targetWf.image_input) {
+                                    showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
+                                    return;
+                                }
+                                if (payload.source === 'inputs') {
+                                    setInputImageId(payload.id);
+                                    showStatus('입력 이미지가 선택되었습니다.', 'info');
+                                    return;
+                                }
+                                try {
+                                    const res = await fetch('/api/v1/inputs/copy', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ source: payload.source, id: payload.id })
+                                    });
+                                    const data = await res.json();
+                                    if (!res.ok) throw new Error(data.detail || '복사 실패');
+                                    setInputImageId(data.id);
+                                    showStatus('입력 보관함으로 복사되었습니다.', 'success');
+                                } catch (err) {
+                                    showStatus(err?.message || '복사 실패', 'error');
+                                }
+                                return;
+                            }
+                            // Fallback: file drop
+                            if (!currentWorkflow || !currentWorkflow.image_input) {
+                                showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
+                                return;
+                            }
+                            const file = e.dataTransfer.files && e.dataTransfer.files[0];
+                            if (!file) return;
+                            try {
+                                if (e.dataTransfer.files && e.dataTransfer.files.length > 1) {
+                                    showStatus('여러 장을 드롭했네요. 첫 한 장만 등록할게요.', 'info');
+                                }
+                                const okTypes = ['image/png','image/jpeg','image/jpg','image/webp'];
+                                const nameLower = (file.name || '').toLowerCase();
+                                const typeOk = okTypes.includes(file.type) || nameLower.endsWith('.png') || nameLower.endsWith('.jpg') || nameLower.endsWith('.jpeg') || nameLower.endsWith('.webp');
+                                if (!typeOk) { showStatus('PNG, JPG, WEBP 형식만 등록할 수 있어요.', 'warning'); return; }
+                            } catch(_) {}
+                            try {
+                                const fd = new FormData();
+                                fd.append('file', file);
+                                const res = await fetch('/api/v1/inputs/upload', { method: 'POST', body: fd });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.detail || '업로드 실패');
+                                setInputImageId(data.id);
+                                showStatus('입력 이미지가 업로드되었습니다.', 'success');
+                            } catch (err) { showStatus(err?.message || '업로드 실패', 'error'); }
+                        });
+                    }
+                } catch(_) {}
+            }
+            if (inWrap && inWrap.parentElement) {
+                try { inWrap.parentElement.insertBefore(tabs, inWrap); } catch(_) { try { hostFallback.prepend(tabs); } catch(__) { document.body.prepend(tabs); } }
+            } else {
+                try { hostFallback.prepend(tabs); } catch(_) { document.body.prepend(tabs); }
+            }
+            const btnTxt = tabs.querySelector('#tab-txt2img');
+            const btnImg = tabs.querySelector('#tab-img2img');
+            const setMode = (m) => {
+                tabs.dataset.mode = m;
+                btnTxt.classList.toggle('active', m === 'txt2img');
+                btnImg.classList.toggle('active', m === 'img2img');
+                // Input image UI: show only in img2img mode (or when workflow inherently needs image_input)
+                try {
+                    const needImg = (m === 'img2img') || (currentWorkflow && currentWorkflow.image_input);
+                    if (inWrap) inWrap.style.display = needImg ? '' : 'none';
+                } catch(_) {}
+                applyAspectUiForMode();
+                try { updateInputImagePreview(); } catch(_) {}
+                // Update default prompt when switching modes
+                try {
+                    const targetWf = getTargetWorkflowForMode();
+                    const def = getDefaultPromptForWorkflowId(targetWf.id);
+                    if (typeof def === 'string') {
+                        ui.userPromptInput.value = def;
+                        autoResizeTextarea(ui.userPromptInput);
+                    }
+                } catch(_) {}
+                // Re-render prompt templates for current mode/workflow
+                try {
+                    const wrap = document.getElementById('prompt-templates');
+                    const chips = document.getElementById('prompt-template-chips');
+                    if (wrap && chips) {
+                        const targetWf = getTargetWorkflowForMode();
+                        const all = (window.ALL_WORKFLOWS || []);
+                        // use external templates if available
+                        const arr = (Array.isArray(workflowPromptTemplates[targetWf.id]) && workflowPromptTemplates[targetWf.id].length > 0)
+                            ? workflowPromptTemplates[targetWf.id]
+                            : ((targetWf.ui && Array.isArray(targetWf.ui.promptTemplates)) ? targetWf.ui.promptTemplates : []);
+                        chips.innerHTML = '';
+                        if (arr.length > 0) {
+                            wrap.style.display = '';
+                            try { const old = document.getElementById('prompt-suggestion-text'); if (old) old.style.display = 'none'; } catch(_) {}
+                            arr.slice(0, 12).forEach((item) => {
+                                const title = (item && item.title) ? String(item.title) : (typeof item === 'string' ? item : '추천 프롬프트');
+                                const baseText = (item && item.text) ? String(item.text) : (typeof item === 'string' ? item : '');
+                                const options = (item && Array.isArray(item.options)) ? item.options.slice() : [];
+                                const btn = document.createElement('button');
+                                btn.type = 'button';
+                                btn.className = 'chip-btn';
+                                btn.textContent = title;
+                                const tip = '클릭: 덮어쓰기 | Shift+클릭: 추가(중복 제거)';
+                                btn.title = tip; btn.setAttribute('data-tooltip', tip);
+                                btn.addEventListener('click', (e) => {
+                                    const ta = ui.userPromptInput;
+                                    let add = String(baseText || '');
+                                    if (options.length > 0) {
+                                        const allopts = options.join(', ');
+                                        if (add.includes('[ITEM]')) add = add.replace('[ITEM]', allopts); else add = add + ((add && !add.endsWith(',')) ? ', ' : '') + allopts;
+                                    }
+                                    if (!e.shiftKey) {
+                                        ta.value = add;
+                                    } else {
+                                        const cur = (ta.value || '').trim();
+                                        const merge = (a, b) => {
+                                            const norm = (s) => s.split(',').map(t=>t.trim()).filter(Boolean);
+                                            const A = norm(a); const B = norm(b);
+                                            const seen = new Set(); const out = [];
+                                            for (const t of [...A, ...B]) { const key = t.toLowerCase(); if (seen.has(key)) continue; seen.add(key); out.push(t); }
+                                            return out.join(', ');
+                                        };
+                                        ta.value = cur ? merge(cur, add) : add;
+                                    }
+                                    try { ta.dispatchEvent(new Event('input')); } catch(_) {}
+                                    ta.focus();
+                                });
+                                chips.appendChild(btn);
+                            });
+                        } else {
+                            wrap.style.display = 'none';
+                        }
+                    }
+                } catch(_) {}
+            };
+            btnTxt.addEventListener('click', () => setMode('txt2img'));
+            btnImg.addEventListener('click', () => setMode('img2img'));
+            return tabs;
+        }
+
+        function getGenerationMode() {
+            const tabs = document.getElementById('txtimg-img2img-tabs');
+            return (tabs && tabs.dataset.mode) || 'txt2img';
+        }
+
+        function isImg2ImgMode() { return getGenerationMode() === 'img2img'; }
+
+        function getRelatedImg2ImgId() {
+            try { return (currentWorkflow && currentWorkflow.ui && currentWorkflow.ui.related && currentWorkflow.ui.related.img2img) || null; } catch(_) { return null; }
+        }
+
+        function getTargetWorkflowForMode() {
+            try {
+                if (isImg2ImgMode()) {
+                    const id = getRelatedImg2ImgId();
+                    const all = (window.ALL_WORKFLOWS || []);
+                    const wf = all.find(w => w.id === id);
+                    return wf || {};
+                }
+            } catch(_) {}
+            return currentWorkflow || {};
+        }
+
+        function getDefaultPromptForWorkflowId(id) {
+            try { return (workflowDefaultPrompts && typeof workflowDefaultPrompts === 'object') ? (workflowDefaultPrompts[id] || '') : ''; } catch(_) { return ''; }
+        }
+
+        function applyAspectUiForMode() {
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const disableAspect = !!uiSchema.disableAspect && isImg2ImgMode();
+                // Hide entire aspect group when disabled
+                if (ui.aspectRatioGroup) ui.aspectRatioGroup.style.display = disableAspect ? 'none' : '';
+                const allowed = disableAspect ? [] : (Array.isArray(uiSchema.aspectOptions) ? uiSchema.aspectOptions : ['square','landscape','portrait']);
+                document.querySelectorAll('.aspect-ratio-btn').forEach(btn => {
+                    const ok = allowed.includes(btn.dataset.ratio);
+                    btn.style.display = ok ? '' : 'none';
+                    if (!ok && btn.classList.contains('selected')) {
+                        const fallback = allowed[0] || 'square';
+                        const fbBtn = document.querySelector(`.aspect-ratio-btn[data-ratio="${fallback}"]`);
+                        if (fbBtn) fbBtn.click();
+                    }
+                });
+            } catch(_) {}
         }
         
         function selectWorkflow(workflow) {
@@ -444,6 +688,20 @@
 
             // --- 조건부 UI 렌더링 (워크플로우 스키마 기반) ---
             const uiSchema = workflow.ui || {};
+            // Ensure tabs and toggle visibility based on related img2img
+            try {
+                const tabs = ensureModeTabs();
+                const related = (workflow && workflow.ui && workflow.ui.related) || {};
+                const hasEdit = related && related.img2img;
+                tabs.style.display = hasEdit ? '' : 'none';
+                // reset mode to txt2img on workflow switch
+                tabs.dataset.mode = 'txt2img';
+                tabs.querySelector('#tab-txt2img')?.classList.add('active');
+                tabs.querySelector('#tab-img2img')?.classList.remove('active');
+                // Hide input image UI when not needed
+                const inWrap = document.getElementById('input-image-wrap') || document.getElementById('input-image-section') || document.getElementById('img2img-input-wrap');
+                if (inWrap) inWrap.style.display = (workflow.image_input ? '' : 'none');
+            } catch(_) {}
             // LoRA 강도 UI 표시/초기화 (워크플로우 제공 메타 기반) - single value
             try {
                 const loraMeta = workflow.lora_slots || null;
@@ -510,10 +768,11 @@
                 const wrap = document.getElementById('prompt-templates');
                 const chips = document.getElementById('prompt-template-chips');
                 if (wrap && chips) {
-                    // 우선순위: 별도 파일(app/prompt_templates.py) → workflow.ui.promptTemplates
-                    const arr = (Array.isArray(workflowPromptTemplates[workflow.id]) && workflowPromptTemplates[workflow.id].length > 0)
-                        ? workflowPromptTemplates[workflow.id]
-                        : ((workflow.ui && Array.isArray(workflow.ui.promptTemplates)) ? workflow.ui.promptTemplates : []);
+                    // 모드에 맞는 워크플로우 ID로 템플릿 선택
+                    const targetWf = getTargetWorkflowForMode();
+                    const arr = (Array.isArray(workflowPromptTemplates[targetWf.id]) && workflowPromptTemplates[targetWf.id].length > 0)
+                        ? workflowPromptTemplates[targetWf.id]
+                        : ((targetWf.ui && Array.isArray(targetWf.ui.promptTemplates)) ? targetWf.ui.promptTemplates : []);
                     chips.innerHTML = '';
                     if (arr.length > 0) {
                         wrap.style.display = '';
@@ -575,20 +834,7 @@
             } catch(_) {}
 
             // 비율 옵션 제한
-            try {
-                const allowed = Array.isArray(uiSchema.aspectOptions) ? uiSchema.aspectOptions : ['square','landscape','portrait'];
-                document.querySelectorAll('.aspect-ratio-btn').forEach(btn => {
-                    const ok = allowed.includes(btn.dataset.ratio);
-                    btn.style.display = ok ? '' : 'none';
-                    if (!ok && btn.classList.contains('selected')) {
-                        const fallback = allowed[0] || 'square';
-                        const fbBtn = document.querySelector(`.aspect-ratio-btn[data-ratio="${fallback}"]`);
-                        if (fbBtn) {
-                            fbBtn.click();
-                        }
-                    }
-                });
-            } catch(_) {}
+            applyAspectUiForMode();
             // 입력 이미지 섹션 표시 여부
             try {
                 const inWrap = document.getElementById('input-image-wrap');
@@ -739,7 +985,8 @@
         async function updateInputImagePreview(){
             const img = document.getElementById('input-image-preview');
             const empty = document.getElementById('input-image-empty');
-            if (!currentWorkflow || !currentWorkflow.image_input) { if (img) img.style.display='none'; if (empty) empty.style.display=''; return; }
+            const targetWf = getTargetWorkflowForMode();
+            if (!targetWf || !targetWf.image_input) { if (img) img.style.display='none'; if (empty) empty.style.display=''; return; }
             const id = getInputImageId();
             if (!id) { if (img) img.style.display='none'; if (empty) empty.style.display=''; return; }
             const list = await fetchAllCandidates();
@@ -921,7 +1168,8 @@
                     let payload = null;
                     try { payload = JSON.parse(txt); } catch(_) {}
                     if (payload && payload.id && payload.source) {
-                        if (!currentWorkflow || !currentWorkflow.image_input) {
+                        const targetWf2 = getTargetWorkflowForMode();
+                        if (!targetWf2 || !targetWf2.image_input) {
                             showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
                             return;
                         }
@@ -947,7 +1195,8 @@
                         return;
                     }
                     // Fallback: file drop
-                    if (!currentWorkflow || !currentWorkflow.image_input) {
+                    const targetWf = getTargetWorkflowForMode();
+                    if (!targetWf || !targetWf.image_input) {
                         showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
                         return;
                     }
@@ -962,12 +1211,6 @@
                         const typeOk = okTypes.includes(file.type) || nameLower.endsWith('.png') || nameLower.endsWith('.jpg') || nameLower.endsWith('.jpeg') || nameLower.endsWith('.webp');
                         if (!typeOk) {
                             showStatus('PNG, JPG, WEBP 형식만 등록할 수 있어요.', 'warning');
-                            return;
-                        }
-                        const MAX_BYTES = 2621440; // 2.5MB client hint (server enforces too)
-                        if (typeof file.size === 'number' && file.size > MAX_BYTES) {
-                            showStatus('파일이 커요. 2.5MB 이하로 줄여서 올려주세요.', 'warning');
-                            // 계속 시도하고 싶으면 아래 return을 제거하세요. 지금은 UX 상 선제 차단.
                             return;
                         }
                     } catch(_) {}
@@ -1121,7 +1364,13 @@
             const requestData = {
                 user_prompt: ui.userPromptInput.value.trim(),
                 aspect_ratio: selectedAspectRatio,
-                workflow_id: currentWorkflow.id,
+                workflow_id: (function(){
+                    try {
+                        const related = (currentWorkflow && currentWorkflow.ui && currentWorkflow.ui.related) || {};
+                        if ((document.getElementById('txtimg-img2img-tabs')?.dataset.mode)==='img2img' && related && related.img2img) return related.img2img;
+                    } catch(_) {}
+                    return currentWorkflow.id;
+                })(),
                 seed: ui.seedInput.value ? parseInt(ui.seedInput.value, 10) : null
             };
             // LoRA strengths payload (single value per slot, if visible)
@@ -1145,15 +1394,18 @@
                 console.debug('[gen] input_image_id', dbgInputId || null);
             } catch (_) {}
 
-            // Image-to-image workflows: require input image selection
+            // Image-to-image mode: require input image selection
             try {
-                if (currentWorkflow && currentWorkflow.image_input) {
-                    let inputImageId = getInputImageId();
+                const isImg2Img = (document.getElementById('txtimg-img2img-tabs')?.dataset.mode) === 'img2img';
+                if (isImg2Img) {
+                    const inputImageId = getInputImageId();
                     if (inputImageId) {
                         requestData.input_image_id = inputImageId;
                     } else {
-                        // Soft warning only for now (POC): allow proceed but notify
-                        showStatus('입력 이미지가 선택되지 않았습니다. 기본 샘플 또는 실패할 수 있습니다.', 'warning');
+                        showStatus('입력 이미지를 먼저 선택해주세요.', 'warning');
+                        setGenerationState(false, '이미지 생성하기');
+                        hidePreviewOverlay();
+                        return;
                     }
                 }
             } catch(_) {}

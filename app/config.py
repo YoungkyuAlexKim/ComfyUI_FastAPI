@@ -147,14 +147,16 @@ def get_prompt_overrides(
     # prompt / negative / seed 노드는 존재할 때만 반영
     try:
         pn = config.get("prompt_node")
+        prompt_key = (config.get("prompt_input_key") or "text") if isinstance(config, dict) else "text"
         if pn:
-            overrides[pn] = {"inputs": {"text": final_positive_prompt or ""}}
+            overrides[pn] = {"inputs": {str(prompt_key): final_positive_prompt or ""}}
     except Exception:
         pass
     try:
         nn = config.get("negative_prompt_node")
+        negative_key = (config.get("negative_prompt_input_key") or "text") if isinstance(config, dict) else "text"
         if nn:
-            overrides[nn] = {"inputs": {"text": config.get("negative_prompt", "")}}
+            overrides[nn] = {"inputs": {str(negative_key): config.get("negative_prompt", "")}}
     except Exception:
         pass
     try:

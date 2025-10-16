@@ -39,6 +39,7 @@ class WorkflowItem(BaseModel):
     name: str
     description: str
     node_count: int
+    hidden: Optional[bool] = None
     style_prompt: str
     negative_prompt: str
     recommended_prompt: str
