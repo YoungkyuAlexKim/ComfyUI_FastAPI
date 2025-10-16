@@ -60,6 +60,23 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
 3) 2–3명 동시 생성 시나리오 실행
 4) 문제 발생 시 트러블슈팅 수행
 
+### 5.1 워크플로우 모드(Txt2Img / Img2Img)
+- 워크플로우 카드 선택 후, 상단 프롬프트 근처에 모드 탭이 표시됩니다.
+  - Txt2Img: 기본 생성(현재 선택 워크플로우 ID로 실행)
+  - Img2Img: 편집용 하위 워크플로우가 연결되어 있을 때만 노출(부모 `ui.related.img2img`)
+- Img2Img 모드 특징:
+  - 입력 이미지(필수) 등록: 썸네일을 드래그-드롭하거나 ‘선택/업로드’로 지정
+  - 비율 UI 숨김: 원본 이미지 스케일/비율을 따르므로 화면에서 비활성화됨
+  - 프롬프트/추천템플릿: 모드에 따라 해당 워크플로우의 기본값/템플릿로 즉시 전환
+  - 실행 시 실제 `workflow_id`는 편집 워크플로우 ID로 자동 스위칭됨(부모와 다를 수 있음)
+
+### 5.2 입력 이미지 등록 방법
+- 갤러리 썸네일 드래그-드롭(생성이미지/컨트롤/입력)
+  - 생성/컨트롤 이미지는 서버가 `/api/v1/inputs/copy`를 통해 입력 보관함으로 복사 후 등록
+  - 입력 보관함의 이미지는 즉시 선택
+- 파일 드롭/업로드 허용(png/jpg/webp) — 서버가 용량 검증, 썸네일/메타 생성
+- 등록 후 입력 이미지 미리보기 표시, ‘지우기’로 해제 가능
+
 ## 6. 트러블슈팅
 - 생성 버튼이 바로 실패/대기 반복
   - `/healthz`/ADMIN 배너에서 FAIL 원인 확인 → ComfyUI 재기동 → 재확인
@@ -76,9 +93,15 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
  - 정적 파일 제공
    - `outputs/` 폴더는 `/outputs`로 서빙되어 응답의 `url`이 `/outputs/...`로 시작해야 브라우저에서 접근 가능
 
+### 6.1 Img2Img 관련
+- 탭이 안 보임: 해당 워크플로우에 `ui.related.img2img` 링크가 없을 수 있음(숨김)
+- 드래그-드롭 미등록: 브라우저 콘솔 에러 확인. 부모 워크플로우가 아닌 ‘편집 워크플로우’의 `image_input` 유무 기준으로 검사됨
+- 비율 버튼이 보임: 모드 전환 후 새로고침/탭 토글로 숨김 재적용(프론트 캐시 이슈 시)
+
 ## 7. 데이터/정리
 - 사용자 갤러리: `GET /api/v1/images?page=&size=`
 - 사용자 소프트삭제: `POST /api/v1/images/{id}/delete`
+- 입력 보관함: `GET /api/v1/inputs`, `POST /api/v1/inputs/upload`, `POST /api/v1/inputs/copy`
 - 관리자 이미지: `GET /api/v1/admin/images?user_id=&page=&size=&include=&from_date=&to_date=`
 - 휴지통 비우기: `POST /api/v1/admin/purge-trash`
 - 잡 스냅샷 DB: `db/app_data.db` (SQLite)
@@ -92,9 +115,15 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
 - 로그: 개발 DEBUG/text, POC INFO/json(+파일)
 
 ## 부록: 리허설 체크리스트
+- [ ] Img2Img 탭 표시(편집 워크플로우가 연결된 경우)
+- [ ] 입력 이미지 드래그-드롭/업로드 등록 → 미리보기 표시
+- [ ] Txt2Img/Img2Img 전환 시 프롬프트/템플릿 즉시 스위칭
 - [ ] `/healthz` OK → ADMIN 배너 OK
 - [ ] 2–3명 동시 생성: 대기/ETA/취소/타임아웃/완료 정상
 - [ ] ComfyUI 중단 시: 사용자 사전 차단, 잡 error, ADMIN FAIL
 - [ ] 삭제/복구/스위프 동작 및 ‘삭제됨’ 표시 확인
 - [ ] `.env` 변경 후 재시작 → 설정 반영
 - [ ] 로그: enqueue → job_start → job_progress(스텝) → job_complete 순서 확인
+
+---
+참고: 레거시 `BasicWorkFlow_LOSStyle`는 제거되었으며, 현재는 `LOSstyle_Qwen` + `LOSstyle_Qwen_ImageEdit` 조합을 사용합니다.

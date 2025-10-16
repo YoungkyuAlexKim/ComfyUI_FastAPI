@@ -11,6 +11,9 @@
   - 메타(사이드카): outputs/users/{user_id}/YYYY/MM/DD/{id}.json
 - 경로 스킴(컨트롤 이미지)
   - outputs/users/{user_id}/controls/YYYY/MM/DD/{id}.png
+- 경로 스킴(입력 보관함 이미지)
+  - outputs/users/{user_id}/inputs/YYYY/MM/DD/{id}.png
+  - 썸네일/메타 규칙은 컨트롤과 동일
   - 썸네일: outputs/users/{user_id}/controls/YYYY/MM/DD/thumb/{id}.webp (또는 .jpg)
   - 메타: outputs/users/{user_id}/controls/YYYY/MM/DD/{id}.json
 - 파일명/키 규칙(현 구현 기준)
@@ -20,6 +23,7 @@
 - 메타데이터(현 구현 예시)
   - 생성 이미지: { id, owner, workflow_id, aspect_ratio, seed, prompt, original_filename, mime, bytes, sha256, created_at(ISO8601), status:"active|trash", thumb, tags:[] }
   - 컨트롤 이미지: { id, owner, kind:"control", original_filename, mime, bytes, sha256, created_at(ISO8601), status, thumb, tags:[] }
+  - 입력 이미지: { id, owner, kind:"input", original_filename, mime, bytes, sha256, created_at(ISO8601), status, thumb, tags:[] }
   - 주의: 현재는 negative_prompt, 이미지 width/height 등은 메타에 저장하지 않습니다(필요 시 확장).
 - 정적 제공
   - FastAPI가 `outputs/`를 `/outputs` 경로로 마운트하여 브라우저가 직접 접근 가능(예: `/outputs/users/.../xxx.png`).
@@ -31,11 +35,13 @@
 - API(초기)
   - 사용자 갤러리: GET /api/v1/images?page=&size=  → 최근순 페이지네이션(thumb_url 포함)
   - 사용자 소프트삭제: POST /api/v1/images/{id}/delete → 휴지통 이동
+  - 입력 보관함: GET /api/v1/inputs, POST /api/v1/inputs/upload, POST /api/v1/inputs/copy, POST /api/v1/inputs/{id}/delete|restore
   - 관리자 목록: GET /api/v1/admin/users, GET /api/v1/admin/images?user_id=&page=&size=&include=&from_date=&to_date=
   - 관리자 액션: POST /api/v1/admin/images/{id}/delete, POST /api/v1/admin/images/{id}/restore, POST /api/v1/admin/purge-trash
 - 삭제/정리 정책
   - 휴지통 보존기간(예: 30일) 이후 영구 삭제(정기 잡)
   - 썸네일/원본/메타 동시 관리(일관성 유지)
+  - ComfyUI input 임시파일: 생성 파이프라인 완료 후 `COMFY_INPUT_DIR`에서 업로드 파일을 베스트에포트로 삭제
 - 보안 가드
   - 서버가 경로를 조립(클라이언트 경로 신뢰 금지)
   - 허용된 확장자/시그니처 검증, 경로 탐색 방지
