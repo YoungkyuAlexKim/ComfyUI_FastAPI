@@ -49,18 +49,53 @@ PROMPT_TEMPLATES: Dict[str, List[PromptTemplate]] = {
         {"title": "몬스터: 슬라임", "text": "monster, slime, blue_slime, green_slime, red_slime, multiple_slime, grass"},
     ],
     # LOS 스타일: 스타일 LoRA 중심. 기본 품질 태그 포함
-    "BasicWorkFlow_LOSStyle": [
-        {"title": "1인 전신", "text": "1girl, chibi, solid_oval_eyes, solo, full_body, brown hair, bob cut, school uniform, pleated skirt, standing, thick outline, on grass, blue sky, cloud, building, simple background"},
-        {"title": "2인 전신", "text": "2girls, chibi, solid_oval_eyes, blone hair, bob cut, red hair, twin tail, standing, thick outline, street, symmetry,simple background"},
-        {"title": "상황설정1", "text": "1girl, solo, solid_oval_eyes, dress, chibi,bob cut, brown hair, holding slime, blue slime_\(creature\), library, from_above, shadow"},
-        {"title": "상황설정2", "text": "2girls,chibi, solid_oval_eyes, looking away, standing, dress, long hair, red hair, robe, blonde hair, long skirt, hand_to_hand, night, full_moon, on_grass, cloud"},
-        {"title": "상황설정3", "text": "1boy, solo, chibi, solid_oval_eyes, kneeling, praying, armor, hair_slicked_back, black hair, stained_glass, church, dappled_sunlight, light_rays"},
-        {"title": "상황설정4", "text": "1girl, chibi, solid_oval_eyes, short hair, blue_hair, solo_focus, lying, on_back, pajamas, dog, dynamic_angle, indoors, bed, bed_sheet, wooden_wall, stone_wall, inn, black_outline, simple_background"},
-        {"title": "상황설정5", "text": "1boy, solo, chibi, solid_oval_eyes, astronaut, floating, blonde_hair, space, stars, planet, black outline, simple background, fisheye"},
-        {"title": "상황설정6", "text": "1girl, chibi, solid_oval_eyes, solo, brown_hair, ribbon, robe, hat, looking up, full_body, standing, looking_at_viewer, blue slime_\(creature\), night, dutch angle, from above"},
-        {"title": "상황설정7", "text": "1girl, chibi, solid_oval_eyes, solo, blue hair, ribbon, fur-trimmed_coat, hat, full_body, sitting, bench, park, looking_at_viewer, blue slime_\(creature\), night, dutch angle"},
-        {"title": "동적 앵글", "text": "1girl, chibi, solid_oval_eyes, dynamic_angle, dutch_angle, air_view, flying"},
-        {"title": "몬스터: 슬라임", "text": "no_humans, solid_oval_eyes, slime, blue_slime, red_slime, multiple_slime"},
+
+    # 자연어 서술형 템플릿(LOSstyle_Qwen 전용)
+    "LOSstyle_Qwen": [
+        {
+            "title": "1인 전신",
+            "text": "A cute, stylized chibi girl with short brown hair in a school uniform, standing full-body on soft grass under a bright blue sky with gentle clouds. A simple, clean background emphasizes the character."
+        },
+        {
+            "title": "2인 전신",
+            "text": "Two stylized chibi girls standing side by side on a quiet street, one with bright red twin-tails and the other with a blonde bob cut. A simple, symmetric composition that highlights their shapes."
+        },
+        {
+            "title": "상황설정1",
+            "text": "A stylized chibi girl in a simple dress, seen from above inside a cozy library with tall shelves. She gently holds a smiling blue slime character, with soft shadows adding depth."
+        },
+        {
+            "title": "상황설정2",
+            "text": "Two chibi girls holding hands on a grassy field at night beneath a full, glowing moon. One wears a robe with long red hair, the other has flowing blonde hair and a long skirt; a calm scene with drifting clouds."
+        },
+        {
+            "title": "상황설정3",
+            "text": "A chibi boy with slicked-back black hair kneels in quiet prayer inside a church. Colored light filters through stained glass, casting dappled rays across the floor, clearly defining the silhouette."
+        },
+        {
+            "title": "상황설정4",
+            "text": "A chibi girl with short blue hair lies on a soft bed next to a small dog in a warm inn room. Wooden walls and stone textures frame the scene; the dynamic angle adds a playful, cozy feeling."
+        },
+        {
+            "title": "상황설정5",
+            "text": "A chibi boy astronaut floating weightlessly in space, surrounded by twinkling stars and a nearby planet. The composition hints at a subtle fisheye lens feel around the character."
+        },
+        {
+            "title": "상황설정6",
+            "text": "A chibi girl with a ribbon, robe, and hat stands at night, looking up with bright curiosity. A friendly blue slime companion rests nearby; the scene is tilted at a dramatic dutch angle."
+        },
+        {
+            "title": "상황설정7",
+            "text": "A chibi girl with blue hair and a fur-trimmed coat sits on a park bench at night. A cheerful blue slime sits beside her; the scene is framed with a gentle dutch angle."
+        },
+        {
+            "title": "동적 앵글",
+            "text": "A dynamic, tilted view of a chibi girl in mid-air, as if flying or leaping through the sky. The perspective is dramatic and playful, accentuating motion."
+        },
+        {
+            "title": "몬스터: 슬라임",
+            "text": "A simple, cheerful scene with no humans: several colorful slime characters—blue, red, and others—resting together on grass. Clear shapes keep the composition clean and friendly."
+        }
     ],
 }
 

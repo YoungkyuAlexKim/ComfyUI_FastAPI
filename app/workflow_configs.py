@@ -171,104 +171,6 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         }
     },
 
-    "BasicWorkFlow_LOSStyle": {
-        "display_name": "레오슬 스타일",
-        "description": "새로 학습한 LOS 스타일 LoRA를 사용하는 기본 워크플로우(페이스 디테일러 없음)",
-
-        # 사용자 프롬프트는 시스템 프롬프트에 병합되는 형태(선택 입력)
-        "default_user_prompt": "no_humans, blue_slime",
-
-        # 노드 ID 매핑 (JSON 기준)
-        # - 포지티브/네거티브 프롬프트 인코딩: 6 / 7
-        # - 시드: 초기 KSampler(3)
-        # - 빈 잠재 이미지: 5
-        "prompt_node": "6",
-        "negative_prompt_node": "7",
-        "seed_node": "3",
-        "latent_image_node": "5",
-
-        # 고정 프롬프트(시스템 스타일)
-        # JSON 내 텍스트를 기반으로 핵심 스타일 키워드와 품질 태그를 유지
-        "style_prompt": "LOSart, masterpiece, best quality, amazing quality",
-        "negative_prompt": "bad quality,worst quality,worst detail",
-
-        # 비율 기반 사이즈(기본 정사각 1024x1024; 가로/세로는 GPU 친화 해상도)
-        "sizes": {
-            "square": {"width": 1024, "height": 1024},
-            "landscape": {"width": 1024, "height": 576},
-            "portrait": {"width": 576, "height": 1024}
-        },
-
-        # ControlNet 매핑(단일)
-        "controlnet": {
-            "enabled": True,
-            "apply_node": "23",
-            "image_node": "28",
-            "defaults": {
-                "strength": 0,
-                "start_percent": 0.0,
-                "end_percent": 0.33
-            }
-        },
-        # 슬롯 단위 제어(멀티/단일 모두 지원). 기본 슬롯명: "default"
-        "control_slots": {
-            "default": {
-                "apply_node": "23",
-                "image_node": "28",
-                "label": "Scribble",
-                "type": "scribble",
-                "ui": {
-                    "strength": {"min": 0.0, "max": 1.5, "step": 0.05, "default": 0.0},
-                    "start_percent": {"min": 0.0, "max": 1.0, "step": 0.01, "default": 0.0},
-                    "end_percent": {"min": 0.0, "max": 1.0, "step": 0.01, "default": 0.33}
-                }
-            }
-        },
-
-        # UI 힌트
-        "ui": {
-            "showControlNet": True,
-            # LoRA 강도 조절 UI 노출 (스타일만 노출)
-            "showLora": True,
-            "showStyleLora": True,
-            "showCharacterLora": False
-        },
-
-        # LoRA 매핑(노드/입력 키)
-        # - 스타일 LoRA: 노드 42 (기본 1.0)
-        # - 캐릭터 LoRA: 노드 14 (기본 0.0)
-        "loras": {
-            "style": {
-                "node": "42",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_clip",
-                "defaults": {"unet": 1, "clip": 1},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05
-            },
-            "character": {
-                "node": "14",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_clip",
-                "defaults": {"unet": 0.0, "clip": 0.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05
-            }
-        },
-
-        # LoRA 슬라이더 사용자 힌트
-        "lora_hint": {
-            "style": "강도가 높을수록 LOS 스타일 성향이 강해집니다. 낮추면 베이스 모델 특성이 반영됩니다.",
-            "character": "캐릭터 LoRA는 선택 사용입니다. 필요 시만 값을 올려주세요."
-        },
-
-        # 추천 프롬프트(초보자용 클릭 추가용 문구)
-        "recommended_prompt": "no_humans, blue_slime, blue_sky, clouds, simple_background, castle"
-    },
 
     "ILXL_Pixelator": {
         "display_name": "픽셀레이터(입력 이미지 변환)",
@@ -298,6 +200,78 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "additionalPromptTargetNode": "63",
             "showControlNet": False
         },
+    },
+
+    "LOSstyle_Qwen": {
+        "display_name": "LOS 스타일",
+        "description": "Qwen 이미지 베이스 + Lightning LoRA 고정, 스타일 LoRA 조절형(컨트롤넷 없음)",
+
+        # 사용자 프롬프트: 노드 6의 프롬프트에서 'LOSart, ' 제거본을 초기값으로 사용
+        "default_user_prompt": "A cute, stylized cartoon girl with short brown hair and a yellow coat, holding a large, smiling blue slime character in a dim, cozy library setting. An interior illustration with tall wooden bookshelves packed with old books and a tiled floor, focusing on the close bond between the character and the mascot with a thick black outline. camera is looking them from above.",
+
+        # 노드 ID 매핑
+        "prompt_node": "6",
+        "negative_prompt_node": "7",
+        "seed_node": "3",
+        "latent_image_node": "58",
+
+        # 시스템 스타일 프롬프트: LOSart를 시스템 프롬프트로 이동
+        "style_prompt": "LOSart",
+        # 네거티브 프롬프트는 공란 유지(고급형 베이스 모델 가정)
+        "negative_prompt": "",
+
+        # 권장 해상도: 정사각 1280x1280, 16:9 가로/세로는 이를 기준으로 산정
+        "sizes": {
+            "square": {"width": 1280, "height": 1280},
+            "landscape": {"width": 1280, "height": 720},
+            "portrait": {"width": 720, "height": 1280},
+        },
+
+        # ControlNet 미사용
+        # "controlnet": 없음
+        # "control_slots": 없음
+
+        # UI 힌트: 컨트롤넷 비노출, 스타일 LoRA만 노출(캐릭터 LoRA는 숨김)
+        "ui": {
+            "showControlNet": False,
+            "showLora": True,
+            "showStyleLora": True,
+            "showCharacterLora": False,
+            # 자연어 템플릿 모드 표시(프론트의 중복 병합 로직에 사용)
+            "templateMode": "natural"
+        },
+
+        # LoRA 매핑: Lightning(고정), 스타일(조절), 캐릭터(0.0, 비노출)
+        # Qwen 워크플로우는 LoraLoaderModelOnly를 사용하므로 strength_clip이 없습니다.
+        # 프론트가 단일 슬라이더로 값을 보낼 때도 안전하게 적용되도록 clip_input을 strength_model로 동일 지정합니다.
+        "loras": {
+            "style": {
+                "node": "75",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_model",
+                "defaults": {"unet": 1.0, "clip": 1.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05
+            },
+            "character": {
+                "node": "76",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_model",
+                "defaults": {"unet": 0.0, "clip": 0.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05
+            }
+        },
+
+        # 사용자 안내 문구
+        "lora_hint": {
+            "style": "강도를 높일수록 LOS 스타일 성향이 강해집니다.",
+            "character": "캐릭터 LoRA는 현재 숨김 상태입니다. 필요 시만 사용하세요."
+        }
     },
 
     # 멀티 ControlNet 매핑 샘플 (참고용 주석)
