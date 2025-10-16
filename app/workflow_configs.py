@@ -206,8 +206,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "LOS 스타일",
         "description": "Qwen 이미지 베이스 + Lightning LoRA 고정, 스타일 LoRA 조절형(컨트롤넷 없음)",
 
-        # 사용자 프롬프트: 노드 6의 프롬프트에서 'LOSart, ' 제거본을 초기값으로 사용
-        "default_user_prompt": "A cute, stylized cartoon girl with short brown hair and a yellow coat, holding a large, smiling blue slime character in a dim, cozy library setting. An interior illustration with tall wooden bookshelves packed with old books and a tiled floor, focusing on the close bond between the character and the mascot with a thick black outline. camera is looking them from above.",
+        # 사용자 프롬프트: 자연어(한국어) 기본값
+        "default_user_prompt": "짧은 갈색 머리에 노란 코트를 입은 귀엽고 스타일화된 소녀가 어두운 아늑한 도서관에서 커다랗고 미소 짓는 파란 슬라임을 안고 있는 장면. 오래된 책들로 가득한 높은 나무 책장과 타일 바닥이 보이는 실내 일러스트로, 캐릭터와 마스코트의 친밀한 분위기를 강조해 주세요. 카메라는 위쪽에서 내려다보는 시점입니다.",
 
         # 노드 ID 매핑
         "prompt_node": "6",

@@ -50,51 +50,51 @@ PROMPT_TEMPLATES: Dict[str, List[PromptTemplate]] = {
     ],
     # LOS 스타일: 스타일 LoRA 중심. 기본 품질 태그 포함
 
-    # 자연어 서술형 템플릿(LOSstyle_Qwen 전용)
+    # 자연어 서술형 템플릿(LOSstyle_Qwen 전용, 한국어)
     "LOSstyle_Qwen": [
         {
             "title": "1인 전신",
-            "text": "A cute, stylized chibi girl with short brown hair in a school uniform, standing full-body on soft grass under a bright blue sky with gentle clouds. A simple, clean background emphasizes the character."
+            "text": "짧은 갈색 머리의 치비 소녀가 교복을 입고 서 있는 전신 장면. 푸른 하늘과 옅은 구름 아래 부드러운 잔디 위, 단정하고 깔끔한 배경으로 캐릭터를 강조해 주세요."
         },
         {
             "title": "2인 전신",
-            "text": "Two stylized chibi girls standing side by side on a quiet street, one with bright red twin-tails and the other with a blonde bob cut. A simple, symmetric composition that highlights their shapes."
+            "text": "조용한 거리 위에 나란히 서 있는 두 명의 치비 소녀 장면. 한 명은 밝은 빨간색 트윈테일, 다른 한 명은 금발 보브컷. 단순하고 대칭적인 구도로 실루엣을 강조해 주세요."
         },
         {
             "title": "상황설정1",
-            "text": "A stylized chibi girl in a simple dress, seen from above inside a cozy library with tall shelves. She gently holds a smiling blue slime character, with soft shadows adding depth."
+            "text": "단순한 원피스를 입은 치비 소녀가 아늑한 도서관 내부에서 위쪽 시점으로 보이는 장면. 높은 책장이 늘어서 있고, 부드러운 그림자로 깊이감을 더해 주세요. 소녀는 미소 짓는 파란 슬라임을 가볍게 안고 있습니다."
         },
         {
             "title": "상황설정2",
-            "text": "Two chibi girls holding hands on a grassy field at night beneath a full, glowing moon. One wears a robe with long red hair, the other has flowing blonde hair and a long skirt; a calm scene with drifting clouds."
+            "text": "밤하늘 아래 보름달이 밝게 비추는 풀밭에서 손을 잡고 있는 두 명의 치비 소녀. 한 명은 긴 빨간 머리에 로브, 다른 한 명은 흩날리는 금발과 긴 스커트를 입고 있습니다. 천천히 떠가는 구름으로 차분한 분위기를 표현해 주세요."
         },
         {
             "title": "상황설정3",
-            "text": "A chibi boy with slicked-back black hair kneels in quiet prayer inside a church. Colored light filters through stained glass, casting dappled rays across the floor, clearly defining the silhouette."
+            "text": "검은 머리를 뒤로 넘긴 치비 소년이 교회 안에서 조용히 무릎을 꿇고 기도하는 장면. 스테인드글라스를 통과한 색색의 빛이 바닥에 점점이 드리워지며, 실루엣을 선명하게 드러내 주세요."
         },
         {
             "title": "상황설정4",
-            "text": "A chibi girl with short blue hair lies on a soft bed next to a small dog in a warm inn room. Wooden walls and stone textures frame the scene; the dynamic angle adds a playful, cozy feeling."
+            "text": "짧은 파란 머리의 치비 소녀가 작은 강아지 옆에서 포근한 침대에 누워 있는 장면. 따뜻한 여관 방의 나무 벽과 돌 질감이 어우러지며, 약간의 역동적인 각도로 아늑하고 발랄한 느낌을 더해 주세요."
         },
         {
             "title": "상황설정5",
-            "text": "A chibi boy astronaut floating weightlessly in space, surrounded by twinkling stars and a nearby planet. The composition hints at a subtle fisheye lens feel around the character."
+            "text": "치비 소년 우주비행사가 무중력 상태로 떠 있는 장면. 반짝이는 별들과 가까운 행성이 보이며, 캐릭터 주변의 공간감을 은은하게 강조해 주세요."
         },
         {
             "title": "상황설정6",
-            "text": "A chibi girl with a ribbon, robe, and hat stands at night, looking up with bright curiosity. A friendly blue slime companion rests nearby; the scene is tilted at a dramatic dutch angle."
+            "text": "리본과 로브, 모자를 쓴 치비 소녀가 밤하늘을 호기심 가득 바라보는 장면. 옆에는 친근한 파란 슬라임이 있고, 살짝 기울어진 구도로 극적인 느낌을 주세요."
         },
         {
             "title": "상황설정7",
-            "text": "A chibi girl with blue hair and a fur-trimmed coat sits on a park bench at night. A cheerful blue slime sits beside her; the scene is framed with a gentle dutch angle."
+            "text": "파란 머리에 퍼 트리밍 코트를 입은 치비 소녀가 밤의 공원 벤치에 앉아 있는 장면. 옆에 즐거운 파란 슬라임이 있고, 부드럽게 기울어진 구도로 담아 주세요."
         },
         {
             "title": "동적 앵글",
-            "text": "A dynamic, tilted view of a chibi girl in mid-air, as if flying or leaping through the sky. The perspective is dramatic and playful, accentuating motion."
+            "text": "하늘을 나는 듯하거나 도약하는 치비 소녀를 역동적으로 담아 주세요. 기울어진 시점과 움직임이 강조되도록 연출해 주세요."
         },
         {
             "title": "몬스터: 슬라임",
-            "text": "A simple, cheerful scene with no humans: several colorful slime characters—blue, red, and others—resting together on grass. Clear shapes keep the composition clean and friendly."
+            "text": "사람 없이 슬라임들만 등장하는 단순하고 즐거운 장면. 파란색과 빨간색 등 다양한 색의 슬라임이 잔디 위에 함께 모여 쉬고 있으며, 형태가 또렷하게 보이도록 깔끔하게 표현해 주세요."
         }
     ],
 
