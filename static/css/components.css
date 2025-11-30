@@ -944,12 +944,14 @@
 }
 
 .placeholder-card {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--bg-tertiary);
+    background: var(--glass-bg-strong);
+    border: 1px solid var(--glass-border);
     border-radius: var(--radius-xl);
     padding: var(--space-3xl);
     text-align: center;
     max-width: 400px;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
 }
 
 .placeholder-container {
@@ -1356,13 +1358,15 @@
     display: flex; /* keep mounted to allow opacity transition */
     align-items: center;
     justify-content: center;
-    background: rgba(0,0,0,0.35);
+    background: var(--glass-bg-soft);
     color: #ffffff;
     z-index: 10;
     opacity: 0;
     transition: opacity var(--overlay-fade, 300ms) var(--overlay-easing, ease);
     pointer-events: none; /* do not block clicks (e.g., cancel button) */
     border-radius: var(--radius-lg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
 }
 .preview-overlay.open { opacity: 1; }
 
@@ -1420,8 +1424,9 @@
 .lightbox-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(6px);
+    background: rgba(2, 6, 23, 0.88);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
     display: none;
     align-items: center;
     justify-content: center;
@@ -1447,7 +1452,7 @@
 
 .lightbox-body { display: grid; grid-template-columns: 1fr var(--lb-meta-width, 320px); gap: 0; width: 86vw; max-width: 1200px; height: 86vh; max-height: 820px; background: transparent; opacity: 0; transition: opacity var(--lb-fade, 300ms); will-change: opacity; }
 .lightbox-overlay.open .lightbox-body { opacity: 1; }
-.lightbox-media { display:flex; align-items:center; justify-content:center; background: var(--lb-media-bg, rgba(17, 24, 39, 0.55)); }
+.lightbox-media { display:flex; align-items:center; justify-content:center; background: var(--lb-media-bg, rgba(17, 24, 39, 0.55)); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
 .lightbox-content img { display:block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: transparent; }
 .lightbox-meta {
     background: var(--lb-meta-bg, rgba(17, 24, 39, 0.55));
@@ -1455,6 +1460,8 @@
     padding: 12px;
     overflow: auto;
     color: var(--text-primary); /* 밝은 텍스트 */
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
 }
 .lb-zoom-wrap { position: relative; overflow: hidden; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1; }
 .lb-zoom-wrap img { user-select: none; -webkit-user-drag: none; pointer-events: none; }
@@ -1703,6 +1710,9 @@
 /* Control Canvas Animations */
 #control-canvas-overlay {
     transition: opacity 0.3s ease-in-out;
+    background: rgba(2, 6, 23, 0.78);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
 }
 
 #control-canvas-overlay.fade-in {
@@ -1855,15 +1865,26 @@
     right: 0;
     bottom: 0;
     width: var(--drawer-width);
-    background: var(--bg-card);
-    border-left: 1px solid var(--bg-surface);
-    box-shadow: var(--shadow-2xl);
+    background: var(--glass-bg-strong);
+    border-left: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-xl);
     transform: translateX(100%);
     transition: transform var(--transition-normal);
     z-index: 40;
     padding: var(--space-md);
     overflow: auto;
     box-sizing: border-box;
+}
+
+/* Drawer 내부 헤더를 살짝 유리판처럼 */
+#gallery-panel .gallery-header {
+    background: var(--glass-bg-soft);
+    border-radius: var(--radius-xl);
+    padding: var(--space-md) var(--space-lg);
+    margin-bottom: var(--space-md);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--glass-border);
 }
 
 .gallery-collapsible.gallery-open #gallery-panel { transform: translateX(0); }

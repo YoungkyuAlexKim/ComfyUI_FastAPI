@@ -93,7 +93,7 @@
       'BasicWorkFlow_PixelArt': {
         url: '/static/img/banner/img_banner_workflow_pixelart.png',
         // 예: 이미지에 텍스트가 내장된 경우 아래를 false로 설정
-        showTitle: false,     // 배너 이미지에 텍스트가 포함돼 있다면 false
+        showTitle: false, // 배너 이미지에 텍스트가 포함돼 있다면 false
         showDescription: false // 배너 이미지에 텍스트가 포함돼 있다면 false
       },
       'BasicWorkFlow_MKStyle': {
@@ -108,6 +108,11 @@
       },
       'LOSstyle_Qwen': {
         url: '/static/img/banner/img_banner_workflow_LOSStyle_QWEN.png',
+        showTitle: false,
+        showDescription: false
+      },
+      'Z_ImageTurbo': {
+        url: '/static/img/banner/img_banner_ZImageTurbo.png',
         showTitle: false,
         showDescription: false
       }

@@ -29,8 +29,8 @@
     --secondary-800: #1E293B;    /* Darker Neutral */
     --secondary-900: #0F172A;    /* Darkest Neutral */
 
-    /* Dark Theme Backgrounds - Near black base, low saturation surfaces */
-    --bg-primary: #000000;      /* Pure black background */
+    /* Dark Theme Backgrounds - Near black base, slightly softened */
+    --bg-primary: #020617;      /* Near-black slate, 눈부심을 줄인 배경 */
     --bg-secondary: #0B0F14;    /* Near-black surface */
     --bg-tertiary: #0F141C;     /* Very dark muted blue-gray */
     --bg-surface: #151B24;      /* Divider/surface lines */
@@ -118,6 +118,15 @@
     --sidebar-width: 280px;
     --header-height: 64px;
     --input-height: 120px;
+
+    /* Glassmorphism helpers */
+    --glass-bg-strong: rgba(15, 23, 42, 0.85);
+    --glass-bg-soft: rgba(15, 23, 42, 0.65);
+    --glass-border: rgba(148, 163, 184, 0.35);
+
+    /* Lightbox defaults (can be overridden per-component) */
+    --lb-media-bg: var(--glass-bg-soft);
+    --lb-meta-bg: var(--glass-bg-strong);
 
     /* Dark Theme Skeleton Loading */
     --skeleton-color-1: var(--bg-tertiary);

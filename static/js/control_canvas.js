@@ -7,7 +7,7 @@
     if (!openBtn) return;
     const root = document.createElement('div');
     root.id = 'control-canvas-overlay';
-    root.style.cssText = 'position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);z-index:9999;';
+    root.style.cssText = 'position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999;';
     root.innerHTML = `
       <div id="cc-card" style="width:min(960px, 96vw); max-height:92vh; background:#fff; border-radius:12px; box-shadow: var(--shadow-2xl); display:flex; flex-direction:column;">
         <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--neutral-200);">

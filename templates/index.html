@@ -68,6 +68,8 @@
             controlImg: document.getElementById('control-floating-img'),
             controlEmpty: document.getElementById('control-floating-empty'),
             controlClear: document.getElementById('control-clear'),
+            // Danbooru 태그 변환 버튼 (워크플로우별로 표시/숨김 제어)
+            translateBtn: document.querySelector('.translate-btn--icon[data-target="user_prompt"]'),
         };
 
         function getCurrentWorkflowSlots(){
@@ -378,7 +380,18 @@
         }
 
         function renderWorkflows(workflows) {
-            ui.workflowList.innerHTML = workflows.map(wf => `
+            // 카테고리 분류: 태그 기반 vs 자연어 기반
+            const tagBased = [];
+            const natural = [];
+            workflows.forEach((wf) => {
+                const uiSchema = (wf && wf.ui) || {};
+                const mode = uiSchema.templateMode || '';
+                const isNatural = mode === 'natural';
+                if (isNatural) natural.push(wf);
+                else tagBased.push(wf);
+            });
+
+            const renderItem = (wf) => `
                 <div class="workflow-item" data-workflow-id="${wf.id}">
                     <div class="workflow-item-header">
                         <div class="workflow-icon"><i class="fas fa-project-diagram"></i></div>
@@ -387,10 +400,31 @@
                             <div class="workflow-description">${wf.description}</div>
                         </div>
                     </div>
-                </div>`).join('');
-            
-            ui.workflowList.querySelectorAll('.workflow-item').forEach((item, i) => {
-                item.addEventListener('click', () => selectWorkflow(workflows[i]));
+                </div>`;
+
+            let html = '';
+            if (tagBased.length > 0) {
+                html += `
+                <div class="workflow-group">
+                    <div class="workflow-group-label">태그 기반 (Danbooru)</div>
+                    ${tagBased.map(renderItem).join('')}
+                </div>`;
+            }
+            if (natural.length > 0) {
+                html += `
+                <div class="workflow-group">
+                    <div class="workflow-group-label">자연어 프롬프트</div>
+                    ${natural.map(renderItem).join('')}
+                </div>`;
+            }
+            ui.workflowList.innerHTML = html;
+
+            // 클릭 시 data-workflow-id 기준으로 해당 워크플로우 선택
+            ui.workflowList.querySelectorAll('.workflow-item').forEach((item) => {
+                const wfId = item.getAttribute('data-workflow-id');
+                const wf = workflows.find((w) => w.id === wfId);
+                if (!wf) return;
+                item.addEventListener('click', () => selectWorkflow(wf));
             });
         }
 
@@ -517,6 +551,7 @@
                     if (inWrap) inWrap.style.display = needImg ? '' : 'none';
                 } catch(_) {}
                 applyAspectUiForMode();
+                applyPromptTranslateUiForMode();
                 try { updateInputImagePreview(); } catch(_) {}
                 // Update default prompt when switching modes
                 try {
@@ -632,6 +667,19 @@
                         if (fbBtn) fbBtn.click();
                     }
                 });
+            } catch(_) {}
+        }
+
+        function applyPromptTranslateUiForMode() {
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                // 기본값: 설정이 없으면 버튼 표시, showPromptTranslate === false 인 워크플로우만 숨김
+                const hasFlag = Object.prototype.hasOwnProperty.call(uiSchema, 'showPromptTranslate');
+                const show = hasFlag ? !!uiSchema.showPromptTranslate : true;
+                if (ui.translateBtn) {
+                    ui.translateBtn.style.display = show ? '' : 'none';
+                }
             } catch(_) {}
         }
         
@@ -833,8 +881,9 @@
                 }
             } catch(_) {}
 
-            // 비율 옵션 제한
+            // 비율 옵션 및 프롬프트 변환 버튼 표시/숨김은 현재 모드 기준으로 갱신
             applyAspectUiForMode();
+            applyPromptTranslateUiForMode();
             // 입력 이미지 섹션 표시 여부
             try {
                 const inWrap = document.getElementById('input-image-wrap');
