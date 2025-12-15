@@ -2,6 +2,7 @@
 사용자 인증 및 익명 사용자 관리 모듈
 """
 import uuid
+import os
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,6 +14,11 @@ if TYPE_CHECKING:
 ANON_COOKIE_NAME = "anon_id"
 ANON_COOKIE_PREFIX = "anon-"
 
+def _parse_bool(val: str | None, default: bool = False) -> bool:
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "on")
+
 def _ensure_anon_id_cookie(req: "Request", resp: "HTMLResponse") -> str:
     """익명 사용자 ID 쿠키를 보장하고 반환합니다."""
     existing = req.cookies.get(ANON_COOKIE_NAME)
@@ -21,12 +27,14 @@ def _ensure_anon_id_cookie(req: "Request", resp: "HTMLResponse") -> str:
     new_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
     # ~180 days
     max_age = 60 * 60 * 24 * 180
+    # In HTTPS deployments, you should set COOKIE_SECURE=true so the cookie is only sent over HTTPS.
+    secure_cookie = _parse_bool(os.getenv("COOKIE_SECURE"), False)
     resp.set_cookie(
         key=ANON_COOKIE_NAME,
         value=new_id,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=secure_cookie,
         max_age=max_age,
     )
     return new_id

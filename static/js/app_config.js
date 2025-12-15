@@ -111,6 +111,16 @@
         showTitle: false,
         showDescription: false
       },
+      'OHDstyle_Qwen': {
+        url: '/static/img/banner/img_banner_workflow_OHDStyle_QWEN.png',
+        showTitle: false,
+        showDescription: false
+      },
+      'OHDstyle_Qwen_ImageEdit': {
+        url: '/static/img/banner/img_banner_workflow_OHDStyle_QWEN.png',
+        showTitle: false,
+        showDescription: false
+      },
       'Z_ImageTurbo': {
         url: '/static/img/banner/img_banner_ZImageTurbo.png',
         showTitle: false,

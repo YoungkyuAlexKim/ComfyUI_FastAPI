@@ -321,6 +321,121 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         }
     },
 
+    "OHDstyle_Qwen": {
+        "display_name": "OHD 스타일",
+        "description": "Qwen 이미지 베이스 + Lightning LoRA 고정, 스타일 LoRA 조절형(컨트롤넷 없음)",
+
+        # 사용자 프롬프트: 자연어(한국어) 기본값
+        "default_user_prompt": "짧은 갈색 머리에 노란 코트를 입은 귀엽고 스타일화된 소녀가 어두운 아늑한 도서관에서 커다랗고 미소 짓는 파란 슬라임을 안고 있는 장면. 오래된 책들로 가득한 높은 나무 책장과 타일 바닥이 보이는 실내 일러스트로, 캐릭터와 마스코트의 친밀한 분위기를 강조해 주세요. 카메라는 위쪽에서 내려다보는 시점입니다.",
+
+        # 노드 ID 매핑 (OHDstyle_Qwen.json 기준)
+        "prompt_node": "6",
+        "negative_prompt_node": "7",
+        "seed_node": "3",
+        "latent_image_node": "58",
+
+        # 시스템 스타일 프롬프트
+        "style_prompt": "OHDart, Cute cozy cartoon style with thick clean outlines and soft pastel coloring",
+        "negative_prompt": "",
+
+        # 권장 해상도: 정사각 1280x1280
+        "sizes": {
+            "square": {"width": 1280, "height": 1280},
+            "landscape": {"width": 1280, "height": 720},
+            "portrait": {"width": 720, "height": 1280},
+        },
+
+        # UI 힌트: 컨트롤넷 비노출, 스타일 LoRA만 노출(캐릭터 LoRA는 숨김)
+        "ui": {
+            "showControlNet": False,
+            "showLora": True,
+            "showStyleLora": True,
+            "showCharacterLora": False,
+            # 자연어(Qwen) 기반이라 Danbooru 태그 변환 버튼은 숨깁니다.
+            "showPromptTranslate": False,
+            "templateMode": "natural",
+            # 편집(img2img) 관련 워크플로우 링크(목록 비노출 전용)
+            "related": {"img2img": "OHDstyle_Qwen_ImageEdit"},
+        },
+
+        # LoRA 매핑: Lightning(고정), 스타일(조절), 캐릭터(0.0, 비노출)
+        # Qwen 워크플로우는 LoraLoaderModelOnly를 사용하므로 strength_clip이 없습니다.
+        "loras": {
+            "style": {
+                "node": "75",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_model",
+                "defaults": {"unet": 1.0, "clip": 1.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05,
+            },
+            "character": {
+                "node": "76",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_model",
+                "defaults": {"unet": 0.0, "clip": 0.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05,
+            },
+        },
+
+        # 사용자 안내 문구
+        "lora_hint": {
+            "style": "강도를 높일수록 OHD 스타일 성향이 강해집니다.",
+            "character": "캐릭터 LoRA는 현재 숨김 상태입니다. 필요 시만 사용하세요.",
+        },
+    },
+
+    "OHDstyle_Qwen_ImageEdit": {
+        "hidden": True,
+        "display_name": "OHD 스타일 — 편집",
+        "description": "OHD 스타일 원본을 기반으로 입력 이미지를 편집합니다.",
+
+        # 프롬프트 노드와 입력 키('prompt')
+        "prompt_node": "111",
+        "negative_prompt_node": "110",
+        "prompt_input_key": "prompt",
+        "negative_prompt_input_key": "prompt",
+        # Img2Img 기본 사용자 프롬프트
+        "default_user_prompt": "이미지에서 파란 슬라임을 제거하고, 강아지로 교체해 주세요.",
+
+        # 시스템 스타일 프롬프트(편집에도 동일 적용)
+        "style_prompt": "OHDart, Cute cozy cartoon style with thick clean outlines and soft pastel coloring",
+        "negative_prompt": "",
+
+        # 시드/입력 이미지 매핑(필수)
+        "seed_node": "3",
+        "image_input": {"image_node": "78", "input_field": "image"},
+
+        # LoRA: 스타일만 노출(노드 389). 편집용 워크플로우엔 ControlNet 없음
+        "loras": {
+            "style": {
+                "node": "389",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_model",
+                "defaults": {"unet": 1.0, "clip": 1.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05,
+            }
+        },
+        "ui": {
+            "showControlNet": False,
+            "showLora": True,
+            "showStyleLora": True,
+            "showCharacterLora": False,
+            "showPromptTranslate": False,
+            "templateMode": "natural",
+            # Img2Img에서는 입력 비율을 따르므로 프론트에서 비율 UI 비활성 힌트
+            "disableAspect": True,
+        },
+    },
+
     "Z_ImageTurbo": {
         "display_name": "Z Image Turbo",
         "description": "AuraFlow / Qwen 기반의 빠른 일반 일러스트 생성 워크플로우입니다.",

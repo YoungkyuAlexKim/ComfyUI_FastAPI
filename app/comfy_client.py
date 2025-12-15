@@ -263,16 +263,144 @@ class ComfyUIClient:
                 except Exception:
                     pass
 
-        # --- 아래 부분은 기존과 동일합니다 ---
-        history = self.get_history(prompt_id).get(prompt_id, {})
-        images_output = {}
+        # --- 결과 이미지 선택 ---
+        # ComfyUI history에는 "최종 결과"뿐 아니라 입력/중간 단계의 이미지도 outputs에 포함될 수 있습니다.
+        # 예: LoadImage 출력(원본), 중간 프리뷰, 최종 Preview/SaveImage 결과 등.
+        # 그래서 단순히 "첫 번째 이미지"를 쓰면 Img2Img에서 원본이 결과로 저장/표시되는 문제가 생길 수 있습니다.
+        #
+        # 해결: history의 prompt 그래프에서 각 node의 class_type을 함께 보고,
+        # SaveImage/PreviewImage가 만든 이미지를 최우선으로 선택합니다.
+        history = self.get_history(prompt_id).get(prompt_id, {}) or {}
+        outputs = (history.get("outputs", {}) or {}) if isinstance(history, dict) else {}
+        # history["prompt"] 는 ComfyUI 버전에 따라 형태가 다를 수 있습니다.
+        # 흔한 형태:
+        # - dict: { node_id: {class_type, inputs, ...}, ... }
+        # - list: [queue_id, prompt_id, { node_id: {...}, ... }]
+        prompt_field = history.get("prompt") if isinstance(history, dict) else None
+        prompt_graph = {}
+        try:
+            if isinstance(prompt_field, dict):
+                # Some variants wrap nodes under "nodes"
+                if isinstance(prompt_field.get("nodes"), dict):
+                    prompt_graph = prompt_field.get("nodes") or {}
+                else:
+                    prompt_graph = prompt_field
+            elif isinstance(prompt_field, list):
+                if len(prompt_field) >= 3 and isinstance(prompt_field[2], dict):
+                    prompt_graph = prompt_field[2]
+        except Exception:
+            prompt_graph = {}
 
-        for node_id, node_output in history.get('outputs', {}).items():
-            if 'images' in node_output:
-                for image in node_output['images']:
-                    image_data = self.get_image(image['filename'], image['subfolder'], image['type'])
-                    if image_data:
-                        images_output[image['filename']] = image_data
+        candidates: list[tuple[int, int, int, dict]] = []
+
+        def _node_num(node_id: str) -> int:
+            try:
+                return int(str(node_id))
+            except Exception:
+                return -1
+
+        def _type_priority(folder_type: str) -> int:
+            # /view?type=output|temp|input
+            t = str(folder_type or "").lower()
+            if t == "output":
+                return 3
+            if t == "temp":
+                return 2
+            if t == "input":
+                return 1
+            return 0
+
+        def _class_priority(class_type: str) -> int:
+            # 최종 결과를 만드는 노드 우선
+            # - SaveImage/PreviewImage: 최종에 가까움
+            # - VAEDecode: 디코딩된 최종 이미지(워크플로우에 Save/Preview가 없어도 여기서 선택 가능)
+            # - LoadImage: 입력 원본이므로 최하위 (Img2Img에서 이것을 선택하면 "원본이 결과" 문제가 발생)
+            ct = str(class_type or "")
+            if ct == "SaveImage":
+                return 100
+            if ct == "PreviewImage":
+                return 90
+            if ct in ("VAEDecode", "VAEDecodeTiled", "VAEDecodeTAESD"):
+                return 80
+            if ct == "LoadImage":
+                return 0
+            return 50
+
+        for node_id, node_output in outputs.items():
+            if not isinstance(node_output, dict):
+                continue
+            imgs = node_output.get("images")
+            if not isinstance(imgs, list) or not imgs:
+                continue
+            node_cfg = prompt_graph.get(str(node_id), {}) if isinstance(prompt_graph, dict) else {}
+            class_type = node_cfg.get("class_type") if isinstance(node_cfg, dict) else None
+            cpri = _class_priority(class_type)
+            nid = _node_num(str(node_id))
+            for img in imgs:
+                if not isinstance(img, dict):
+                    continue
+                tpri = _type_priority(img.get("type"))
+                candidates.append((cpri, tpri, nid, img))
+
+        # Filter 1: output/temp 가 하나라도 있으면 input 타입은 제외(가능한 경우)
+        try:
+            has_non_input = any(t[1] >= 2 for t in candidates)  # temp(2) or output(3)
+            if has_non_input:
+                candidates = [t for t in candidates if t[1] >= 2]
+        except Exception:
+            pass
+
+        # 우선순위: class > type(output/temp/input) > node_id(큰 것이 보통 더 마지막)
+        candidates.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)
+
+        images_output: dict[str, bytes] = {}
+        for cpri, tpri, nid, img in candidates:
+            try:
+                filename = img.get("filename")
+                subfolder = img.get("subfolder", "")
+                folder_type = img.get("type", "")
+                if not filename:
+                    continue
+                image_data = self.get_image(filename, subfolder, folder_type)
+                if image_data:
+                    images_output[str(filename)] = image_data
+            except Exception:
+                continue
+
+        # (디버깅 힌트) 어떤 후보가 1순위였는지 + 상위 후보 몇 개를 로그
+        try:
+            if candidates:
+                top = candidates[0]
+                img = top[3]
+                top_list = []
+                try:
+                    for it in candidates[:5]:
+                        node_id = str(it[2])
+                        node_cfg = prompt_graph.get(node_id, {}) if isinstance(prompt_graph, dict) else {}
+                        ct = node_cfg.get("class_type") if isinstance(node_cfg, dict) else None
+                        top_list.append({
+                            "node_id": it[2],
+                            "class_type": ct,
+                            "type": (it[3] or {}).get("type"),
+                            "subfolder": (it[3] or {}).get("subfolder"),
+                            "filename": (it[3] or {}).get("filename"),
+                            "class_priority": it[0],
+                            "type_priority": it[1],
+                        })
+                except Exception:
+                    top_list = []
+                self._logger.info({
+                    "event": "comfy_images_selected",
+                    "prompt_id": prompt_id,
+                    "selected_filename": img.get("filename"),
+                    "selected_type": img.get("type"),
+                    "selected_subfolder": img.get("subfolder"),
+                    "selected_node_id": top[2],
+                    "selected_class_priority": top[0],
+                    "top_candidates": top_list,
+                })
+        except Exception:
+            pass
 
         return images_output
 

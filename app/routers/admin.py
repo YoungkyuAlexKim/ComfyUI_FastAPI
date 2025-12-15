@@ -1,9 +1,11 @@
 from typing import Optional
 import os
 import logging
-from fastapi import APIRouter, Request, HTTPException
+import secrets
+from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from ..config import SERVER_CONFIG
 from ..services.media_store import (
@@ -16,7 +18,36 @@ from ..services.media_store import (
 )
 from pydantic import BaseModel
 
-router = APIRouter()
+security = HTTPBasic()
+
+
+def _admin_auth_enabled() -> bool:
+    user = os.getenv("ADMIN_USER")
+    pw = os.getenv("ADMIN_PASSWORD")
+    return bool(user) and bool(pw)
+
+
+def require_admin(credentials: HTTPBasicCredentials = Depends(security)) -> bool:
+    """
+    Protect admin endpoints with HTTP Basic auth.
+
+    - Enabled when both ADMIN_USER and ADMIN_PASSWORD are set.
+    - If not configured, admin routes remain open (for local/dev convenience),
+      but you SHOULD set these in production/beta.
+    """
+    if not _admin_auth_enabled():
+        return True
+    expected_user = os.getenv("ADMIN_USER", "")
+    expected_pw = os.getenv("ADMIN_PASSWORD", "")
+    ok = secrets.compare_digest(credentials.username or "", expected_user) and secrets.compare_digest(
+        credentials.password or "", expected_pw
+    )
+    if not ok:
+        raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic"})
+    return True
+
+
+router = APIRouter(dependencies=[Depends(require_admin)])
 logger = logging.getLogger("comfyui_app")
 
 templates = Jinja2Templates(directory="templates")

@@ -74,6 +74,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     uploaded_multi_filenames: List[str] = []
     uploaded_input_filename: Optional[str] = None  # control single
     uploaded_image_input_filename: Optional[str] = None  # image_input single
+    uploaded_image_input_requested_name: Optional[str] = None
 
     # Prepare ControlNet overrides if enabled
     try:
@@ -429,7 +430,9 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                         try:
                             with open(local_png, "rb") as f:
                                 data = f.read()
-                            stored = client.upload_image_to_input(f"{img_id}_{job.id}.png", data, "image/png")
+                            req_name = f"{img_id}_{job.id}.png"
+                            uploaded_image_input_requested_name = req_name
+                            stored = client.upload_image_to_input(req_name, data, "image/png")
                             if isinstance(stored, str) and stored:
                                 try:
                                     _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
@@ -540,30 +543,90 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         # Best-effort cleanup of any uploaded inputs in ComfyUI input directory (single and multi)
         try:
             if isinstance(COMFY_INPUT_DIR, str) and COMFY_INPUT_DIR:
+                def _try_delete(name: str, kind: str):
+                    if not isinstance(name, str) or not name:
+                        return
+                    # ComfyUI가 반환하는 name이 경로를 포함하는 경우가 드물게 있어, 두 가지 후보를 시도합니다.
+                    candidates = []
+                    try:
+                        candidates.append(os.path.join(COMFY_INPUT_DIR, name))
+                    except Exception:
+                        pass
+                    try:
+                        base = os.path.basename(name.replace("\\", "/"))
+                        if base and base != name:
+                            candidates.append(os.path.join(COMFY_INPUT_DIR, base))
+                    except Exception:
+                        pass
+
+                    for cand in candidates:
+                        if not cand:
+                            continue
+                        ok = False
+                        last_err = None
+                        # Windows에서는 ComfyUI가 파일 핸들을 잠깐 잡고 있는 경우가 있어 재시도합니다.
+                        for _ in range(25):
+                            try:
+                                if os.path.exists(cand):
+                                    os.remove(cand)
+                                ok = True
+                                break
+                            except Exception as e:
+                                last_err = str(e)
+                                try:
+                                    time.sleep(0.2)
+                                except Exception:
+                                    pass
+                        try:
+                            logger.info({
+                                "event": "comfy_input_cleanup",
+                                "kind": kind,
+                                "name": name,
+                                "candidate": cand,
+                                "ok": ok,
+                                "error": last_err,
+                            })
+                        except Exception:
+                            pass
+                        if ok:
+                            break
+
                 if uploaded_input_filename:
-                    try:
-                        candidate = os.path.join(COMFY_INPUT_DIR, uploaded_input_filename)
-                        if os.path.exists(candidate):
-                            os.remove(candidate)
-                    except Exception:
-                        pass
+                    _try_delete(uploaded_input_filename, "control_single")
                 if uploaded_image_input_filename:
-                    try:
-                        candidate2 = os.path.join(COMFY_INPUT_DIR, uploaded_image_input_filename)
-                        if os.path.exists(candidate2):
-                            os.remove(candidate2)
-                    except Exception:
-                        pass
+                    _try_delete(uploaded_image_input_filename, "img2img_single")
+                if uploaded_image_input_requested_name:
+                    _try_delete(uploaded_image_input_requested_name, "img2img_single_requested")
                 try:
                     for fname in list(uploaded_multi_filenames):
                         if not fname:
                             continue
+                        _try_delete(fname, "control_multi")
+                except Exception:
+                    pass
+
+                # 마지막 안전장치:
+                # ComfyUI가 업로드 파일명에 (1) 같은 접미사를 붙이거나, 반환값 파싱이 어긋나는 경우가 있습니다.
+                # 우리 쪽 업로드 파일명에는 job.id(uuid hex)가 포함되므로, input 폴더에서 job.id가 들어간 파일을
+                # 추가로 찾아 정리합니다.
+                try:
+                    jid = getattr(job, "id", None)
+                    if isinstance(jid, str) and jid:
+                        removed = 0
+                        for name in os.listdir(COMFY_INPUT_DIR):
+                            try:
+                                if not isinstance(name, str) or not name:
+                                    continue
+                                low = name.lower()
+                                if (jid.lower() in low) and (low.endswith(".png") or low.endswith(".webp") or low.endswith(".jpg") or low.endswith(".jpeg")):
+                                    _try_delete(name, "sweep_by_job_id")
+                                    removed += 1
+                            except Exception:
+                                continue
                         try:
-                            candidate = os.path.join(COMFY_INPUT_DIR, fname)
-                            if os.path.exists(candidate):
-                                os.remove(candidate)
+                            logger.info({"event": "comfy_input_cleanup_sweep_done", "job_id": jid, "removed_candidates": removed})
                         except Exception:
-                            continue
+                            pass
                 except Exception:
                     pass
         except Exception:

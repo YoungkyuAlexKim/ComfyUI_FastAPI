@@ -1607,7 +1607,7 @@
                     if (pos) showQueueInfo(pos); else showQueueInfo();
                     // fetch metrics for ETA
                     try {
-                        const mRes = await fetch('/api/v1/admin/jobs/metrics?limit=50');
+                        const mRes = await fetch('/api/v1/jobs/metrics?limit=50');
                         if (mRes.ok) {
                             const m = await mRes.json();
                             const etaEl = document.getElementById('queue-eta');

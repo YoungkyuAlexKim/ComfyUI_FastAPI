@@ -53,6 +53,7 @@ from .routers.images import router as images_router
 from .routers.controls import router as controls_router
 from .routers.inputs import router as inputs_router
 from .routers.health import router as health_router
+from .routers.jobs import router as jobs_router
 from .ws.manager import manager
 from .ws.routes import router as ws_router
 from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActiveResponse, TranslateResponse
@@ -78,6 +79,7 @@ app.include_router(images_router)
 app.include_router(controls_router)
 app.include_router(inputs_router)
 app.include_router(health_router)
+app.include_router(jobs_router)
 
 # --- HTTP request logging middleware ---
 @app.middleware("http")

@@ -198,7 +198,7 @@
   },
   "389": {
     "inputs": {
-      "lora_name": "styles\\Qwen\\LOSstyle_QWEN_v1.safetensors",
+      "lora_name": "styles\\Qwen\\OHDstyle_QWEN_v1.safetensors",
       "strength_model": 1,
       "model": [
         "89",
