@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, BackgroundTasks, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -58,6 +59,8 @@ from .ws.manager import manager
 from .ws.routes import router as ws_router
 from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActiveResponse, TranslateResponse
 from .services.generation import run_generation_processor
+from .beta_access import beta_enabled, is_request_authed, beta_cookie_name, expected_cookie_value
+from .auth.user_management import _parse_bool as _parse_bool_cookie_secure
 
 logger = setup_logging()
 try:
@@ -80,6 +83,32 @@ app.include_router(controls_router)
 app.include_router(inputs_router)
 app.include_router(health_router)
 app.include_router(jobs_router)
+
+# --- Beta access gate (shared password) ---
+@app.middleware("http")
+async def beta_access_middleware(request: Request, call_next):
+    """
+    Simple beta gate:
+      - Enabled when BETA_PASSWORD is set.
+      - If not authed, web pages redirect to /beta-login
+      - API requests return 401 JSON to avoid frontend JSON parse issues.
+    """
+    if not beta_enabled():
+        return await call_next(request)
+
+    path = request.url.path or ""
+    # Allow login endpoints and health check without auth
+    if path.startswith("/beta-login") or path == "/healthz":
+        return await call_next(request)
+
+    if is_request_authed(request.cookies):
+        return await call_next(request)
+
+    # APIs should return JSON 401 (not redirect), otherwise fetch().json() breaks.
+    if path.startswith("/api/"):
+        return JSONResponse(status_code=401, content={"detail": "beta_auth_required"})
+
+    return RedirectResponse(url="/beta-login", status_code=303)
 
 # --- HTTP request logging middleware ---
 @app.middleware("http")
@@ -238,6 +267,84 @@ async def read_root(request: Request):
     })
     _ensure_anon_id_cookie(request, response)
     return response
+
+
+@app.get("/beta-login", response_class=HTMLResponse, tags=["Page"])
+async def beta_login_page(request: Request):
+    # Minimal inline HTML to avoid loading /static before auth
+    html = """
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>베타 접속</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #0b1220; color: #e5e7eb; margin: 0; }
+      .wrap { max-width: 520px; margin: 10vh auto; padding: 24px; }
+      .card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 20px; }
+      h1 { font-size: 20px; margin: 0 0 10px; }
+      p { margin: 0 0 16px; color: rgba(229,231,235,0.9); line-height: 1.5; }
+      label { display: block; margin-bottom: 8px; font-weight: 600; }
+      input { width: 100%; box-sizing: border-box; padding: 12px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #fff; }
+      button { margin-top: 12px; width: 100%; padding: 12px 14px; border-radius: 10px; border: 0; background: #2563eb; color: #fff; font-weight: 700; cursor: pointer; }
+      .hint { margin-top: 10px; font-size: 12px; color: rgba(229,231,235,0.7); }
+      .err { margin-top: 10px; color: #fecaca; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>베타 접속 비밀번호</h1>
+        <p>이 서비스는 베타 기간 동안 비밀번호가 필요합니다.</p>
+        <form method="post" action="/beta-login">
+          <label for="pw">비밀번호</label>
+          <input id="pw" name="password" type="password" autocomplete="current-password" required />
+          <button type="submit">접속하기</button>
+        </form>
+        <div class="hint">비밀번호는 공지받은 값을 입력해 주세요.</div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+    return HTMLResponse(content=html)
+
+
+@app.post("/beta-login", response_class=HTMLResponse, tags=["Page"])
+async def beta_login_submit(request: Request):
+    if not beta_enabled():
+        return RedirectResponse(url="/", status_code=303)
+
+    try:
+        form = await request.form()
+        pw = str(form.get("password") or "")
+    except Exception:
+        pw = ""
+
+    expected = expected_cookie_value()
+    if not expected or not pw:
+        return RedirectResponse(url="/beta-login", status_code=303)
+
+    # Compare against expected token derived from BETA_PASSWORD
+    from .beta_access import _token_for_password  # local import
+
+    if _token_for_password(pw.strip()) != expected:
+        # Keep it simple: redirect back (no error detail to avoid leaking behavior)
+        return RedirectResponse(url="/beta-login", status_code=303)
+
+    resp = RedirectResponse(url="/", status_code=303)
+    # Cookie options: align with anon_id cookie secure setting for HTTPS deployments.
+    secure_cookie = _parse_bool_cookie_secure(os.getenv("COOKIE_SECURE"), False)
+    resp.set_cookie(
+        key=beta_cookie_name(),
+        value=expected,
+        httponly=True,
+        samesite="lax",
+        secure=secure_cookie,
+        max_age=60 * 60 * 24 * 14,  # 14 days
+    )
+    return resp
 
 # Workflows routes moved to app/routers/workflows.py
 

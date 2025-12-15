@@ -15,6 +15,10 @@
 ```
 ./run_server.bat
 ```
+- 운영/베타(안정 모드, reload 없음)
+```
+./run_server_prod.bat
+```
 - 외부 접속(임시 공개)
 ```
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
@@ -44,6 +48,18 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
   - `PROGRESS_LOG_STEP=20`, `PROGRESS_LOG_MIN_MS=1000`, `PROGRESS_LOG_LEVEL=info`
  - 업로드 제한(컨트롤 이미지)
    - `CONTROLS_MAX_BYTES=10485760` (기본 10MB)
+
+## 3.1 베타/운영 시 필수 보안 설정(권장)
+- 베타 접속 비밀번호(전체 사용자 공통)
+  - `BETA_PASSWORD=원하는비밀번호`
+  - 브라우저에서 최초 1회 `/beta-login`에 비밀번호 입력 → 쿠키 저장 후 사용
+- 관리자(Admin) 보호(강력 권장)
+  - `ADMIN_USER=admin`
+  - `ADMIN_PASSWORD=강력한비밀번호`
+  - `/admin` 및 `/api/v1/admin/*` 접근 시 인증 요구
+- HTTPS 배포 시 쿠키 보안
+  - `COOKIE_SECURE=true`
+  - HTTPS에서만 쿠키가 전송되게 하여(중간자 공격/도청 위험 감소) 외부 베타에 안전합니다.
 
 변경 시 서버 재시작 필요
 
@@ -107,6 +123,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
 - 잡 스냅샷 DB: `db/app_data.db` (SQLite)
  - 컨트롤/생성 이미지 임시 파일 정리
    - `COMFY_INPUT_DIR`가 설정된 경우, 생성 파이프라인 완료 시 ComfyUI input 폴더의 업로드 파일을 베스트에포트로 삭제
+
+### 7.1 로컬 데이터 초기화(개발/테스트 후 비우기)
+- 초기화 대상: 작업 DB + 갤러리(생성/컨트롤/입력) 파일
+```
+./reset_local_data.bat
+```
 
 ## 8. 권장 값(단일 GPU)
 - `MAX_PER_USER_CONCURRENT=1`
