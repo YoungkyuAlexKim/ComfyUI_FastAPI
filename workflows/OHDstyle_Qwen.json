@@ -71,16 +71,6 @@
       "title": "VAE 디코드"
     }
   },
-  "37": {
-    "inputs": {
-      "unet_name": "qwen_image_fp8_e4m3fn.safetensors",
-      "weight_dtype": "default"
-    },
-    "class_type": "UNETLoader",
-    "_meta": {
-      "title": "확산 모델 로드"
-    }
-  },
   "38": {
     "inputs": {
       "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
@@ -130,7 +120,7 @@
       "lora_name": "Qwen-Image-Lightning-8steps-V1.0.safetensors",
       "strength_model": 1,
       "model": [
-        "37",
+        "78",
         0
       ]
     },
@@ -177,6 +167,18 @@
     "class_type": "PreviewImage",
     "_meta": {
       "title": "이미지 미리보기"
+    }
+  },
+  "78": {
+    "inputs": {
+      "model_name": "qwen_image_fp8_e4m3fn.safetensors",
+      "weight_dtype": "default",
+      "key_opt": "",
+      "mode": "Auto"
+    },
+    "class_type": "LoadDiffusionModelShared //Inspire",
+    "_meta": {
+      "title": "Shared Diffusion Model Loader (Inspire)"
     }
   }
 }

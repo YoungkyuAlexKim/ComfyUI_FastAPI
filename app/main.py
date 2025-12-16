@@ -30,7 +30,12 @@ from .config import COMFY_INPUT_DIR
 from .job_manager import JobManager, Job
 from .job_store import JobStore
 from .logging_utils import setup_logging
-from llm.prompt_translator import PromptTranslator
+"""
+Optional LLM feature (prompt translation)
+
+The service should still start even when `llama-cpp-python` is not installed.
+So we import PromptTranslator lazily inside a try/except below.
+"""
 from .config import UPLOAD_CONFIG
 from .auth.user_management import _ensure_anon_id_cookie, _get_anon_id_from_request, _get_anon_id_from_ws, ANON_COOKIE_NAME, ANON_COOKIE_PREFIX
 from .services.media_store import (
@@ -64,7 +69,14 @@ from .auth.user_management import _parse_bool as _parse_bool_cookie_secure
 
 logger = setup_logging()
 try:
+    from llm.prompt_translator import PromptTranslator  # optional dependency
+
     translator = PromptTranslator(model_path="./models/gemma-3-4b-it-Q6_K.gguf")
+except ModuleNotFoundError as e:
+    # Most common case on Windows: `llama-cpp-python` is not installed,
+    # so importing `llm.prompt_translator` fails due to missing `llama_cpp`.
+    logger.warning({"event": "llm_missing_dependency", "message": str(e)})
+    translator = None
 except FileNotFoundError as e:
     logger.warning({"event": "llm_load_warning", "message": str(e)})
     translator = None
@@ -247,6 +259,10 @@ def _paginate(items: list, page: int, size: int):
 @app.get("/", response_class=HTMLResponse, tags=["Page"])
 async def read_root(request: Request):
     default_values = get_default_values()
+    prompt_translate_enabled = _parse_bool_cookie_secure(
+        os.getenv("ENABLE_PROMPT_TRANSLATE"),
+        bool(translator is not None),
+    )
     # Ensure anon id and pass it to template for WS query param alignment
     existing = request.cookies.get(ANON_COOKIE_NAME)
     if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
@@ -256,6 +272,7 @@ async def read_root(request: Request):
     response = templates.TemplateResponse("index.html", {
         "request": request,
         "anon_id": anon_id,
+        "prompt_translate_enabled": prompt_translate_enabled,
         "default_user_prompt": "",  # 워크플로우별로 설정되므로 빈 값
         "default_style_prompt": default_values.get("style_prompt", ""),
         "default_negative_prompt": default_values.get("negative_prompt", ""),

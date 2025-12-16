@@ -101,11 +101,6 @@
         showTitle: false,
         showDescription: false
       },
-      'ILXL_Pixelator': {
-        url: '/static/img/banner/img_banner_workflow_pixelator.png',
-        showTitle: false,
-        showDescription: false
-      },
       'LOSstyle_Qwen': {
         url: '/static/img/banner/img_banner_workflow_LOSStyle_QWEN.png',
         showTitle: false,

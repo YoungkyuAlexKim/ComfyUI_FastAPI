@@ -7,6 +7,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
     "BasicWorkFlow_PixelArt": {
         "display_name": "픽셀 아트",
         "description": "레트로 감성의 픽셀 아트 스타일 이미지를 생성합니다",
+        # 테스트 동안 워크플로우 목록에서 숨김 처리
+        "hidden": True,
 
         # 기본 사용자 프롬프트 (워크플로우별 고유)
         "default_user_prompt": "1girl, solo, hanbok",
@@ -75,6 +77,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
     "BasicWorkFlow_MKStyle": {
         "display_name": "MK 스타일",
         "description": "MK 스타일 템플릿 + 업스케일/리파인 + 얼굴 디테일러 적용",
+        # 테스트 동안 워크플로우 목록에서 숨김 처리
+        "hidden": True,
 
         # 사용자 프롬프트는 시스템 프롬프트에 병합되는 형태(선택 입력)
         "default_user_prompt": "",
@@ -171,36 +175,6 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         }
     },
 
-
-    "ILXL_Pixelator": {
-        "display_name": "픽셀레이터(입력 이미지 변환)",
-        "description": "입력 이미지를 픽셀 아트 스타일로 변환합니다(자동 태깅 고정).",
-
-        # 사용자 프롬프트는 '추가 프롬프트'로만 사용(선택)
-        "default_user_prompt": "",
-
-        # 이미지 입력 노드 매핑: LoadImage(32).inputs.image ← Comfy input 파일명
-        "image_input": {"image_node": "32", "input_field": "image"},
-
-        # 시드 노드: 메인 KSampler(3)
-        "seed_node": "3",
-
-        # 정사각형 고정(800x800)
-        "sizes": {"square": {"width": 800, "height": 800}},
-
-        # ILXL 기본 시스템(추가) 프롬프트는 63번 노드 텍스트에 해당
-        "style_prompt": "masterpiece, best quality, amazing quality, 4k, very aesthetic, ultra-detailed, (pixel art, dithering, pixelated, sprite art, 8-bit:1.2)",
-
-        # UI 스키마(프런트 조건부 렌더링용)
-        "ui": {
-            "showAutoTagsReadOnly": True,
-            "showSystemPromptReadOnly": True,
-            "showNegative": False,
-            "aspectOptions": ["square"],
-            "additionalPromptTargetNode": "63",
-            "showControlNet": False
-        },
-    },
 
     "LOSstyle_Qwen": {
         "display_name": "LOS 스타일",
@@ -439,6 +413,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
     "Z_ImageTurbo": {
         "display_name": "Z Image Turbo",
         "description": "AuraFlow / Qwen 기반의 빠른 일반 일러스트 생성 워크플로우입니다.",
+        # 테스트 동안 워크플로우 목록에서 숨김 처리
+        "hidden": True,
 
         # 기본 사용자 프롬프트 (자유 입력 권장)
         "default_user_prompt": "여름 바닷가를 걷는 교복 소녀 일러스트",

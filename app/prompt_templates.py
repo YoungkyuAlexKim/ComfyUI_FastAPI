@@ -36,18 +36,6 @@ PROMPT_TEMPLATES: Dict[str, List[PromptTemplate]] = {
         {"title": "게임 아이템: 무기", "text": "no_humans, item icon, sword, katana, bow_(weapon), axe, spear, staff, shield, simple_background, white_background"},
         {"title": "몬스터: 슬라임", "text": "monster, slime, blue_slime, green_slime, red_slime, multiple_slime, grass"},
     ],
-    # 픽셀레이터(입력 이미지 변환): 추가 프롬프트로 세부 스타일 지정
-    "ILXL_Pixelator": [
-        {"title": "캐릭터 스프라이트", "text": "1girl, solo, full_body, standing, simple_background"},
-        {"title": "배경 온리(성문)", "text": "scenery, no_humans, castle, gate, stone, medieval"},
-        {"title": "인물+배경(해변)", "text": "1girl, solo, outdoors, beach, waves, seashell"},
-        {"title": "치비 스프라이트", "text": "chibi, super_deformed, full_body, simple_background"},
-        {"title": "게임 아이템: 음식", "text": "no_humans, food, [ITEM], simple_background, transparent_background, white_background, centered, floating", "options": [
-            "onigiri", "dango", "takoyaki", "ramen", "bread", "apple", "shortcake", "taiyaki"
-        ]},
-        {"title": "게임 아이템: 무기", "text": "no_humans, item icon, sword, katana, bow_(weapon), axe, spear, staff, shield, simple_background, white_background"},
-        {"title": "몬스터: 슬라임", "text": "monster, slime, blue_slime, green_slime, red_slime, multiple_slime, grass"},
-    ],
     # LOS 스타일: 스타일 LoRA 중심. 기본 품질 태그 포함
 
     # 자연어 서술형 템플릿(LOSstyle_Qwen 전용, 한국어)

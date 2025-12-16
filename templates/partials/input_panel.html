@@ -33,9 +33,11 @@
                     </label>
                     <div class="input-with-action">
                         <textarea class="form-input" id="user_prompt" placeholder="그리고 싶은 내용을 입력하세요 (예: 한복을 입은 소녀)..." rows="5">{{ default_user_prompt }}</textarea>
+                        {% if prompt_translate_enabled %}
                         <button class="translate-btn--icon" data-target="user_prompt" data-tooltip="Danbooru 태그로 변환" aria-label="Danbooru 태그로 변환">
                             <i class="fas fa-pencil-alt"></i>
                         </button>
+                        {% endif %}
                     </div>
                     <div id="prompt-templates" style="display:none; margin-top:8px;">
                         <p class="prompt-suggestion" id="prompt-suggestion-text" style="margin: 0 0 6px 0; color: var(--text-muted); font-size: 12px; display:none;" title=""></p>
