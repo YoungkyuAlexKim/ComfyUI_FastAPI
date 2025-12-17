@@ -6,6 +6,7 @@ import urllib.parse
 import asyncio
 from typing import Callable, Optional
 import logging
+from urllib.parse import urlparse
 
 from .config import HTTP_TIMEOUTS, WS_TIMEOUTS
 
@@ -25,6 +26,38 @@ class ComfyUIClient:
         self.client_id = client_id if client_id else str(uuid.uuid4())
         self.manager = manager
         self._logger = logging.getLogger("comfyui_app")
+
+    def _normalize_server(self) -> tuple[str, str]:
+        """
+        Normalize server address from env/config.
+
+        Accepts both:
+          - "127.0.0.1:8188"
+          - "http://127.0.0.1:8188" (or https)
+
+        Returns: (http_scheme, hostport)
+        """
+        raw = str(self.server_address or "").strip()
+        if "://" in raw:
+            u = urlparse(raw)
+            scheme = (u.scheme or "http").lower()
+            hostport = (u.netloc or u.path or "").strip()
+            if not hostport:
+                hostport = "127.0.0.1:8188"
+            if scheme not in ("http", "https"):
+                scheme = "http"
+            return (scheme, hostport)
+        # No scheme; treat as host:port
+        return ("http", raw or "127.0.0.1:8188")
+
+    def _http_base(self) -> str:
+        scheme, hostport = self._normalize_server()
+        return f"{scheme}://{hostport}"
+
+    def _ws_base(self) -> str:
+        scheme, hostport = self._normalize_server()
+        ws_scheme = "wss" if scheme == "https" else "ws"
+        return f"{ws_scheme}://{hostport}"
 
     def _http_timeouts(self) -> tuple[float, float]:
         try:
@@ -91,7 +124,7 @@ class ComfyUIClient:
         }
         
         # 4. HTTP POST 요청 보내기 (requests 라이브러리 사용)
-        url = f"http://{self.server_address}/prompt"
+        url = f"{self._http_base()}/prompt"
         try:
             import requests
             timeout_tuple = self._http_timeouts()
@@ -148,7 +181,7 @@ class ComfyUIClient:
 
         Returns the stored filename on success, otherwise None.
         """
-        url = f"http://{self.server_address}/upload/image"
+        url = f"{self._http_base()}/upload/image"
         try:
             import requests
             files = {"image": (filename, data, mime)}
@@ -185,7 +218,7 @@ class ComfyUIClient:
         웹소켓을 통해 이미지 생성 진행 상황을 수신하고,
         콜백을 통해 진행률을 보고합니다.
         """
-        ws_url = f"ws://{self.server_address}/ws?clientId={self.client_id}"
+        ws_url = f"{self._ws_base()}/ws?clientId={self.client_id}"
 
         ws = None
         try:
@@ -409,7 +442,7 @@ class ComfyUIClient:
         현재 client_id로 ComfyUI 서버에 인터럽트 요청을 보냅니다.
         실행 중인 작업이 있다면 즉시 중단됩니다.
         """
-        url = f"http://{self.server_address}/interrupt"
+        url = f"{self._http_base()}/interrupt"
         try:
             import requests
             timeout_tuple = self._http_timeouts()
@@ -442,7 +475,7 @@ class ComfyUIClient:
     def get_history(self, prompt_id):
         """HTTP를 통해 특정 prompt_id의 히스토리를 가져옵니다."""
         import requests
-        url = f"http://{self.server_address}/history/{prompt_id}"
+        url = f"{self._http_base()}/history/{prompt_id}"
         try:
             timeout_tuple = self._http_timeouts()
             response = requests.get(url, timeout=timeout_tuple)
@@ -465,7 +498,7 @@ class ComfyUIClient:
         """HTTP를 통해 특정 이미지를 가져옵니다."""
         import requests
         params = {"filename": filename, "subfolder": subfolder, "type": folder_type}
-        url = f"http://{self.server_address}/view"
+        url = f"{self._http_base()}/view"
         try:
             timeout_tuple = self._http_timeouts()
             response = requests.get(url, params=params, timeout=timeout_tuple)
