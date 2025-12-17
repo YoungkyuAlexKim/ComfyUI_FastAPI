@@ -144,6 +144,9 @@ class ComfyUIClient:
                 pass
             return {}
         except requests.exceptions.RequestException as e:
+            # Provide a user-facing error message (do not just return empty dict),
+            # so frontend can show the real ComfyUI failure reason instead of "Failed to get prompt_id".
+            user_msg = "ComfyUI 요청이 실패했습니다."
             try:
                 self._logger.error({"event": "comfy_http_error", "stage": "queue_prompt", "url": url, "error": str(e)})
             except Exception:
@@ -161,6 +164,30 @@ class ComfyUIClient:
                             self._logger.error({"event": "comfy_http_error_body", "status_code": e.response.status_code, "body": body[:2048]})
                         except Exception:
                             pass
+                        # Try parse a friendly message from ComfyUI error JSON
+                        try:
+                            j = None
+                            try:
+                                j = e.response.json()
+                            except Exception:
+                                j = None
+                            if isinstance(j, dict) and isinstance(j.get("error"), dict):
+                                err = j.get("error") or {}
+                                etype = err.get("type")
+                                emsg = err.get("message")
+                                details = err.get("details")
+                                if isinstance(emsg, str) and emsg:
+                                    user_msg = f"ComfyUI 오류: {emsg}"
+                                    if isinstance(details, str) and details:
+                                        user_msg += f" ({details})"
+                                    if isinstance(etype, str) and etype:
+                                        user_msg += f" [{etype}]"
+                                    # Common case: missing custom node pack
+                                    low = emsg.lower()
+                                    if "does not exist" in low and "node" in low:
+                                        user_msg += " — 워크플로우가 현재 ComfyUI에 없는(미설치) 노드를 사용합니다. ComfyUI Custom Nodes를 설치하거나 다른 워크플로우를 선택해 주세요."
+                        except Exception:
+                            pass
             except Exception:
                 pass
             try:
@@ -174,7 +201,7 @@ class ComfyUIClient:
                 self._logger.error(payload)
             except Exception:
                 pass
-            return {}
+            raise RuntimeError(user_msg)
 
     def upload_image_to_input(self, filename: str, data: bytes, mime: str = "image/png") -> Optional[str]:
         """Upload an image to ComfyUI input folder so LoadImage node can reference it.

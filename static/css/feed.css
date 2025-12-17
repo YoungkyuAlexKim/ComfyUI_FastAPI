@@ -1,0 +1,367 @@
+.feed-wrap {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 18px 16px;
+}
+
+/* Feed page should not use the 2-column generator layout (input 520px + output 1fr) */
+.main-content.main-content--feed {
+  display: block;
+  height: auto;
+  min-height: calc(100vh - var(--space-5xl));
+}
+
+.main-content.main-content--feed::before {
+  display: none;
+  content: none;
+}
+
+.feed-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.feed-title {
+  margin: 0;
+  font-size: 20px;
+  color: var(--text-primary);
+}
+
+.feed-subtitle {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.feed-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.feed-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--bg-surface);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.feed-sort-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.feed-sort-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: transparent;
+  color: var(--text-primary);
+  border: none;
+  outline: none;
+  font-size: 12px;
+  font-weight: 800;
+  padding-right: 18px;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.7) 50%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.7) 50%, transparent 50%);
+  background-position: calc(100% - 10px) calc(50% + 1px), calc(100% - 5px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.feed-grid {
+  display: grid;
+  /* Bigger cards/thumbnails: fewer columns, larger tiles */
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .feed-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+}
+
+.feed-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  transform: translateZ(0);
+}
+
+.feed-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.feed-media {
+  position: relative;
+}
+
+.feed-thumb {
+  width: 100%;
+  aspect-ratio: 3/4;
+  object-fit: cover;
+  display: block;
+  background: var(--bg-tertiary);
+}
+
+/* Bottom overlay (meta + reactions) */
+.feed-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 10px 10px;
+  display: grid;
+  gap: 8px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(2, 6, 23, 0.72) 65%, rgba(2, 6, 23, 0.88) 100%);
+}
+
+.feed-overlay-top {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.feed-overlay-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.feed-author {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed-time {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+
+.feed-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Reactions bar */
+.feed-reactions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.feed-reaction-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.30);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  user-select: none;
+  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.feed-reaction-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(0, 0, 0, 0.42);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.feed-reaction-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.feed-reaction-btn.active {
+  background: rgba(37, 99, 235, 0.65);
+  border-color: rgba(37, 99, 235, 0.75);
+}
+
+.feed-reaction-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.feed-reaction-count {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.feed-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+/* Modal */
+.feed-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+.feed-modal-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.feed-modal {
+  width: min(1100px, 96vw);
+  max-height: 92vh;
+  background: var(--bg-card);
+  border: 1px solid var(--bg-surface);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-2xl);
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  transform: translateY(10px) scale(0.985);
+  opacity: 0;
+  transition: transform 220ms ease, opacity 220ms ease;
+}
+
+.feed-modal-overlay.open .feed-modal {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+/* Blur content under modal (like the create-page lightbox) */
+body.feed-modal-open .app-layout {
+  filter: blur(10px);
+  transition: filter 220ms ease;
+}
+
+body:not(.feed-modal-open) .app-layout {
+  transition: filter 220ms ease;
+}
+
+@media (max-width: 960px) {
+  .feed-modal {
+    grid-template-columns: 1fr;
+  }
+}
+
+.feed-modal-media {
+  background: rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.feed-modal-media img {
+  max-width: 100%;
+  max-height: 76vh;
+  border-radius: 10px;
+  box-shadow: var(--shadow-xl);
+}
+
+.feed-modal-side {
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.feed-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+}
+
+.feed-modal-field label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.feed-modal-field textarea,
+.feed-modal-field input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--bg-surface);
+  border-radius: 10px;
+  padding: 10px;
+  color: var(--text-primary);
+}
+
+.feed-modal-field textarea {
+  resize: none;
+}
+
+.feed-input-thumb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.feed-input-thumb img {
+  width: 84px;
+  height: 84px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--bg-surface);
+  background: var(--bg-tertiary);
+}
+
+.feed-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Modal reactions mount spacing */
+#feed-modal-reactions .feed-reactions {
+  width: 100%;
+}
+
+/* Make "hide" action feel less harsh than a red DELETE button */
+.feed-delete-btn {
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+}
+
+.feed-delete-btn i {
+  color: var(--error);
+}
+
+

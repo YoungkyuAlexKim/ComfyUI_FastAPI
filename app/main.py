@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, BackgroundTasks, Form, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -60,6 +60,8 @@ from .routers.controls import router as controls_router
 from .routers.inputs import router as inputs_router
 from .routers.health import router as health_router
 from .routers.jobs import router as jobs_router
+from .routers.feed import router as feed_router
+from .routers.admin_feed import router as admin_feed_router
 from .ws.manager import manager
 from .ws.routes import router as ws_router
 from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActiveResponse, TranslateResponse
@@ -95,6 +97,8 @@ app.include_router(controls_router)
 app.include_router(inputs_router)
 app.include_router(health_router)
 app.include_router(jobs_router)
+app.include_router(feed_router)
+app.include_router(admin_feed_router)
 
 # --- Beta access gate (shared password) ---
 @app.middleware("http")
@@ -213,12 +217,60 @@ Imports above wire them in; local duplicates removed to reduce main.py size.
 
 job_manager = JobManager()
 job_store = JobStore(JOB_DB_PATH)
+from .feed_store import FeedStore
+feed_store = FeedStore(JOB_DB_PATH)
 try:
     app.state.connection_manager = manager
     app.state.job_manager = job_manager
     app.state.job_store = job_store
+    app.state.feed_store = feed_store
 except Exception as e:
     logger.debug({"event": "app_state_init_failed", "error": str(e)})
+
+
+def _admin_auth_enabled() -> bool:
+    user = os.getenv("ADMIN_USER")
+    pw = os.getenv("ADMIN_PASSWORD")
+    return bool(user) and bool(pw)
+
+
+def _is_admin_basic_auth_header(auth_header: str | None) -> bool:
+    if not _admin_auth_enabled():
+        return False
+    try:
+        if not isinstance(auth_header, str) or not auth_header:
+            return False
+        if not auth_header.lower().startswith("basic "):
+            return False
+        import base64
+        import secrets
+
+        raw = auth_header.split(" ", 1)[1].strip()
+        decoded = base64.b64decode(raw).decode("utf-8", errors="ignore")
+        if ":" not in decoded:
+            return False
+        username, password = decoded.split(":", 1)
+        expected_user = os.getenv("ADMIN_USER", "")
+        expected_pw = os.getenv("ADMIN_PASSWORD", "")
+        return secrets.compare_digest(username or "", expected_user) and secrets.compare_digest(password or "", expected_pw)
+    except Exception:
+        return False
+
+
+@app.middleware("http")
+async def feed_trash_access_middleware(request: Request, call_next):
+    """
+    Feed trash assets must be accessible only to admin.
+
+    - Non-admin: pretend it doesn't exist (404) to avoid leaking deleted content.
+    - Admin: allowed (browser already has BasicAuth from /admin).
+    """
+    path = request.url.path or ""
+    if path.startswith("/outputs/feed/trash/"):
+        if _is_admin_basic_auth_header(request.headers.get("Authorization")):
+            return await call_next(request)
+        return Response(status_code=404)
+    return await call_next(request)
 
 # --- Helpers ---
 def _wait_for_input_visibility(filename: str, timeout_sec: float = 1.5, poll_ms: int = 50) -> bool:
@@ -256,32 +308,61 @@ def _paginate(items: list, page: int, size: int):
     total_pages = (total + size_val - 1) // size_val
     return slice_items, {"page": page_val, "size": size_val, "total": total, "total_pages": total_pages}
 
-@app.get("/", response_class=HTMLResponse, tags=["Page"])
-async def read_root(request: Request):
+@app.get("/", tags=["Page"])
+async def landing(request: Request):
+    resp = RedirectResponse(url="/feed", status_code=303)
+    _ensure_anon_id_cookie(request, resp)
+    return resp
+
+
+@app.get("/create", response_class=HTMLResponse, tags=["Page"])
+async def create_page(request: Request):
     default_values = get_default_values()
     prompt_translate_enabled = _parse_bool_cookie_secure(
         os.getenv("ENABLE_PROMPT_TRANSLATE"),
         bool(translator is not None),
     )
-    # Ensure anon id and pass it to template for WS query param alignment
     existing = request.cookies.get(ANON_COOKIE_NAME)
     if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
         anon_id = existing
     else:
         anon_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
-    response = templates.TemplateResponse("index.html", {
-        "request": request,
-        "anon_id": anon_id,
-        "prompt_translate_enabled": prompt_translate_enabled,
-        "default_user_prompt": "",  # 워크플로우별로 설정되므로 빈 값
-        "default_style_prompt": default_values.get("style_prompt", ""),
-        "default_negative_prompt": default_values.get("negative_prompt", ""),
-        "default_recommended_prompt": default_values.get("recommended_prompt", ""),
-        "workflows_sizes_json": json.dumps(default_values.get("workflows_sizes", {})), # ✨ 사이즈 정보 추가
-        "workflow_default_prompts_json": json.dumps(default_values.get("workflow_default_prompts", {})), # 워크플로우별 기본 프롬프트
-        "workflow_control_slots_json": json.dumps(default_values.get("workflow_control_slots", {})),
-        "workflow_prompt_templates_json": json.dumps(default_values.get("workflow_prompt_templates", {})),
-    })
+    response = templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "anon_id": anon_id,
+            "current_page": "create",
+            "prompt_translate_enabled": prompt_translate_enabled,
+            "default_user_prompt": "",
+            "default_style_prompt": default_values.get("style_prompt", ""),
+            "default_negative_prompt": default_values.get("negative_prompt", ""),
+            "default_recommended_prompt": default_values.get("recommended_prompt", ""),
+            "workflows_sizes_json": json.dumps(default_values.get("workflows_sizes", {})),
+            "workflow_default_prompts_json": json.dumps(default_values.get("workflow_default_prompts", {})),
+            "workflow_control_slots_json": json.dumps(default_values.get("workflow_control_slots", {})),
+            "workflow_prompt_templates_json": json.dumps(default_values.get("workflow_prompt_templates", {})),
+        },
+    )
+    _ensure_anon_id_cookie(request, response)
+    return response
+
+
+@app.get("/feed", response_class=HTMLResponse, tags=["Page"])
+async def feed_page(request: Request):
+    existing = request.cookies.get(ANON_COOKIE_NAME)
+    if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
+        anon_id = existing
+    else:
+        anon_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
+    response = templates.TemplateResponse(
+        "feed.html",
+        {
+            "request": request,
+            "anon_id": anon_id,
+            "current_page": "feed",
+        },
+    )
     _ensure_anon_id_cookie(request, response)
     return response
 

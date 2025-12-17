@@ -69,6 +69,7 @@
         <div class="admin-tabs" style="display:flex; gap:8px; margin-bottom:12px;">
             <button class="tab-btn active" id="tab-images" type="button">이미지</button>
             <button class="tab-btn" id="tab-jobs" type="button">작업 히스토리</button>
+            <button class="tab-btn" id="tab-feed" type="button">쇼케이스</button>
         </div>
         <div class="admin-grid" id="images-panel">
             <div class="admin-card admin-users">
@@ -140,6 +141,32 @@
             </table>
             <div class="jobs-meta" id="jobs-meta"></div>
         </div>
+
+        <div class="admin-card" id="feed-panel" style="display:none; margin-top: 16px;">
+            <div class="admin-toolbar" style="margin-bottom:10px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <strong>쇼케이스 관리</strong>
+                    <select id="feed-filter-select">
+                        <option value="all">전체</option>
+                        <option value="active">활성</option>
+                        <option value="trash">휴지통</option>
+                    </select>
+                    <label style="display:inline-flex; align-items:center; gap:6px;">
+                        페이지 크기
+                        <select id="feed-page-size">
+                            <option value="24">24</option>
+                            <option value="48" selected>48</option>
+                            <option value="96">96</option>
+                        </select>
+                    </label>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="btn" id="feed-refresh">새로고침</button>
+                </div>
+            </div>
+            <div class="admin-gallery" id="feed-gallery"></div>
+            <div class="admin-pagination" id="feed-pagination"></div>
+        </div>
     </div>
 
     <script>
@@ -152,8 +179,10 @@
         const userPagination = document.getElementById('user-pagination');
         const imagesPanel = document.getElementById('images-panel');
         const jobsPanel = document.getElementById('jobs-card');
+        const feedPanel = document.getElementById('feed-panel');
         const tabImages = document.getElementById('tab-images');
         const tabJobs = document.getElementById('tab-jobs');
+        const tabFeed = document.getElementById('tab-feed');
 
         let currentUser = null;
         let userPage = 1;
@@ -164,6 +193,16 @@
         let include = 'all';
         let fromDate = '';
         let toDate = '';
+
+        // ---- Feed admin ----
+        const feedGallery = document.getElementById('feed-gallery');
+        const feedPager = document.getElementById('feed-pagination');
+        const feedFilterSelect = document.getElementById('feed-filter-select');
+        const feedPageSizeSelect = document.getElementById('feed-page-size');
+        const feedRefreshBtn = document.getElementById('feed-refresh');
+        let feedPage = 1;
+        let feedSize = 48;
+        let feedInclude = 'all';
 
         const hb = {
             wrap: document.getElementById('health-banner'),
@@ -408,13 +447,151 @@
         function showJobsTab(){
             imagesPanel.style.display = 'none';
             jobsPanel.style.display = '';
+            if (feedPanel) feedPanel.style.display = 'none';
             activateTab(tabJobs);
             loadJobs();
             loadMetrics();
         }
+        function showFeedTab(){
+            imagesPanel.style.display = 'none';
+            jobsPanel.style.display = 'none';
+            if (feedPanel) feedPanel.style.display = '';
+            activateTab(tabFeed);
+            loadFeed();
+        }
         tabImages.addEventListener('click', showImagesTab);
         tabJobs.addEventListener('click', showJobsTab);
+        if (tabFeed) tabFeed.addEventListener('click', showFeedTab);
         showImagesTab();
+
+        async function loadFeed(){
+            try {
+                const params = new URLSearchParams({ include: feedInclude, page: String(feedPage), size: String(feedSize) });
+                const res = await fetch(`/api/v1/admin/feed?${params.toString()}`);
+                const data = await res.json();
+                renderFeed(Array.isArray(data.items) ? data.items : []);
+                renderFeedPager(data.page || 1, data.total_pages || 1);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        function renderFeed(items){
+            if (!feedGallery) return;
+            feedGallery.innerHTML = '';
+            items.forEach(it => {
+                const wrap = document.createElement('div');
+                const thumb = document.createElement('div');
+                thumb.className = 'admin-thumb';
+                const img = document.createElement('img');
+                img.src = it.display_thumb_url || it.display_image_url || it.thumb_url || it.image_url || '';
+                img.alt = it.post_id || '';
+                thumb.appendChild(img);
+
+                const badge = document.createElement('span');
+                const isActive = (it.status === 'active');
+                badge.className = 'status-badge ' + (isActive ? 'badge-active' : 'badge-trash');
+                badge.textContent = isActive ? '활성' : '휴지통';
+                thumb.appendChild(badge);
+
+                const actions = document.createElement('div');
+                actions.className = 'admin-actions';
+                if (isActive) {
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'btn danger';
+                    delBtn.textContent = '휴지통으로';
+                    delBtn.addEventListener('click', () => updateFeed(it.post_id, 'delete'));
+                    actions.appendChild(delBtn);
+                } else {
+                    const resBtn = document.createElement('button');
+                    resBtn.className = 'btn success';
+                    resBtn.textContent = '복구';
+                    resBtn.addEventListener('click', () => updateFeed(it.post_id, 'restore'));
+                    actions.appendChild(resBtn);
+
+                    const purgeBtn = document.createElement('button');
+                    purgeBtn.className = 'btn danger';
+                    purgeBtn.textContent = '완전삭제';
+                    purgeBtn.addEventListener('click', () => updateFeed(it.post_id, 'purge'));
+                    actions.appendChild(purgeBtn);
+                }
+
+                const caption = document.createElement('div');
+                caption.className = 'jobs-meta';
+                const author = (it.author_name && String(it.author_name)) ? it.author_name : (it.owner_id || '-');
+                caption.textContent = `작성자: ${author} / post_id: ${it.post_id}`;
+
+                wrap.appendChild(thumb);
+                wrap.appendChild(actions);
+                wrap.appendChild(caption);
+                feedGallery.appendChild(wrap);
+            });
+        }
+        function renderFeedPager(p, total){
+            if (!feedPager) return;
+            feedPager.innerHTML = '';
+            const left = document.createElement('div'); left.className = 'admin-pagination-left';
+            const center = document.createElement('div'); center.className = 'admin-pagination-pages';
+            const right = document.createElement('div'); right.className = 'admin-pagination-right';
+
+            const makeBtn = (label, disabled, onClick) => {
+                const b = document.createElement('button');
+                b.className = 'adm-page-btn';
+                b.textContent = label;
+                b.disabled = disabled;
+                if (onClick) b.addEventListener('click', onClick);
+                return b;
+            };
+            const makeIconBtn = (iconClass, disabled, onClick, aria) => {
+                const b = document.createElement('button');
+                b.className = 'adm-page-btn--icon';
+                b.disabled = disabled;
+                b.setAttribute('type','button');
+                b.setAttribute('aria-label', aria || '');
+                const i = document.createElement('i'); i.className = iconClass; b.appendChild(i);
+                if (onClick) b.addEventListener('click', onClick);
+                return b;
+            };
+
+            left.appendChild(makeIconBtn('fas fa-angles-left', p===1, ()=>{feedPage=1;loadFeed();}, '처음'));
+            left.appendChild(makeIconBtn('fas fa-angle-left', p===1, ()=>{feedPage=Math.max(1,p-1);loadFeed();}, '이전'));
+
+            const windowSize = 5;
+            const start = Math.max(1, p - Math.floor(windowSize/2));
+            const end = Math.min(total, start + windowSize - 1);
+            for (let n = start; n <= end; n++) {
+                const num = makeBtn(String(n), n === p, () => { feedPage = n; loadFeed(); });
+                if (n === p) num.classList.add('active');
+                center.appendChild(num);
+            }
+
+            right.appendChild(makeIconBtn('fas fa-angle-right', p===total, ()=>{feedPage=Math.min(total,p+1);loadFeed();}, '다음'));
+            right.appendChild(makeIconBtn('fas fa-angles-right', p===total, ()=>{feedPage=total;loadFeed();}, '마지막'));
+
+            feedPager.appendChild(left);
+            feedPager.appendChild(center);
+            feedPager.appendChild(right);
+        }
+        async function updateFeed(postId, action){
+            if (!postId) return;
+            if (action === 'purge') {
+                if (!confirm('완전 삭제하시겠습니까? 복구할 수 없습니다.')) return;
+            }
+            const url = action === 'delete'
+                ? `/api/v1/admin/feed/${encodeURIComponent(postId)}/delete`
+                : action === 'restore'
+                ? `/api/v1/admin/feed/${encodeURIComponent(postId)}/restore`
+                : `/api/v1/admin/feed/${encodeURIComponent(postId)}/purge`;
+            const res = await fetch(url, { method: 'POST' });
+            if (res.ok) { loadFeed(); }
+        }
+        if (feedFilterSelect) feedFilterSelect.addEventListener('change', () => { feedInclude = feedFilterSelect.value; feedPage = 1; loadFeed(); });
+        if (feedPageSizeSelect) feedPageSizeSelect.addEventListener('change', (e) => {
+            const v = parseInt(e.target.value, 10);
+            feedSize = Number.isFinite(v) ? v : 48;
+            feedPage = 1;
+            loadFeed();
+        });
+        if (feedRefreshBtn) feedRefreshBtn.addEventListener('click', () => loadFeed());
 
         // ---- Jobs monitor ----
         const missingArtifacts = new Set();

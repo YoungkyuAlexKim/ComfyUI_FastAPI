@@ -91,3 +91,66 @@ class TranslateResponse(BaseModel):
     translated_text: str
 
 
+# -------------------- Feed (Public Board) --------------------
+
+
+class FeedPublishRequest(BaseModel):
+    image_id: str
+    author_name: Optional[str] = None
+
+
+class FeedPublishResponse(BaseModel):
+    ok: bool
+    post_id: str
+    image_url: str
+    thumb_url: Optional[str] = None
+    input_image_url: Optional[str] = None
+    input_thumb_url: Optional[str] = None
+
+
+class FeedPostListItem(BaseModel):
+    post_id: str
+    image_url: str
+    thumb_url: Optional[str] = None
+    input_thumb_url: Optional[str] = None
+    author_name: Optional[str] = None
+    author_display: str
+    workflow_id: Optional[str] = None
+    published_at: float
+    like_count: int
+    liked_by_me: bool
+    has_input: bool
+
+
+class FeedListResponse(BaseModel):
+    items: List[FeedPostListItem]
+    page: int
+    size: int
+    total: int
+    total_pages: int
+
+
+class FeedDetailResponse(BaseModel):
+    post_id: str
+    image_url: str
+    thumb_url: Optional[str] = None
+    input_image_url: Optional[str] = None
+    input_thumb_url: Optional[str] = None
+    author_name: Optional[str] = None
+    author_display: str
+    owner_id: str
+    workflow_id: Optional[str] = None
+    seed: Optional[int] = None
+    aspect_ratio: Optional[str] = None
+    prompt: str
+    published_at: float
+    like_count: int
+    liked_by_me: bool
+    can_delete: bool
+
+
+class FeedLikeToggleResponse(BaseModel):
+    liked: bool
+    like_count: int
+
+

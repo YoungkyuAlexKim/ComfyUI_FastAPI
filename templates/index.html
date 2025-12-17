@@ -153,28 +153,6 @@
         }
         connectWS();
 
-        // --- Brand banner init ---
-        try {
-            const b = (window.APP_CONFIG && window.APP_CONFIG.brand) || {};
-            const el = document.getElementById('brand-banner');
-            const textWrap = document.getElementById('brand-banner-text');
-            if (el) {
-                const h = Number.isFinite(b.heightPx) ? b.heightPx : 80;
-                el.style.setProperty('--brand-banner-height', `${h}px`);
-                const pad = Number.isFinite(b.paddingPx) ? b.paddingPx : 12;
-                el.style.setProperty('--brand-padding', `${pad}px`);
-                const url = b.url || '';
-                if (url) {
-                    el.style.setProperty('--brand-banner-img', `url("${url}")`);
-                    el.style.setProperty('--brand-hasimg', '1');
-                    if (textWrap) textWrap.style.display = (b.showTextByDefault === false) ? 'none' : '';
-                } else {
-                    el.style.removeProperty('--brand-banner-img');
-                    el.style.setProperty('--brand-hasimg', '0');
-                    if (textWrap) textWrap.style.display = '';
-                }
-            }
-        } catch(_) {}
         // Reflect saved aspect-ratio selection on initial UI
         try {
             document.querySelectorAll('.aspect-ratio-btn').forEach(btn => {
@@ -292,6 +270,52 @@
 
         // Result actions (simplified: only in-image download button remains)
         let lastImageUrlOriginal = '';
+        // Lightbox meta for the latest generated result image (so clicking the output image shows info)
+        let lastResultLightboxMetaItem = null;
+        // Snapshot of the latest generation request context (prompt/workflow/etc)
+        let lastGenerationRequestMeta = null;
+
+        function inferImageIdFromPath(pathOrUrl){
+            try {
+                const u = new URL(pathOrUrl, window.location.origin);
+                const name = (u.pathname || '').split('/').pop() || '';
+                return name.replace(/\.(png|jpg|jpeg|webp)$/i, '');
+            } catch (_) {
+                try {
+                    const s = String(pathOrUrl || '');
+                    const base = s.split('?')[0].split('#')[0].split('/').pop() || '';
+                    return base.replace(/\.(png|jpg|jpeg|webp)$/i, '');
+                } catch (__) {
+                    return '';
+                }
+            }
+        }
+
+        function buildResultLightboxMeta(imagePath){
+            try {
+                const id = inferImageIdFromPath(imagePath);
+                const meta = lastGenerationRequestMeta || {};
+                const nowSec = Math.floor(Date.now() / 1000);
+                const createdAt = Number.isFinite(meta.createdAt) ? meta.createdAt : nowSec;
+                const workflowName = meta.workflow_name || meta.workflowName || meta.workflow_id || meta.workflowId || '';
+                const prompt = meta.prompt || '';
+                return {
+                    id,
+                    url: imagePath,
+                    createdAt,
+                    created_at: createdAt,
+                    workflow_name: workflowName,
+                    prompt,
+                    meta: {
+                        workflow_name: workflowName,
+                        prompt
+                    },
+                    source: 'generated'
+                };
+            } catch (_) {
+                return null;
+            }
+        }
         function setResultActionsEnabled(enabled){
             const rdb = document.getElementById('result-download-btn');
             if (rdb) {
@@ -1318,6 +1342,7 @@
                 showStatus('🎉 이미지 생성 완료!', 'success');
                 updateProgress(0); // 완료 후 진행률을 0%로 리셋
                 if (data.image_path) {
+                    try { lastResultLightboxMetaItem = buildResultLightboxMeta(data.image_path); } catch(_) {}
                     displayImage(data.image_path, () => {
                         // 먼저 오버레이 페이드아웃 시작
                         hidePreviewOverlay();
@@ -1545,6 +1570,17 @@
             try {
                 // Debug: ensure payload contains control data when enabled
                 try { console.debug('REQUEST generate', requestData); } catch(_) {}
+                // Snapshot request context for result lightbox meta (in case we click the output image)
+                try {
+                    lastGenerationRequestMeta = {
+                        prompt: (requestData && typeof requestData.user_prompt === 'string') ? requestData.user_prompt : '',
+                        workflow_id: requestData.workflow_id || '',
+                        workflow_name: (currentWorkflow && currentWorkflow.name) ? currentWorkflow.name : (requestData.workflow_id || ''),
+                        seed: requestData.seed,
+                        aspect_ratio: requestData.aspect_ratio,
+                        createdAt: Math.floor(Date.now() / 1000)
+                    };
+                } catch(_) {}
                 const response = await fetch('/api/v1/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2496,17 +2532,28 @@
         })();
 
         let lightboxCurrentUrl = '';
+        let currentLightboxMetaItem = null;
         function openLightbox(src, alt = '', metaItem = null) {
             lightboxImage.src = src;
             lightboxImage.alt = alt || '확대된 이미지';
             lightboxCurrentUrl = src;
+            currentLightboxMetaItem = metaItem || null;
             lightbox.classList.add('open');
             lightbox.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
             // Fill meta panel if available
             try {
+                const toEpochSeconds = (v) => {
+                    if (typeof v === 'number' && Number.isFinite(v)) return v;
+                    if (typeof v === 'string' && v) {
+                        const t = Date.parse(v);
+                        if (Number.isFinite(t)) return Math.floor(t / 1000);
+                    }
+                    return null;
+                };
                 const wf = (metaItem && metaItem.meta && metaItem.meta.workflow_name) || (metaItem && metaItem.workflow_name) || '-';
-                const createdAt = metaItem && (metaItem.created_at || metaItem.createdAt);
+                const createdAtRaw = metaItem && (metaItem.created_at || metaItem.createdAt);
+                const createdAt = toEpochSeconds(createdAtRaw);
                 const createdText = createdAt ? new Date(createdAt * 1000).toLocaleString() : '';
                 const prompt = (metaItem && metaItem.meta && metaItem.meta.prompt) || (metaItem && metaItem.prompt) || '';
                 const wfEl = document.getElementById('lb-workflow');
@@ -2515,6 +2562,13 @@
                 if (wfEl) wfEl.value = wf || '';
                 if (ctEl) ctEl.value = createdText || '';
                 if (prEl) prEl.value = prompt || '';
+            } catch (_) {}
+            // 쇼케이스 공유 버튼 표시: 생성 이미지 탭에서만
+            try {
+                const btn = document.getElementById('lb-share-feed');
+                const isGenerated = (metaItem && metaItem.source) ? (metaItem.source === 'generated') : (gallerySource === 'generated');
+                const canShow = !!(btn && isGenerated && metaItem && metaItem.id);
+                if (btn) btn.style.display = canShow ? '' : 'none';
             } catch (_) {}
             // ensure fade-in restarts
             const bodyEl = document.querySelector('.lightbox-body');
@@ -2547,17 +2601,24 @@
             lightbox.setAttribute('aria-hidden', 'true');
             document.body.style.overflow = '';
             try { window.LBZoom?.reset(); } catch(_) {}
+            try {
+                currentLightboxMetaItem = null;
+                const btn = document.getElementById('lb-share-feed');
+                if (btn) btn.style.display = 'none';
+            } catch (_) {}
         }
 
         ui.resultImage.addEventListener('click', () => {
             if (!ui.resultImage.src) return;
-            openLightbox(ui.resultImage.src, ui.resultImage.alt);
+            const src = lastImageUrlOriginal || ui.resultImage.src;
+            openLightbox(src, ui.resultImage.alt, lastResultLightboxMetaItem);
         });
 
         // 이전 방식: 오버레이 관련 로직 제거
 
         lightboxCloseBtn.addEventListener('click', closeLightbox);
         const lbDownloadBtn = document.getElementById('lb-download');
+        const lbShareBtn = document.getElementById('lb-share-feed');
         if (lbDownloadBtn) lbDownloadBtn.addEventListener('click', async () => {
             if (!lightboxCurrentUrl) return;
             const ok = await headOk(lightboxCurrentUrl);
@@ -2568,6 +2629,79 @@
             document.body.appendChild(a);
             a.click();
             a.remove();
+        });
+
+        function ensureFeedShareModal(){
+            let ov = document.getElementById('feed-share-overlay');
+            if (ov) return ov;
+            ov = document.createElement('div');
+            ov.className = 'confirm-overlay';
+            ov.id = 'feed-share-overlay';
+            ov.innerHTML = `
+                <div class="confirm-card" style="max-width:520px;">
+                    <h3 class="confirm-title"><i class="fas fa-images"></i> 쇼케이스에 공유</h3>
+                    <p class="confirm-text">이 게시물은 사내 쇼케이스에 표시됩니다. (Img2Img인 경우 입력 이미지 썸네일도 함께 포함)</p>
+                    <div style="display:flex; flex-direction:column; gap:8px; margin: 10px 0 6px;">
+                        <label style="font-weight:700; font-size:13px; color: var(--text-secondary);">표시 이름(옵션)</label>
+                        <input id="feed-share-author" type="text" maxlength="20" placeholder="예: 홍길동 (최대 20자)" style="width:100%; box-sizing:border-box; padding:10px; border-radius:10px; border:1px solid var(--bg-surface); background: var(--bg-tertiary); color: var(--text-primary);" />
+                        <small style="color: var(--text-muted);">비워두면 익명으로 표시됩니다. (권한은 anon_id 기준)</small>
+                    </div>
+                    <div class="confirm-actions">
+                        <button class="btn-ghost" id="feed-share-cancel">취소</button>
+                        <button class="btn-danger" id="feed-share-ok" style="border-color: var(--lc-primary); color: var(--lc-primary);">공유하기</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(ov);
+            ov.addEventListener('click', (e) => { if (e.target === ov) closeFeedShare(); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ov.classList.contains('open')) closeFeedShare(); });
+            return ov;
+        }
+        function closeFeedShare(){
+            const ov = document.getElementById('feed-share-overlay');
+            if (ov) { ov.classList.remove('open'); ov.setAttribute('aria-hidden','true'); }
+        }
+        async function doFeedShare(){
+            try {
+                if (!currentLightboxMetaItem || !currentLightboxMetaItem.id) return;
+                const input = document.getElementById('feed-share-author');
+                const authorName = (input && typeof input.value === 'string') ? input.value.trim() : '';
+                try { localStorage.setItem('feedAuthorName', authorName); } catch(_) {}
+                const res = await fetch('/api/v1/feed/publish', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image_id: currentLightboxMetaItem.id, author_name: authorName || null })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || '공유 실패');
+                closeFeedShare();
+                showStatus('쇼케이스에 공유되었습니다.', 'success');
+                showStatus('공유 완료! 왼쪽 탭에서 "쇼케이스"로 이동할 수 있어요.', 'info');
+            } catch (e) {
+                showStatus(`공유 실패: ${e.message}`, 'error');
+            }
+        }
+        function openFeedShare(){
+            const ov = ensureFeedShareModal();
+            const cancelBtn = document.getElementById('feed-share-cancel');
+            const okBtn = document.getElementById('feed-share-ok');
+            const input = document.getElementById('feed-share-author');
+            if (cancelBtn) cancelBtn.onclick = closeFeedShare;
+            if (okBtn) okBtn.onclick = doFeedShare;
+            try {
+                const saved = localStorage.getItem('feedAuthorName') || '';
+                if (input) input.value = saved;
+            } catch(_) {}
+            ov.classList.add('open');
+            ov.setAttribute('aria-hidden','false');
+            try { if (input) input.focus(); } catch(_) {}
+        }
+        if (lbShareBtn) lbShareBtn.addEventListener('click', () => {
+            if (!currentLightboxMetaItem || !currentLightboxMetaItem.id) return;
+            if (gallerySource !== 'generated') {
+                showStatus('생성 이미지 탭에서만 공유할 수 있어요.', 'warning');
+                return;
+            }
+            openFeedShare();
         });
 
         lightbox.addEventListener('click', (e) => {
@@ -2656,6 +2790,9 @@
                         <div class="meta-actions">
                             <button class="chip-btn" id="lb-download" type="button" aria-label="다운로드">
                                 <i class="fas fa-download"></i> 다운로드
+                            </button>
+                            <button class="chip-btn" id="lb-share-feed" type="button" aria-label="쇼케이스에 공유" style="display:none;">
+                                <i class="fas fa-images"></i> 쇼케이스에 공유
                             </button>
                         </div>
                     </div>

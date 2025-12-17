@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}쇼케이스{% endblock %}
+{% block head_extra %}
+  <link href="/static/css/feed.css?v=20251217_08" rel="stylesheet">
+{% endblock %}
+{% block content %}
+  <div class="app-container" data-anon-id="{{ anon_id }}">
+    <div class="app-layout">
+      {% include "partials/sidebar.html" %}
+
+      <main class="main-content main-content--feed">
+        <div class="feed-wrap">
+          <div class="feed-header">
+            <div>
+              <h2 class="feed-title"><i class="fas fa-images"></i> 쇼케이스</h2>
+              <p class="feed-subtitle">공유된 이미지 모음입니다. 정렬을 바꿔서 원하는 순서로 볼 수 있어요.</p>
+            </div>
+            <div class="feed-header-actions">
+              <label class="feed-sort">
+                <span class="feed-sort-label">정렬</span>
+                <select id="feed-sort" class="feed-sort-select" aria-label="정렬 선택">
+                  <option value="newest" selected>최신순</option>
+                  <option value="oldest">오래된순</option>
+                  <option value="most_reactions">반응 많은 순</option>
+                </select>
+              </label>
+              <button class="chip-btn" id="feed-refresh" type="button">
+                <i class="fas fa-rotate"></i> 새로고침
+              </button>
+            </div>
+          </div>
+
+          <div class="feed-grid" id="feed-grid"></div>
+
+          <div class="feed-footer">
+            <button class="gallery-load-more" id="feed-load-more" style="display:none;" type="button">
+              <i class="fas fa-chevron-down"></i> 더 보기
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/static/js/feed.js?v=20251217_07"></script>
+{% endblock %}
+
+

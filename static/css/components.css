@@ -462,6 +462,70 @@
     font-weight: 500;
     cursor: pointer;
     transition: all var(--transition-fast);
+    text-decoration: none;
+}
+
+/* Sidebar segmented tabs (Feed / Create) */
+.sidebar-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    margin: 12px 12px 14px;
+    border: 1px solid var(--bg-surface);
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.sidebar-tab {
+    flex: 1;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+    white-space: nowrap;
+    word-break: keep-all;
+    overflow: hidden;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.sidebar-tab i {
+    flex: 0 0 auto;
+}
+
+.sidebar-tab-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sidebar-tab:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+
+.sidebar-tab.active {
+    background: var(--lc-primary);
+    border-color: var(--lc-primary);
+    color: var(--bg-primary);
+    box-shadow: var(--shadow-md);
+    transform: none;
+}
+
+.sidebar-tab:focus-visible {
+    outline: 2px solid rgba(14, 165, 233, 0.35);
+    outline-offset: 2px;
 }
 
 /* chip-btn 툴팁 (번역 버튼과 동일한 패턴) */
