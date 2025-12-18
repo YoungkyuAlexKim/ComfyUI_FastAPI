@@ -5,6 +5,19 @@
   document.addEventListener('DOMContentLoaded', () => {
     const openBtn = document.getElementById('open-canvas-btn');
     if (!openBtn) return;
+
+    function notify(type, message) {
+      const text = (typeof message === 'string' && message) ? message : '';
+      if (!text) return;
+      try {
+        if (window.UIToast && typeof window.UIToast[type] === 'function') {
+          window.UIToast[type](text);
+          return;
+        }
+      } catch (_) {}
+      try { alert(text); } catch (_) {}
+    }
+
     const root = document.createElement('div');
     root.id = 'control-canvas-overlay';
     root.style.cssText = 'position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999;';
@@ -184,9 +197,9 @@
         const chk = document.getElementById('control-enabled');
         if (chk) chk.checked = true;
         // 갤러리 컨트롤 탭 갱신 유도: 저장 후 즉시 전환은 하지 않음
-        try { alert('컨트롤이 저장되었습니다. 내 컨트롤 탭에서 확인할 수 있어요.'); } catch (_) {}
+        notify('success', '컨트롤이 저장되었습니다. 내 컨트롤 탭에서 확인할 수 있어요.');
       } catch (e) {
-        try { alert('업로드 실패: ' + e.message); } catch (_) {}
+        notify('error', '업로드 실패: ' + (e && e.message ? e.message : '오류'));
       }
     }
 
@@ -203,13 +216,13 @@
       if (!id) {
         try { id = localStorage.getItem('selectedControlId') || ''; } catch(_) {}
       }
-      if (!id) { try { alert('선택된 컨트롤이 없습니다. 내 컨트롤 탭에서 선택하세요.'); } catch (_) {} return; }
+      if (!id) { notify('info', '선택된 컨트롤이 없습니다. 내 컨트롤 탭에서 선택하세요.'); return; }
       try {
         const res = await fetch('/api/v1/controls?page=1&size=500');
         const data = await res.json();
         const items = Array.isArray(data.items) ? data.items : [];
         const it = items.find(x => x.id === id);
-        if (!it || !it.url) { try { alert('컨트롤 이미지를 찾을 수 없습니다.'); } catch(_) {} return; }
+        if (!it || !it.url) { notify('error', '컨트롤 이미지를 찾을 수 없습니다.'); return; }
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
@@ -226,10 +239,10 @@
           }
           ctx.drawImage(img, dx, dy, dw, dh);
         };
-        img.onerror = () => { try { alert('이미지 로드 실패'); } catch (_) {} };
+        img.onerror = () => { notify('error', '이미지 로드 실패'); };
         img.src = it.url;
       } catch (_) {
-        try { alert('불러오기 실패'); } catch (_) {}
+        notify('error', '불러오기 실패');
       }
     }
 

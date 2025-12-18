@@ -174,7 +174,14 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         "status_code": exc.status_code,
         "detail": exc.detail,
     })
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    # Preserve headers (e.g. WWW-Authenticate) so HTTPBasic auth prompts work in browsers.
+    # Without this, FastAPI's auth challenges degrade into plain JSON errors and users
+    # won't see the credential popup.
+    try:
+        headers = getattr(exc, "headers", None)
+    except Exception:
+        headers = None
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=headers)
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
@@ -387,6 +394,8 @@ async def beta_login_page(request: Request):
       input { width: 100%; box-sizing: border-box; padding: 12px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #fff; }
       button { margin-top: 12px; width: 100%; padding: 12px 14px; border-radius: 10px; border: 0; background: #2563eb; color: #fff; font-weight: 700; cursor: pointer; }
       .hint { margin-top: 10px; font-size: 12px; color: rgba(229,231,235,0.7); }
+      .tips { margin-top: 12px; font-size: 12px; color: rgba(229,231,235,0.78); line-height: 1.55; }
+      .tips strong { color: #ffffff; }
       .err { margin-top: 10px; color: #fecaca; }
     </style>
   </head>
@@ -401,12 +410,18 @@ async def beta_login_page(request: Request):
           <button type="submit">접속하기</button>
         </form>
         <div class="hint">비밀번호는 공지받은 값을 입력해 주세요.</div>
+        <div class="tips">
+          <strong>접속이 반복해서 로그인 화면으로 돌아오나요?</strong><br/>
+          - 이 베타 잠금은 <strong>쿠키(로그인 정보 저장)</strong>가 필요합니다. 브라우저에서 쿠키가 차단되어 있으면 접속이 안 될 수 있어요.<br/>
+          - 카카오톡/인스타그램 등 <strong>앱 안의 브라우저</strong>에서 열면 쿠키가 제대로 저장되지 않는 경우가 있습니다. 가능한 <strong>Chrome/Safari(기본 브라우저)</strong>로 열어 주세요.<br/>
+          - 그래도 안 되면 시크릿/인프라이빗 창에서 다시 시도하거나, 해당 사이트의 쿠키/사이트 데이터를 삭제 후 재시도해 주세요.
+        </div>
       </div>
     </div>
   </body>
 </html>
 """.strip()
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/beta-login", response_class=HTMLResponse, tags=["Page"])
@@ -433,7 +448,25 @@ async def beta_login_submit(request: Request):
 
     resp = RedirectResponse(url="/", status_code=303)
     # Cookie options: align with anon_id cookie secure setting for HTTPS deployments.
-    secure_cookie = _parse_bool_cookie_secure(os.getenv("COOKIE_SECURE"), False)
+    secure_cookie_env = _parse_bool_cookie_secure(os.getenv("COOKIE_SECURE"), False)
+    try:
+        xf_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    except Exception:
+        xf_proto = ""
+    is_https = (request.url.scheme == "https") or (xf_proto == "https")
+    # If the request is HTTP, browsers will not send Secure cookies.
+    # Prevent a confusing "login loop" on mobile when COOKIE_SECURE=true but served over HTTP.
+    secure_cookie = bool(secure_cookie_env and is_https)
+    if secure_cookie_env and not is_https:
+        logger.warning(
+            {
+                "event": "cookie_secure_mismatch",
+                "message": "COOKIE_SECURE=true but request is not HTTPS; issuing non-secure beta cookie to avoid login loop",
+                "path": request.url.path,
+                "scheme": request.url.scheme,
+                "x_forwarded_proto": xf_proto,
+            }
+        )
     resp.set_cookie(
         key=beta_cookie_name(),
         value=expected,

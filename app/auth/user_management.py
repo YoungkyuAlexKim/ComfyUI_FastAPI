@@ -28,7 +28,14 @@ def _ensure_anon_id_cookie(req: "Request", resp: "HTMLResponse") -> str:
     # ~180 days
     max_age = 60 * 60 * 24 * 180
     # In HTTPS deployments, you should set COOKIE_SECURE=true so the cookie is only sent over HTTPS.
-    secure_cookie = _parse_bool(os.getenv("COOKIE_SECURE"), False)
+    secure_cookie_env = _parse_bool(os.getenv("COOKIE_SECURE"), False)
+    try:
+        xf_proto = (req.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    except Exception:
+        xf_proto = ""
+    is_https = (getattr(getattr(req, "url", None), "scheme", "") == "https") or (xf_proto == "https")
+    # Avoid breaking cookies on plain HTTP when COOKIE_SECURE=true.
+    secure_cookie = bool(secure_cookie_env and is_https)
     resp.set_cookie(
         key=ANON_COOKIE_NAME,
         value=new_id,

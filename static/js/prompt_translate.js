@@ -1,4 +1,16 @@
 document.addEventListener('DOMContentLoaded', () => {
+    function notify(type, message) {
+        const text = (typeof message === 'string' && message) ? message : '';
+        if (!text) return;
+        try {
+            if (window.UIToast && typeof window.UIToast[type] === 'function') {
+                window.UIToast[type](text);
+                return;
+            }
+        } catch (_) {}
+        try { alert(text); } catch (_) {}
+    }
+
     const translateButtons = document.querySelectorAll('.translate-btn, .translate-btn--icon, .translate-btn--small');
 
     translateButtons.forEach(button => {
@@ -9,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const originalText = (textarea && typeof textarea.value === 'string') ? textarea.value.trim() : '';
 
             if (!originalText) {
-                try { alert('번역할 내용을 입력해주세요.'); } catch (_) {}
+                notify('info', '번역할 내용을 입력해주세요.');
                 return;
             }
 
@@ -43,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             } catch (error) {
                 console.error('Translation error:', error);
-                try { alert(`오류: ${error.message}`); } catch (_) {}
+                notify('error', `오류: ${error && error.message ? error.message : '번역 실패'}`);
             } finally {
                 button.disabled = false;
                 button.innerHTML = originalButtonHtml;

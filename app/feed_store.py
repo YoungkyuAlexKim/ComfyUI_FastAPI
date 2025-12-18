@@ -180,20 +180,23 @@ class FeedStore:
 
         # Ordering
         if sort_key == "oldest":
-            order_sql = "ORDER BY published_at ASC"
+            # Stable ordering (avoid pagination jitter on ties)
+            order_sql = "ORDER BY published_at ASC, post_id ASC"
         elif sort_key == "most_reactions":
             # Total reactions = legacy likes + new reactions rows (1 reaction per user)
-            # Tie-break: random within same counts (good for early stage when counts are equal/0)
+            # Tie-break: stable ordering to avoid pagination jitter (no RANDOM())
             order_sql = """
             ORDER BY
               (
                 (SELECT COUNT(*) FROM feed_likes WHERE post_id = feed_posts.post_id) +
                 (SELECT COUNT(*) FROM feed_reactions WHERE post_id = feed_posts.post_id)
               ) DESC,
-              RANDOM()
+              feed_posts.published_at DESC,
+              feed_posts.post_id DESC
             """
         else:
-            order_sql = "ORDER BY published_at DESC"
+            # Stable ordering (avoid pagination jitter on ties)
+            order_sql = "ORDER BY published_at DESC, post_id DESC"
 
         with self._connect() as con:
             total = con.execute(f"SELECT COUNT(*) FROM feed_posts {where}", params).fetchone()[0]

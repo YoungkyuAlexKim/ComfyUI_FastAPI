@@ -22,6 +22,30 @@ except Exception:
 logger = setup_logging()
 router = APIRouter(tags=["Inputs"])
 
+_ALLOWED_INPUT_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+_ALLOWED_INPUT_CT = ("image/png", "image/jpeg", "image/webp")
+
+
+def _infer_ext(filename: str | None, content_type: str | None) -> str | None:
+    """
+    Some browsers/devices may provide odd filenames without extensions (e.g. 'blob').
+    Infer an allowed extension from filename or content-type.
+    """
+    name = (filename or "").strip()
+    lower = name.lower()
+    for ext in _ALLOWED_INPUT_EXTS:
+        if lower.endswith(ext):
+            return ext
+    ct = (content_type or "").split(";")[0].strip().lower()
+    if ct == "image/png":
+        return ".png"
+    if ct == "image/jpeg":
+        return ".jpg"
+    if ct == "image/webp":
+        return ".webp"
+    return None
+
+
 
 def _paginate(items: list, page: int, size: int):
     try:
@@ -64,24 +88,31 @@ async def user_upload_input_image(request: Request, file: UploadFile = File(...)
     anon_id = _get_anon_id_from_request(request)
     if not file or not isinstance(file.filename, str):
         raise HTTPException(status_code=400, detail="Invalid upload")
-    name = os.path.basename(file.filename)
-    if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-        raise HTTPException(status_code=400, detail="Unsupported file type")
+    safe_name = os.path.basename(file.filename)
+    ext = _infer_ext(safe_name, getattr(file, "content_type", None))
+    if not ext:
+        raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다. PNG/JPG/WEBP만 업로드할 수 있어요.")
+    if not safe_name.lower().endswith(ext):
+        # Normalize to a stable extension so later logic can decide conversion correctly.
+        safe_name = f"upload{ext}"
     # Enforce inputs size cap
     chunks: list[bytes] = []
     total = 0
     max_bytes = int(UPLOAD_CONFIG.get("inputs_max_bytes", 10 * 1024 * 1024))
+    max_mb = max_bytes / (1024 * 1024)
     while True:
         piece = await file.read(1024 * 256)
         if not piece:
             break
         total += len(piece)
         if total > max_bytes:
-            raise HTTPException(status_code=413, detail=f"입력 이미지가 너무 큽니다. 최대 {max_bytes} bytes 까지 허용됩니다.")
+            raise HTTPException(status_code=413, detail=f"입력 이미지가 너무 큽니다. 최대 {max_mb:.1f}MB 까지 허용됩니다.")
         chunks.append(piece)
     data = b"".join(chunks)
     png_bytes = data
-    if not name.lower().endswith(".png") and Image is not None:
+    if ext != ".png":
+        if Image is None:
+            raise HTTPException(status_code=400, detail="서버에서 이미지 변환 기능이 준비되지 않았습니다. PNG로 변환 후 업로드해 주세요.")
         try:
             with Image.open(BytesIO(data)) as im:
                 im = im.convert("RGB")
@@ -89,11 +120,11 @@ async def user_upload_input_image(request: Request, file: UploadFile = File(...)
                 im.save(out, format="PNG")
                 png_bytes = out.getvalue()
         except Exception:
-            raise HTTPException(status_code=400, detail="Failed to decode image")
+            raise HTTPException(status_code=400, detail="이미지를 읽을 수 없습니다. 파일이 손상되었거나 지원하지 않는 형식일 수 있어요.")
     # Post-conversion safety cap
     if len(png_bytes) > max_bytes:
-        raise HTTPException(status_code=413, detail=f"입력 이미지가 너무 큽니다. 최대 {max_bytes} bytes 까지 허용됩니다.")
-    path, meta = _save_input_image_and_meta(anon_id, png_bytes, name)
+        raise HTTPException(status_code=413, detail=f"입력 이미지가 너무 큽니다. 최대 {max_mb:.1f}MB 까지 허용됩니다.")
+    path, meta = _save_input_image_and_meta(anon_id, png_bytes, safe_name)
     web_url = _build_web_path(path)
     return {"ok": True, "id": os.path.splitext(os.path.basename(path))[0], "url": web_url}
 
@@ -136,9 +167,10 @@ async def user_copy_to_inputs(request: Request):
     # Enforce inputs size limit on copy as well
     try:
         max_bytes = int(UPLOAD_CONFIG.get("inputs_max_bytes", 10 * 1024 * 1024))
+        max_mb = max_bytes / (1024 * 1024)
         size = os.path.getsize(png_path)
         if size > max_bytes:
-            raise HTTPException(status_code=413, detail="원본 이미지가 입력 크기 제한을 초과합니다.")
+            raise HTTPException(status_code=413, detail=f"원본 이미지가 입력 크기 제한을 초과합니다. 최대 {max_mb:.1f}MB 까지 허용됩니다.")
     except HTTPException:
         raise
     except Exception:

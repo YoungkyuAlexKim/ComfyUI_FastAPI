@@ -37,8 +37,49 @@
     return typeof s === "string" ? s : fallback;
   }
 
+  function notifyError(msg) {
+    const text = typeof msg === "string" && msg ? msg : "오류가 발생했어요.";
+    try {
+      if (window.UIToast && typeof window.UIToast.error === "function") {
+        window.UIToast.error(text);
+        return;
+      }
+    } catch (_) {}
+    try {
+      window.alert(text);
+    } catch (_) {}
+  }
+
   async function jsonFetch(url, options) {
-    const res = await fetch(url, options);
+    const opts = options || {};
+    const timeoutMs = Number.isFinite(Number(opts.timeoutMs)) ? Number(opts.timeoutMs) : 15000;
+    const { timeoutMs: _ignoredTimeoutMs, ...fetchOpts } = opts;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer =
+      controller && timeoutMs > 0
+        ? setTimeout(() => {
+            try {
+              controller.abort();
+            } catch (_) {}
+          }, timeoutMs)
+        : null;
+
+    let res;
+    try {
+      res = await fetch(url, { ...fetchOpts, signal: controller ? controller.signal : undefined });
+    } catch (err) {
+      if (timer) clearTimeout(timer);
+      const isAbort = err && (err.name === "AbortError" || String(err.message || "").toLowerCase().includes("abort"));
+      if (isAbort) {
+        const e = new Error("요청이 오래 걸려서 중단했어요. 네트워크 상태를 확인해 주세요.");
+        e.code = "timeout";
+        throw e;
+      }
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+
     let data = null;
     try {
       data = await res.json();
@@ -115,7 +156,7 @@
           if (typeof onUpdated === "function") onUpdated(next);
         } catch (err) {
           try {
-            window.alert(`반응 처리에 실패했어요: ${err && err.message ? err.message : "오류"}`);
+            notifyError(`반응 처리에 실패했어요: ${err && err.message ? err.message : "오류"}`);
           } catch (_) {}
         } finally {
           btn.disabled = false;
@@ -130,7 +171,14 @@
   function ensureModal() {
     let ov = document.getElementById("feed-modal-overlay");
     if (ov) return ov;
-    ov = el("div", { id: "feed-modal-overlay", class: "feed-modal-overlay", role: "dialog" });
+    ov = el("div", {
+      id: "feed-modal-overlay",
+      class: "feed-modal-overlay",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "쇼케이스 상세",
+      tabindex: "-1",
+    });
     ov.innerHTML = `
       <div class="feed-modal">
         <div class="feed-modal-media">
@@ -191,18 +239,72 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && ov.classList.contains("open")) closeModal();
     });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Tab") return;
+      if (!ov.classList.contains("open")) return;
+
+      // Focus trap inside modal
+      const focusables = Array.from(
+        ov.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((node) => {
+        if (!node) return false;
+        if (node.hasAttribute("disabled")) return false;
+        const style = window.getComputedStyle(node);
+        if (style && (style.visibility === "hidden" || style.display === "none")) return false;
+        return true;
+      });
+
+      if (!focusables.length) {
+        e.preventDefault();
+        try {
+          ov.focus();
+        } catch (_) {}
+        return;
+      }
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+
+      if (e.shiftKey) {
+        if (active === first || active === ov) {
+          e.preventDefault();
+          try {
+            last.focus();
+          } catch (_) {}
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault();
+          try {
+            first.focus();
+          } catch (_) {}
+        }
+      }
+    });
     ov.querySelector("#feed-modal-close").addEventListener("click", closeModal);
     return ov;
   }
 
   let modalState = { postId: null, inputUrl: null };
   let prevBodyOverflow = null;
+  let lastFocusedEl = null;
   let confirmBusy = false;
 
   function ensureConfirmOverlay() {
     let ov = document.getElementById("feed-confirm-overlay");
     if (ov) return ov;
-    ov = el("div", { id: "feed-confirm-overlay", class: "confirm-overlay", role: "dialog", "aria-hidden": "true" });
+    ov = el("div", {
+      id: "feed-confirm-overlay",
+      class: "confirm-overlay",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "삭제 확인",
+      "aria-hidden": "true",
+      tabindex: "-1",
+    });
     ov.innerHTML = `
       <div class="confirm-card" style="max-width:520px;">
         <h3 class="confirm-title"><i class="fas fa-trash"></i> 삭제</h3>
@@ -221,6 +323,50 @@
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && ov.classList.contains("open")) closeConfirm();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Tab") return;
+      if (!ov.classList.contains("open")) return;
+
+      const focusables = Array.from(
+        ov.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((node) => {
+        if (!node) return false;
+        if (node.hasAttribute("disabled")) return false;
+        const style = window.getComputedStyle(node);
+        if (style && (style.visibility === "hidden" || style.display === "none")) return false;
+        return true;
+      });
+
+      if (!focusables.length) {
+        e.preventDefault();
+        try {
+          ov.focus();
+        } catch (_) {}
+        return;
+      }
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+
+      if (e.shiftKey) {
+        if (active === first || active === ov) {
+          e.preventDefault();
+          try {
+            last.focus();
+          } catch (_) {}
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault();
+          try {
+            first.focus();
+          } catch (_) {}
+        }
+      }
     });
     return ov;
   }
@@ -254,13 +400,18 @@
           confirmBusy = false;
           okBtn.disabled = false;
           try {
-            window.alert(`처리에 실패했어요: ${err && err.message ? err.message : "오류"}`);
+            notifyError(`처리에 실패했어요: ${err && err.message ? err.message : "오류"}`);
           } catch (_) {}
         }
       };
     }
     ov.classList.add("open");
     ov.setAttribute("aria-hidden", "false");
+    try {
+      if (cancelBtn && typeof cancelBtn.focus === "function") cancelBtn.focus();
+      else if (okBtn && typeof okBtn.focus === "function") okBtn.focus();
+      else ov.focus();
+    } catch (_) {}
   }
 
   function closeModal() {
@@ -277,10 +428,22 @@
       }
     } catch (_) {}
     modalState = { postId: null, inputUrl: null };
+
+    try {
+      if (lastFocusedEl && typeof lastFocusedEl.focus === "function") {
+        lastFocusedEl.focus();
+      }
+    } catch (_) {}
+    lastFocusedEl = null;
   }
 
   async function openModal(postId) {
     const ov = ensureModal();
+    try {
+      lastFocusedEl = document.activeElement || null;
+    } catch (_) {
+      lastFocusedEl = null;
+    }
     try {
       if (prevBodyOverflow === null) prevBodyOverflow = document.body.style.overflow || "";
       document.body.style.overflow = "hidden";
@@ -300,7 +463,21 @@
     const inputThumb = ov.querySelector("#feed-modal-input-thumb");
     const openInputBtn = ov.querySelector("#feed-modal-open-input");
 
-    const data = await jsonFetch(`/api/v1/feed/${encodeURIComponent(postId)}`);
+    // Open immediately (so close button is available), then populate content.
+    try {
+      ov.classList.add("open");
+      const closeBtn = ov.querySelector("#feed-modal-close");
+      if (closeBtn && typeof closeBtn.focus === "function") closeBtn.focus();
+    } catch (_) {}
+
+    let data;
+    try {
+      data = await jsonFetch(`/api/v1/feed/${encodeURIComponent(postId)}`);
+    } catch (err) {
+      notifyError(`상세 정보를 불러오지 못했어요: ${err && err.message ? err.message : "오류"}`);
+      closeModal();
+      return;
+    }
     modalState = { postId: data.post_id, inputUrl: data.input_image_url || null };
 
     img.src = data.image_url || "";
@@ -376,7 +553,7 @@
       inputWrap.style.display = "none";
     }
 
-    ov.classList.add("open");
+    // already opened above
   }
 
   let page = 1;
@@ -385,11 +562,47 @@
   let hasMore = true;
   let sortKey = "newest";
 
+  function renderSkeletonCard() {
+    const card = el("div", { class: "feed-card feed-card--skeleton" });
+    const media = el("div", { class: "feed-media" });
+    const skel = el("div", { class: "feed-thumb skeleton-item", "aria-hidden": "true" });
+    media.appendChild(skel);
+    card.appendChild(media);
+    return card;
+  }
+
+  function setHeaderLoading(loadingOn) {
+    const btnRefresh = document.getElementById("feed-refresh");
+    const sortSel = document.getElementById("feed-sort");
+    if (btnRefresh) btnRefresh.disabled = !!loadingOn;
+    if (sortSel) sortSel.disabled = !!loadingOn;
+  }
+
+  function setMoreLoading(loadingOn) {
+    const btn = document.getElementById("feed-load-more");
+    if (!btn) return;
+    btn.disabled = !!loadingOn;
+    btn.classList.toggle("is-loading", !!loadingOn);
+    btn.setAttribute("aria-busy", loadingOn ? "true" : "false");
+    btn.innerHTML = loadingOn
+      ? `<span class="loading-spinner" aria-hidden="true"></span> 불러오는 중...`
+      : `<i class="fas fa-chevron-down"></i> 더 보기`;
+  }
+
   function renderCard(it) {
     const card = el("div", { class: "feed-card", "data-feed-post-id": it.post_id });
 
     const media = el("div", { class: "feed-media" });
-    const img = el("img", { class: "feed-thumb", src: it.thumb_url || it.image_url || "", alt: "게시물 이미지" });
+    const img = el(
+      "img",
+      {
+        class: "feed-thumb",
+        src: it.thumb_url || it.image_url || "",
+        alt: "게시물 이미지",
+        loading: "lazy",
+        decoding: "async",
+      }
+    );
     img.addEventListener("click", () => openModal(it.post_id));
     media.appendChild(img);
 
@@ -428,14 +641,34 @@
     btn.style.display = visible ? "" : "none";
   }
 
+  function setEmptyVisible(visible) {
+    const empty = document.getElementById("feed-empty");
+    const grid = document.getElementById("feed-grid");
+    if (empty) empty.style.display = visible ? "" : "none";
+    if (grid) grid.style.display = visible ? "none" : "";
+  }
+
   async function loadPage(reset) {
     if (loading) return;
     loading = true;
+    setHeaderLoading(true);
     try {
       if (reset) {
         page = 1;
         hasMore = true;
       }
+
+      if (reset) {
+        const grid = document.getElementById("feed-grid");
+        if (grid) {
+          setEmptyVisible(false);
+          grid.innerHTML = "";
+          for (let i = 0; i < 12; i += 1) grid.appendChild(renderSkeletonCard());
+        }
+      } else {
+        setMoreLoading(true);
+      }
+
       const data = await jsonFetch(
         `/api/v1/feed?page=${encodeURIComponent(page)}&size=${encodeURIComponent(size)}&sort=${encodeURIComponent(sortKey)}`
       );
@@ -444,12 +677,30 @@
       if (!grid) return;
       if (reset) grid.innerHTML = "";
       items.forEach((it) => grid.appendChild(renderCard(it)));
+
+      if (reset) {
+        const total = Number.isFinite(Number(data.total)) ? Number(data.total) : 0;
+        setEmptyVisible(total <= 0);
+      }
+
       const totalPages = data.total_pages || 1;
       hasMore = page < totalPages;
       setLoadMoreVisible(hasMore);
       if (hasMore) page += 1;
+    } catch (err) {
+      notifyError(`피드를 불러오지 못했어요: ${err && err.message ? err.message : "네트워크 오류"}`);
+      try {
+        if (reset) {
+          const grid = document.getElementById("feed-grid");
+          if (grid) grid.innerHTML = "";
+          setEmptyVisible(false);
+          setLoadMoreVisible(false);
+        }
+      } catch (_) {}
     } finally {
       loading = false;
+      setHeaderLoading(false);
+      setMoreLoading(false);
     }
   }
 

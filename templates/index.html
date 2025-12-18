@@ -520,8 +520,9 @@
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ source: payload.source, id: payload.id })
                                     });
-                                    const data = await res.json();
-                                    if (!res.ok) throw new Error(data.detail || '복사 실패');
+                                    const data = await res.json().catch(()=>({}));
+                                    if (!res.ok) throw new Error((data && data.detail) ? data.detail : `복사 실패 (${res.status})`);
+                                    if (!data || !data.id) throw new Error('서버 응답이 올바르지 않습니다. 새로고침 후 다시 시도해 주세요.');
                                     setInputImageId(data.id);
                                     showStatus('입력 보관함으로 복사되었습니다.', 'success');
                                 } catch (err) {
@@ -537,6 +538,14 @@
                             const file = e.dataTransfer.files && e.dataTransfer.files[0];
                             if (!file) return;
                             try {
+                                const nameLower = (file.name || '').toLowerCase();
+                                const isHeic = nameLower.endsWith('.heic') || nameLower.endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+                                if (isHeic) {
+                                    showStatus('아이폰 사진(HEIC)은 현재 지원하지 않습니다. PNG/JPG로 변환해서 업로드해 주세요.', 'warning');
+                                    return;
+                                }
+                            } catch(_) {}
+                            try {
                                 if (e.dataTransfer.files && e.dataTransfer.files.length > 1) {
                                     showStatus('여러 장을 드롭했네요. 첫 한 장만 등록할게요.', 'info');
                                 }
@@ -549,8 +558,9 @@
                                 const fd = new FormData();
                                 fd.append('file', file);
                                 const res = await fetch('/api/v1/inputs/upload', { method: 'POST', body: fd });
-                                const data = await res.json();
-                                if (!res.ok) throw new Error(data.detail || '업로드 실패');
+                                const data = await res.json().catch(()=>({}));
+                                if (!res.ok) throw new Error((data && data.detail) ? data.detail : `업로드 실패 (${res.status})`);
+                                if (!data || !data.id) throw new Error('서버 응답이 올바르지 않습니다. 새로고침 후 다시 시도해 주세요.');
                                 setInputImageId(data.id);
                                 showStatus('입력 이미지가 업로드되었습니다.', 'success');
                             } catch (err) { showStatus(err?.message || '업로드 실패', 'error'); }
@@ -1114,16 +1124,25 @@
                 const file = e.target.files && e.target.files[0];
                 if (!file) return;
                 try {
+                    const nameLower = (file.name || '').toLowerCase();
+                    const isHeic = nameLower.endsWith('.heic') || nameLower.endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+                    if (isHeic) {
+                        showStatus('아이폰 사진(HEIC)은 현재 지원하지 않습니다. PNG/JPG로 변환해서 업로드해 주세요.', 'warning');
+                        return;
+                    }
+                } catch(_) {}
+                try {
                     const fd = new FormData();
                     fd.append('file', file);
                     const res = await fetch('/api/v1/inputs/upload', { method: 'POST', body: fd });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail || '업로드 실패');
+                    const data = await res.json().catch(()=>({}));
+                    if (!res.ok) throw new Error((data && data.detail) ? data.detail : `업로드 실패 (${res.status})`);
+                    if (!data || !data.id) throw new Error('서버 응답이 올바르지 않습니다. 새로고침 후 다시 시도해 주세요.');
                     setInputImageId(data.id);
                     closeWithFade();
                     showStatus('입력 이미지가 업로드되었습니다.', 'success');
                 } catch (err) {
-                    showStatus('업로드 실패', 'error');
+                    showStatus(err?.message || '업로드 실패', 'error');
                 }
             });
             (async ()=>{
@@ -1258,8 +1277,9 @@
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ source: payload.source, id: payload.id })
                             });
-                            const data = await res.json();
-                            if (!res.ok) throw new Error(data.detail || '복사 실패');
+                            const data = await res.json().catch(()=>({}));
+                            if (!res.ok) throw new Error((data && data.detail) ? data.detail : `복사 실패 (${res.status})`);
+                            if (!data || !data.id) throw new Error('서버 응답이 올바르지 않습니다. 새로고침 후 다시 시도해 주세요.');
                             setInputImageId(data.id);
                             showStatus('입력 보관함으로 복사되었습니다.', 'success');
                         } catch (err) {
@@ -1276,6 +1296,14 @@
                     const file = e.dataTransfer.files && e.dataTransfer.files[0];
                     if (!file) return;
                     try {
+                        const nameLower = (file.name || '').toLowerCase();
+                        const isHeic = nameLower.endsWith('.heic') || nameLower.endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+                        if (isHeic) {
+                            showStatus('아이폰 사진(HEIC)은 현재 지원하지 않습니다. PNG/JPG로 변환해서 업로드해 주세요.', 'warning');
+                            return;
+                        }
+                    } catch(_) {}
+                    try {
                         if (e.dataTransfer.files && e.dataTransfer.files.length > 1) {
                             showStatus('여러 장을 드롭했네요. 첫 한 장만 등록할게요.', 'info');
                         }
@@ -1291,13 +1319,11 @@
                         const fd = new FormData();
                         fd.append('file', file);
                         const res = await fetch('/api/v1/inputs/upload', { method: 'POST', body: fd });
-                        const data = await res.json();
+                        const data = await res.json().catch(()=>({}));
                         if (!res.ok) {
-                            if (res.status === 413) {
-                                throw new Error('파일이 커요. 2.5MB 이하로 업로드해주세요.');
-                            }
-                            throw new Error(data.detail || '업로드 실패');
+                            throw new Error((data && data.detail) ? data.detail : `업로드 실패 (${res.status})`);
                         }
+                        if (!data || !data.id) throw new Error('서버 응답이 올바르지 않습니다. 새로고침 후 다시 시도해 주세요.');
                         setInputImageId(data.id);
                         showStatus('입력 이미지가 업로드되었습니다.', 'success');
                     } catch (err) { showStatus(err?.message || '업로드 실패', 'error'); }
@@ -2748,16 +2774,82 @@
                 root.classList.add('gallery-open');
                 panel.setAttribute('aria-hidden','false');
                 toggle.setAttribute('aria-label','갤러리 닫기');
+                try { toggle.setAttribute('title','갤러리 닫기'); } catch(_) {}
                 // Ensure upload icon reflects current active tab on initial open
                 switchGallery(gallerySource || 'generated');
             }
-            function closeDrawer(){ root.classList.remove('gallery-open'); panel.setAttribute('aria-hidden','true'); toggle.setAttribute('aria-label','갤러리 열기'); }
+            function closeDrawer(){
+                root.classList.remove('gallery-open');
+                panel.setAttribute('aria-hidden','true');
+                toggle.setAttribute('aria-label','갤러리 열기');
+                try { toggle.setAttribute('title','갤러리 열기'); } catch(_) {}
+            }
             function isOpen(){ return root.classList.contains('gallery-open'); }
             toggle.addEventListener('click', ()=>{ isOpen() ? closeDrawer() : openDrawer(); });
             const closeBtn = document.getElementById('gallery-close');
             if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
             // ESC closes on small screens when overlay mode
             document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape' && isOpen()) closeDrawer(); });
+
+            // First-time onboarding hint (bubble + subtle nudge on the handle)
+            (function setupGalleryHint(){
+                const KEY = 'galleryDrawerHintSeen:v1';
+                let dismissed = false;
+                function markSeen(){
+                    try { localStorage.setItem(KEY, '1'); } catch(_) {}
+                }
+                function dismissHint(hintEl){
+                    if (dismissed) return;
+                    dismissed = true;
+                    try { toggle.classList.remove('is-nudge'); } catch(_) {}
+                    try { hintEl.classList.remove('show'); } catch(_) {}
+                    markSeen();
+                    try {
+                        setTimeout(() => {
+                            try { hintEl.remove(); } catch(_) {}
+                        }, 220);
+                    } catch(_) {}
+                }
+
+                function shouldShow(){
+                    try { return localStorage.getItem(KEY) !== '1'; } catch(_) { return true; }
+                }
+
+                if (!shouldShow()) return;
+                // Don't show while drawer is already open
+                if (isOpen()) return;
+
+                const hint = document.createElement('div');
+                hint.id = 'gallery-toggle-hint';
+                hint.className = 'gallery-toggle-hint';
+                hint.setAttribute('role', 'status');
+                hint.setAttribute('aria-live', 'polite');
+                hint.textContent = '여기서 갤러리를 열 수 있어요';
+                document.body.appendChild(hint);
+
+                try { toggle.classList.add('is-nudge'); } catch(_) {}
+
+                // Clicking the hint opens the drawer and marks as seen
+                hint.addEventListener('click', (e) => {
+                    try { e.preventDefault(); e.stopPropagation(); } catch(_) {}
+                    try { toggle.click(); } catch(_) {}
+                    dismissHint(hint);
+                });
+
+                // If user clicks the toggle directly, also mark as seen
+                const onToggleClick = () => dismissHint(hint);
+                toggle.addEventListener('click', onToggleClick, { once: true });
+
+                // Show a moment after load, then auto-dismiss after a few seconds
+                setTimeout(() => {
+                    if (dismissed) return;
+                    try { hint.classList.add('show'); } catch(_) {}
+                }, 700);
+                setTimeout(() => {
+                    if (dismissed) return;
+                    dismissHint(hint);
+                }, 6500);
+            })();
         })();
 
         loadWorkflows();
