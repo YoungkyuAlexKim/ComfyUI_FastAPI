@@ -57,6 +57,18 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             self.input_image_filename = d.get("input_image_filename")
 
     request = _Req(req_dict)
+    # Ensure we always have a concrete seed so users can reproduce results later,
+    # even when the UI leaves seed empty ("random").
+    try:
+        if getattr(request, "seed", None) is None:
+            request.seed = int(time.time() * 1000) % 1000000000000000
+            try:
+                if isinstance(req_dict, dict):
+                    req_dict["seed"] = request.seed
+            except Exception:
+                pass
+    except Exception:
+        pass
     try:
         logger.info({
             "event": "gen_request",

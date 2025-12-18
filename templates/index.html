@@ -299,6 +299,7 @@
                 const createdAt = Number.isFinite(meta.createdAt) ? meta.createdAt : nowSec;
                 const workflowName = meta.workflow_name || meta.workflowName || meta.workflow_id || meta.workflowId || '';
                 const prompt = meta.prompt || '';
+                const seed = (meta.seed ?? meta.seed === 0) ? meta.seed : null;
                 return {
                     id,
                     url: imagePath,
@@ -306,9 +307,11 @@
                     created_at: createdAt,
                     workflow_name: workflowName,
                     prompt,
+                    seed,
                     meta: {
                         workflow_name: workflowName,
-                        prompt
+                        prompt,
+                        seed
                     },
                     source: 'generated'
                 };
@@ -1473,6 +1476,12 @@
                 })(),
                 seed: ui.seedInput.value ? parseInt(ui.seedInput.value, 10) : null
             };
+            // If seed is empty, generate one so the result can be reproduced later.
+            try {
+                if (requestData.seed === null || requestData.seed === undefined || !Number.isFinite(requestData.seed)) {
+                    requestData.seed = Date.now() % 1000000000000000;
+                }
+            } catch (_) {}
             // LoRA strengths payload (single value per slot, if visible)
             try {
                 const wrap = document.getElementById('lora-strengths-wrap');
@@ -2582,11 +2591,15 @@
                 const createdAt = toEpochSeconds(createdAtRaw);
                 const createdText = createdAt ? new Date(createdAt * 1000).toLocaleString() : '';
                 const prompt = (metaItem && metaItem.meta && metaItem.meta.prompt) || (metaItem && metaItem.prompt) || '';
+                const seedVal = ((metaItem && metaItem.meta) ? (metaItem.meta.seed ?? null) : null) ?? (metaItem ? (metaItem.seed ?? null) : null);
+                const seedText = (seedVal === null || seedVal === undefined) ? '' : String(seedVal);
                 const wfEl = document.getElementById('lb-workflow');
                 const ctEl = document.getElementById('lb-created');
+                const sdEl = document.getElementById('lb-seed');
                 const prEl = document.getElementById('lb-prompt');
                 if (wfEl) wfEl.value = wf || '';
                 if (ctEl) ctEl.value = createdText || '';
+                if (sdEl) sdEl.value = seedText;
                 if (prEl) prEl.value = prompt || '';
             } catch (_) {}
             // 쇼케이스 공유 버튼 표시: 생성 이미지 탭에서만
@@ -2877,6 +2890,8 @@
                         <input class="meta-input" id="lb-workflow" type="text" readonly value="" />
                         <label class="meta-label">생성 시간</label>
                         <input class="meta-input" id="lb-created" type="text" readonly value="" />
+                        <label class="meta-label">시드(seed)</label>
+                        <input class="meta-input" id="lb-seed" type="text" readonly value="" />
                         <label class="meta-label">프롬프트</label>
                         <textarea class="meta-textarea" id="lb-prompt" rows="6" readonly></textarea>
                         <div class="meta-actions">
