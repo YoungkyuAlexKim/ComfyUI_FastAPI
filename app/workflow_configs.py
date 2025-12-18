@@ -4,6 +4,32 @@ from typing import Dict, Any
 # Move/add new workflows here without touching the global config module
 
 WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
+    "RMBG2": {
+        "display_name": "배경 제거 (RMBG 2.0)",
+        "description": "입력 이미지의 배경을 자동으로 제거하여 투명 배경(PNG)으로 출력합니다.",
+
+        # 프롬프트/네거티브/시드 노드가 없는 단순 워크플로우이므로 매핑은 생략
+        "default_user_prompt": "",
+        "style_prompt": "",
+        "negative_prompt": "",
+
+        # Img2Img: 입력 이미지를 받아야 함
+        # RMBG2.json 기준: 노드 1(AILab_LoadImage)의 inputs.image 에 Comfy input 파일명을 주입
+        "image_input": {"image_node": "1", "input_field": "image"},
+
+        # UI 힌트: 프롬프트 입력은 숨기고(누끼 전용), 비율/번역/컨트롤/LoRA 등은 비노출
+        "ui": {
+            "showControlNet": False,
+            "showLora": False,
+            "showPromptTranslate": False,
+            # 분류용: 태그 기반/자연어가 아닌 "도구" 워크플로우
+            "templateMode": "utility",
+            "disableAspect": True,
+            "hideUserPrompt": True,
+            "generateLabel": "배경 제거하기",
+        },
+    },
+
     "BasicWorkFlow_PixelArt": {
         "display_name": "픽셀 아트",
         "description": "레트로 감성의 픽셀 아트 스타일 이미지를 생성합니다",

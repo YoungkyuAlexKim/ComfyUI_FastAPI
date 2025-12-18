@@ -1,0 +1,50 @@
+{
+  "1": {
+    "inputs": {
+      "image_path_or_URL": "",
+      "image": "ComfyUI_2025-05-26_00012_.png",
+      "upscale_method": "lanczos",
+      "megapixels": 0,
+      "scale_by": 1,
+      "resize_mode": "longest_side",
+      "size": 0
+    },
+    "class_type": "AILab_LoadImage",
+    "_meta": {
+      "title": "이미지 로드 (RMBG) 🖼️"
+    }
+  },
+  "7": {
+    "inputs": {
+      "images": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "이미지 미리보기"
+    }
+  },
+  "11": {
+    "inputs": {
+      "model": "RMBG-2.0",
+      "sensitivity": 1,
+      "process_res": 1024,
+      "mask_blur": 0,
+      "mask_offset": 0,
+      "invert_output": false,
+      "refine_foreground": false,
+      "background": "Alpha",
+      "background_color": "#222222",
+      "image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "RMBG",
+    "_meta": {
+      "title": "배경 제거 (RMBG)"
+    }
+  }
+}

@@ -120,6 +120,11 @@
         url: '/static/img/banner/img_banner_ZImageTurbo.png',
         showTitle: false,
         showDescription: false
+      },
+      'RMBG2': {
+        url: '/static/img/banner/img_banner_RMBG2.png',
+        showTitle: false,
+        showDescription: false
       }
     }
   };

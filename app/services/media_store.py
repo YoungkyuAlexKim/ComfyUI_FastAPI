@@ -57,12 +57,27 @@ def _save_image_and_meta(anon_id: str, image_bytes: bytes, req, original_filenam
     if Image is not None:
         try:
             with Image.open(BytesIO(image_bytes)) as im:
-                im = im.convert("RGB")
+                # Preserve alpha for transparent outputs (e.g. background removal)
+                try:
+                    has_alpha = (
+                        im.mode in ("RGBA", "LA")
+                        or (im.mode == "P" and "transparency" in (im.info or {}))
+                    )
+                except Exception:
+                    has_alpha = False
+                if has_alpha:
+                    im = im.convert("RGBA")
+                else:
+                    im = im.convert("RGB")
                 # Resize keeping aspect ratio: short side 384px
                 max_side = 384
                 im.thumbnail((max_side, max_side))
                 try:
-                    im.save(thumb_webp_path, format="WEBP", quality=80, method=6)
+                    # WEBP supports alpha; keep it when present so thumbnails don't get a black background.
+                    if has_alpha:
+                        im.save(thumb_webp_path, format="WEBP", quality=80, method=6, lossless=True)
+                    else:
+                        im.save(thumb_webp_path, format="WEBP", quality=80, method=6)
                     thumb_path_written = thumb_webp_path
                 except Exception:
                     im.save(thumb_jpg_path, format="JPEG", quality=80)
@@ -138,11 +153,24 @@ def _save_input_image_and_meta(anon_id: str, image_bytes: bytes, original_filena
     if Image is not None:
         try:
             with Image.open(BytesIO(image_bytes)) as im:
-                im = im.convert("RGB")
+                try:
+                    has_alpha = (
+                        im.mode in ("RGBA", "LA")
+                        or (im.mode == "P" and "transparency" in (im.info or {}))
+                    )
+                except Exception:
+                    has_alpha = False
+                if has_alpha:
+                    im = im.convert("RGBA")
+                else:
+                    im = im.convert("RGB")
                 max_side = 384
                 im.thumbnail((max_side, max_side))
                 try:
-                    im.save(thumb_webp_path, format="WEBP", quality=80, method=6)
+                    if has_alpha:
+                        im.save(thumb_webp_path, format="WEBP", quality=80, method=6, lossless=True)
+                    else:
+                        im.save(thumb_webp_path, format="WEBP", quality=80, method=6)
                     thumb_path_written = thumb_webp_path
                 except Exception:
                     im.save(thumb_jpg_path, format="JPEG", quality=80)

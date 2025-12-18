@@ -300,18 +300,21 @@
                 const workflowName = meta.workflow_name || meta.workflowName || meta.workflow_id || meta.workflowId || '';
                 const prompt = meta.prompt || '';
                 const seed = (meta.seed ?? meta.seed === 0) ? meta.seed : null;
+                const workflowId = meta.workflow_id || meta.workflowId || null;
                 return {
                     id,
                     url: imagePath,
                     createdAt,
                     created_at: createdAt,
                     workflow_name: workflowName,
+                    workflow_id: workflowId,
                     prompt,
                     seed,
                     meta: {
                         workflow_name: workflowName,
                         prompt,
-                        seed
+                        seed,
+                        workflow_id: workflowId
                     },
                     source: 'generated'
                 };
@@ -410,11 +413,14 @@
             // 카테고리 분류: 태그 기반 vs 자연어 기반
             const tagBased = [];
             const natural = [];
+            const utility = [];
             workflows.forEach((wf) => {
                 const uiSchema = (wf && wf.ui) || {};
                 const mode = uiSchema.templateMode || '';
                 const isNatural = mode === 'natural';
-                if (isNatural) natural.push(wf);
+                const isUtility = mode === 'utility';
+                if (isUtility) utility.push(wf);
+                else if (isNatural) natural.push(wf);
                 else tagBased.push(wf);
             });
 
@@ -430,6 +436,13 @@
                 </div>`;
 
             let html = '';
+            if (utility.length > 0) {
+                html += `
+                <div class="workflow-group">
+                    <div class="workflow-group-label">도구</div>
+                    ${utility.map(renderItem).join('')}
+                </div>`;
+            }
             if (tagBased.length > 0) {
                 html += `
                 <div class="workflow-group">
@@ -691,7 +704,7 @@
             try {
                 const targetWf = getTargetWorkflowForMode();
                 const uiSchema = (targetWf && targetWf.ui) || {};
-                const disableAspect = !!uiSchema.disableAspect && isImg2ImgMode();
+                const disableAspect = !!uiSchema.disableAspect && (isImg2ImgMode() || !!(targetWf && targetWf.image_input));
                 // Hide entire aspect group when disabled
                 if (ui.aspectRatioGroup) ui.aspectRatioGroup.style.display = disableAspect ? 'none' : '';
                 const allowed = disableAspect ? [] : (Array.isArray(uiSchema.aspectOptions) ? uiSchema.aspectOptions : ['square','landscape','portrait']);
@@ -704,6 +717,15 @@
                         if (fbBtn) fbBtn.click();
                     }
                 });
+            } catch(_) {}
+        }
+
+        function applyPromptVisibilityForWorkflow() {
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const wrap = document.getElementById('user-prompt-wrap');
+                if (wrap) wrap.style.display = uiSchema.hideUserPrompt ? 'none' : '';
             } catch(_) {}
         }
 
@@ -787,6 +809,8 @@
                 const inWrap = document.getElementById('input-image-wrap') || document.getElementById('input-image-section') || document.getElementById('img2img-input-wrap');
                 if (inWrap) inWrap.style.display = (workflow.image_input ? '' : 'none');
             } catch(_) {}
+            // Hide/show prompt input when workflow doesn't need it (e.g., background removal)
+            applyPromptVisibilityForWorkflow();
             // LoRA 강도 UI 표시/초기화 (워크플로우 제공 메타 기반) - single value
             try {
                 const loraMeta = workflow.lora_slots || null;
@@ -1048,6 +1072,11 @@
                     ui.promptSuggestionText.removeAttribute('title');
                 }
             } catch(_) {}
+            // Update aspect/prompt visibility based on schema
+            try { applyAspectUiForMode(); } catch(_) {}
+            try { applyPromptVisibilityForWorkflow(); } catch(_) {}
+            // Update main action button label (e.g., background removal)
+            try { if (!ui.generateBtn.disabled) setGenerationState(false, '이미지 생성하기'); } catch(_) {}
         }
 
         // ---- Input Image Picker (minimal) ----
@@ -1505,17 +1534,17 @@
 
             // Image-to-image mode: require input image selection
             try {
-                const isImg2Img = (document.getElementById('txtimg-img2img-tabs')?.dataset.mode) === 'img2img';
-                if (isImg2Img) {
+                const targetWf = getTargetWorkflowForMode();
+                const needsInput = !!(targetWf && targetWf.image_input) || ((document.getElementById('txtimg-img2img-tabs')?.dataset.mode) === 'img2img');
+                if (needsInput) {
                     const inputImageId = getInputImageId();
-                    if (inputImageId) {
-                        requestData.input_image_id = inputImageId;
-                    } else {
+                    if (!inputImageId) {
                         showStatus('입력 이미지를 먼저 선택해주세요.', 'warning');
                         setGenerationState(false, '이미지 생성하기');
                         hidePreviewOverlay();
                         return;
                     }
+                    requestData.input_image_id = inputImageId;
                 }
             } catch(_) {}
 
@@ -1707,7 +1736,20 @@
             ui.generateBtn.disabled = isGenerating;
             const cancelBtn = document.getElementById('cancel-btn');
             cancelBtn.disabled = !isGenerating;
-            ui.generateBtn.innerHTML = isGenerating ? `<div class="loading-spinner"></div><span>${text}</span>` : `<i class="fas fa-sparkles"></i><span>${text}</span>`;
+            let label = text;
+            if (!isGenerating) {
+                try {
+                    const targetWf = (typeof getTargetWorkflowForMode === 'function') ? (getTargetWorkflowForMode() || {}) : (currentWorkflow || {});
+                    const uiSchema = (targetWf && targetWf.ui) || {};
+                    const preferred = (typeof uiSchema.generateLabel === 'string' && uiSchema.generateLabel.trim())
+                        ? uiSchema.generateLabel.trim()
+                        : '이미지 생성하기';
+                    if (!label || label === '이미지 생성하기') label = preferred;
+                } catch (_) {
+                    if (!label) label = '이미지 생성하기';
+                }
+            }
+            ui.generateBtn.innerHTML = isGenerating ? `<div class="loading-spinner"></div><span>${text}</span>` : `<i class="fas fa-sparkles"></i><span>${label}</span>`;
             if (isGenerating) setResultActionsEnabled(false);
             // 이전 방식: 오버레이 관련 로직 제거
         }
@@ -1787,6 +1829,12 @@
                 // 이전 레이어의 블러는 페이드아웃과 함께 서서히 해제
                 if (oldLayer) requestAnimationFrame(() => oldLayer.classList.remove('is-blurred'));
                 ui.resultImage.classList.add('reveal');
+                // For alpha outputs (e.g., background removal), show checkerboard behind the result preview.
+                try {
+                    const isAlpha = (lastGenerationRequestMeta && (lastGenerationRequestMeta.workflow_id || lastGenerationRequestMeta.workflowId)) === 'RMBG2';
+                    const container = document.getElementById('result-image-container');
+                    if (container) container.classList.toggle('is-alpha', !!isAlpha);
+                } catch (_) {}
                 // Clean up old layer after cross-fade completes
                 setTimeout(() => {
                     ui.resultImage.classList.remove('reveal');
@@ -2116,6 +2164,10 @@
                 a.className = 'gallery-item';
                 a.dataset.imageId = it.id;
                 a.setAttribute('aria-label', '이미지 보기');
+                try {
+                    const wfId = (it && it.meta && it.meta.workflow_id) ? String(it.meta.workflow_id) : '';
+                    if (wfId === 'RMBG2') a.classList.add('gallery-item--alpha');
+                } catch (_) {}
                 // Drag payload with source
                 a.setAttribute('draggable', (!selectionMode).toString());
                 a.addEventListener('dragstart', (ev) => {
@@ -2601,6 +2653,13 @@
                 if (ctEl) ctEl.value = createdText || '';
                 if (sdEl) sdEl.value = seedText;
                 if (prEl) prEl.value = prompt || '';
+            } catch (_) {}
+            // If this is a background-removed (alpha) workflow, show a checkerboard behind the image.
+            try {
+                const wfId = (metaItem && metaItem.meta && metaItem.meta.workflow_id) || (metaItem && metaItem.workflow_id) || '';
+                const isAlpha = wfId === 'RMBG2';
+                const media = document.querySelector('.lightbox-media');
+                if (media) media.classList.toggle('is-alpha', !!isAlpha);
             } catch (_) {}
             // 쇼케이스 공유 버튼 표시: 생성 이미지 탭에서만
             try {
