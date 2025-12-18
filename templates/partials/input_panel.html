@@ -104,6 +104,32 @@
                     <input type="number" class="seed-input" id="seed" placeholder="랜덤" min="0" style="max-width:220px;">
                 </div>
 
+                <!-- RMBG2 params (mask blur / mask offset) -->
+                <div class="form-group" id="rmbg-params-wrap" style="display:none; margin:8px 0;">
+                    <label class="form-label" style="margin-bottom:8px;">
+                        <i class="fas fa-sliders"></i> 배경제거 세부 설정
+                    </label>
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <div class="lora-row" style="display:flex; gap:12px; align-items:center;">
+                            <span class="badge" style="min-width:110px; text-align:center;">Mask Blur</span>
+                            <label style="display:flex; align-items:center; gap:6px; width:100%;">
+                                <input id="rmbg-mask-blur" type="range" min="0" max="64" step="1" value="0" style="flex:1;" />
+                                <input id="rmbg-mask-blur-num" type="number" min="0" max="64" step="1" value="0" style="width:90px;" />
+                            </label>
+                        </div>
+                        <div class="lora-row" style="display:flex; gap:12px; align-items:center;">
+                            <span class="badge" style="min-width:110px; text-align:center;">Mask Offset</span>
+                            <label style="display:flex; align-items:center; gap:6px; width:100%;">
+                                <input id="rmbg-mask-offset" type="range" min="-64" max="64" step="1" value="0" style="flex:1;" />
+                                <input id="rmbg-mask-offset-num" type="number" min="-64" max="64" step="1" value="0" style="width:90px;" />
+                            </label>
+                        </div>
+                    </div>
+                    <p class="hint" style="margin-top:8px; color:var(--text-muted); font-size:12px; line-height:1.25;">
+                        Mask Blur는 경계선을 부드럽게, Mask Offset은 경계를 안/밖으로 미세 조정합니다. (기본값 0 권장)
+                    </p>
+                </div>
+
                 <div class="output-toolbar">
                     <button class="generate-btn" id="generate-btn">
                         <i class="fas fa-sparkles"></i> 이미지 생성하기

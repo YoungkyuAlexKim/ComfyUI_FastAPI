@@ -49,6 +49,9 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             self.aspect_ratio = d.get("aspect_ratio")
             self.workflow_id = d.get("workflow_id")
             self.seed = d.get("seed")
+            # RMBG2 optional params
+            self.rmbg_mask_blur = d.get("rmbg_mask_blur")
+            self.rmbg_mask_offset = d.get("rmbg_mask_offset")
             self.control_enabled = d.get("control_enabled")
             self.control_image_id = d.get("control_image_id")
             self.controls = d.get("controls")
@@ -191,6 +194,51 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         seed=getattr(request, "seed", None),
         control=control,
     )
+
+    # --- Optional: RMBG2 parameter overrides (mask_blur / mask_offset) ---
+    try:
+        wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+        rmbg_cfg = wf_cfg.get("rmbg") if isinstance(wf_cfg, dict) else None
+        rmbg_node = None
+        try:
+            rmbg_node = (rmbg_cfg or {}).get("node") if isinstance(rmbg_cfg, dict) else None
+        except Exception:
+            rmbg_node = None
+        if not rmbg_node and request.workflow_id == "RMBG2":
+            rmbg_node = "11"
+
+        def _clamp_int(v, lo, hi):
+            try:
+                x = int(v)
+                return max(int(lo), min(int(hi), x))
+            except Exception:
+                return None
+
+        mb = _clamp_int(getattr(request, "rmbg_mask_blur", None), 0, 256)
+        mo = _clamp_int(getattr(request, "rmbg_mask_offset", None), -256, 256)
+        if rmbg_node and (mb is not None or mo is not None):
+            node_over = prompt_overrides.get(rmbg_node, {"inputs": {}})
+            if "inputs" not in node_over or not isinstance(node_over["inputs"], dict):
+                node_over["inputs"] = {}
+            if mb is not None:
+                node_over["inputs"]["mask_blur"] = mb
+            if mo is not None:
+                node_over["inputs"]["mask_offset"] = mo
+            prompt_overrides[rmbg_node] = node_over
+            try:
+                logger.info({
+                    "event": "rmbg_params_override",
+                    "job_id": job.id,
+                    "owner_id": job.owner_id,
+                    "workflow_id": request.workflow_id,
+                    "node": rmbg_node,
+                    "mask_blur": mb,
+                    "mask_offset": mo,
+                })
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     # --- Optional: LoRA per-slot strengths override ---
     try:

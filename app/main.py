@@ -199,6 +199,9 @@ class GenerateRequest(BaseModel):
     aspect_ratio: str  # 'width', 'height' 대신 'aspect_ratio' 사용
     workflow_id: str
     seed: Optional[int] = None
+    # RMBG2 (Background Removal) params - only used when workflow supports it
+    rmbg_mask_blur: Optional[int] = None
+    rmbg_mask_offset: Optional[int] = None
     # Direct image-to-image input (non-ControlNet)
     input_image_id: Optional[str] = None  # 기존에 저장된 이미지/컨트롤의 id
     input_image_filename: Optional[str] = None  # 이미 Comfy input에 업로드된 파일명(있으면 재업로드 생략)

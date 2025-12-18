@@ -72,6 +72,8 @@
             translateBtn: document.querySelector('.translate-btn--icon[data-target="user_prompt"]'),
         };
 
+        let rmbgUiBound = false;
+
         function getCurrentWorkflowSlots(){
             try {
                 const wfId = currentWorkflow && currentWorkflow.id;
@@ -300,6 +302,8 @@
                 const workflowName = meta.workflow_name || meta.workflowName || meta.workflow_id || meta.workflowId || '';
                 const prompt = meta.prompt || '';
                 const seed = (meta.seed ?? meta.seed === 0) ? meta.seed : null;
+                const rmbgMaskBlur = (meta.rmbg_mask_blur ?? null);
+                const rmbgMaskOffset = (meta.rmbg_mask_offset ?? null);
                 const workflowId = meta.workflow_id || meta.workflowId || null;
                 return {
                     id,
@@ -314,7 +318,9 @@
                         workflow_name: workflowName,
                         prompt,
                         seed,
-                        workflow_id: workflowId
+                        workflow_id: workflowId,
+                        rmbg_mask_blur: rmbgMaskBlur,
+                        rmbg_mask_offset: rmbgMaskOffset
                     },
                     source: 'generated'
                 };
@@ -602,6 +608,9 @@
                 } catch(_) {}
                 applyAspectUiForMode();
                 applyPromptTranslateUiForMode();
+                try { applyPromptVisibilityForWorkflow(); } catch(_) {}
+                try { applySeedVisibilityForWorkflow(); } catch(_) {}
+                try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
                 try { updateInputImagePreview(); } catch(_) {}
                 // Update default prompt when switching modes
                 try {
@@ -729,6 +738,101 @@
             } catch(_) {}
         }
 
+        function applySeedVisibilityForWorkflow() {
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const row = document.getElementById('seed-row');
+                if (row) row.style.display = uiSchema.hideSeed ? 'none' : 'flex';
+            } catch(_) {}
+        }
+
+        function bindRmbgUiOnce() {
+            if (rmbgUiBound) return;
+            rmbgUiBound = true;
+            try {
+                const wrap = document.getElementById('rmbg-params-wrap');
+                const mb = document.getElementById('rmbg-mask-blur');
+                const mbNum = document.getElementById('rmbg-mask-blur-num');
+                const mo = document.getElementById('rmbg-mask-offset');
+                const moNum = document.getElementById('rmbg-mask-offset-num');
+                if (!wrap || !mb || !mbNum || !mo || !moNum) return;
+
+                const clamp = (v, min, max) => {
+                    const x = parseInt(v, 10);
+                    if (!Number.isFinite(x)) return null;
+                    return Math.max(min, Math.min(max, x));
+                };
+                const getWfId = () => {
+                    try { return (getTargetWorkflowForMode() && getTargetWorkflowForMode().id) || (currentWorkflow && currentWorkflow.id) || ''; } catch(_) { return ''; }
+                };
+                const storageKey = (wfId, name) => `rmbg:${wfId}:${name}`;
+
+                const syncPair = (rangeEl, numEl, name) => {
+                    const syncFrom = (fromRange) => {
+                        const min = parseInt(rangeEl.min || numEl.min || '0', 10);
+                        const max = parseInt(rangeEl.max || numEl.max || '0', 10);
+                        const raw = fromRange ? rangeEl.value : numEl.value;
+                        const v = clamp(raw, min, max);
+                        if (v === null) return;
+                        rangeEl.value = String(v);
+                        numEl.value = String(v);
+                        const wfId = getWfId();
+                        if (wfId) {
+                            try { localStorage.setItem(storageKey(wfId, name), String(v)); } catch(_) {}
+                        }
+                    };
+                    rangeEl.addEventListener('input', () => syncFrom(true));
+                    numEl.addEventListener('change', () => syncFrom(false));
+                };
+                syncPair(mb, mbNum, 'mask_blur');
+                syncPair(mo, moNum, 'mask_offset');
+            } catch(_) {}
+        }
+
+        function applyRmbgParamsUiForWorkflow() {
+            try {
+                bindRmbgUiOnce();
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const cfg = uiSchema.rmbgParams || null;
+                const wrap = document.getElementById('rmbg-params-wrap');
+                if (!wrap) return;
+                const enabled = !!cfg;
+                wrap.style.display = enabled ? '' : 'none';
+                if (!enabled) return;
+
+                const wfId = targetWf.id || (currentWorkflow && currentWorkflow.id) || '';
+                const mb = document.getElementById('rmbg-mask-blur');
+                const mbNum = document.getElementById('rmbg-mask-blur-num');
+                const mo = document.getElementById('rmbg-mask-offset');
+                const moNum = document.getElementById('rmbg-mask-offset-num');
+                if (!mb || !mbNum || !mo || !moNum) return;
+
+                const mbCfg = cfg.mask_blur || { min: 0, max: 64, step: 1, default: 0 };
+                const moCfg = cfg.mask_offset || { min: -64, max: 64, step: 1, default: 0 };
+                [mb, mbNum].forEach(el => { el.min = String(mbCfg.min); el.max = String(mbCfg.max); el.step = String(mbCfg.step); });
+                [mo, moNum].forEach(el => { el.min = String(moCfg.min); el.max = String(moCfg.max); el.step = String(moCfg.step); });
+
+                const getStored = (name, fallback) => {
+                    try {
+                        const raw = localStorage.getItem(`rmbg:${wfId}:${name}`);
+                        if (raw === null) return fallback;
+                        const v = parseInt(raw, 10);
+                        return Number.isFinite(v) ? v : fallback;
+                    } catch(_) {
+                        return fallback;
+                    }
+                };
+                const mbVal = getStored('mask_blur', mbCfg.default);
+                const moVal = getStored('mask_offset', moCfg.default);
+                mb.value = String(mbVal);
+                mbNum.value = String(mbVal);
+                mo.value = String(moVal);
+                moNum.value = String(moVal);
+            } catch(_) {}
+        }
+
         function applyPromptTranslateUiForMode() {
             try {
                 const targetWf = getTargetWorkflowForMode();
@@ -811,6 +915,10 @@
             } catch(_) {}
             // Hide/show prompt input when workflow doesn't need it (e.g., background removal)
             applyPromptVisibilityForWorkflow();
+            // Hide/show seed row for workflows where it isn't meaningful (e.g., RMBG2)
+            applySeedVisibilityForWorkflow();
+            // RMBG2 params (mask blur / mask offset)
+            applyRmbgParamsUiForWorkflow();
             // LoRA 강도 UI 표시/초기화 (워크플로우 제공 메타 기반) - single value
             try {
                 const loraMeta = workflow.lora_slots || null;
@@ -945,6 +1053,8 @@
             // 비율 옵션 및 프롬프트 변환 버튼 표시/숨김은 현재 모드 기준으로 갱신
             applyAspectUiForMode();
             applyPromptTranslateUiForMode();
+            try { applySeedVisibilityForWorkflow(); } catch(_) {}
+            try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
             // 입력 이미지 섹션 표시 여부
             try {
                 const inWrap = document.getElementById('input-image-wrap');
@@ -1075,6 +1185,8 @@
             // Update aspect/prompt visibility based on schema
             try { applyAspectUiForMode(); } catch(_) {}
             try { applyPromptVisibilityForWorkflow(); } catch(_) {}
+            try { applySeedVisibilityForWorkflow(); } catch(_) {}
+            try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
             // Update main action button label (e.g., background removal)
             try { if (!ui.generateBtn.disabled) setGenerationState(false, '이미지 생성하기'); } catch(_) {}
         }
@@ -1511,6 +1623,19 @@
                     requestData.seed = Date.now() % 1000000000000000;
                 }
             } catch (_) {}
+            // RMBG2 params (mask blur / mask offset)
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                if (uiSchema && uiSchema.rmbgParams) {
+                    const mbEl = document.getElementById('rmbg-mask-blur-num') || document.getElementById('rmbg-mask-blur');
+                    const moEl = document.getElementById('rmbg-mask-offset-num') || document.getElementById('rmbg-mask-offset');
+                    const mb = mbEl ? parseInt(mbEl.value || '0', 10) : null;
+                    const mo = moEl ? parseInt(moEl.value || '0', 10) : null;
+                    if (Number.isFinite(mb)) requestData.rmbg_mask_blur = mb;
+                    if (Number.isFinite(mo)) requestData.rmbg_mask_offset = mo;
+                }
+            } catch (_) {}
             // LoRA strengths payload (single value per slot, if visible)
             try {
                 const wrap = document.getElementById('lora-strengths-wrap');
@@ -1641,6 +1766,8 @@
                         workflow_id: requestData.workflow_id || '',
                         workflow_name: (currentWorkflow && currentWorkflow.name) ? currentWorkflow.name : (requestData.workflow_id || ''),
                         seed: requestData.seed,
+                        rmbg_mask_blur: (requestData && Number.isFinite(requestData.rmbg_mask_blur)) ? requestData.rmbg_mask_blur : null,
+                        rmbg_mask_offset: (requestData && Number.isFinite(requestData.rmbg_mask_offset)) ? requestData.rmbg_mask_offset : null,
                         aspect_ratio: requestData.aspect_ratio,
                         createdAt: Math.floor(Date.now() / 1000)
                     };
@@ -2639,20 +2766,38 @@
                     return null;
                 };
                 const wf = (metaItem && metaItem.meta && metaItem.meta.workflow_name) || (metaItem && metaItem.workflow_name) || '-';
+                const wfId = (metaItem && metaItem.meta && metaItem.meta.workflow_id) || (metaItem && metaItem.workflow_id) || '';
+                const isRmbg2 = String(wfId || '') === 'RMBG2';
                 const createdAtRaw = metaItem && (metaItem.created_at || metaItem.createdAt);
                 const createdAt = toEpochSeconds(createdAtRaw);
                 const createdText = createdAt ? new Date(createdAt * 1000).toLocaleString() : '';
                 const prompt = (metaItem && metaItem.meta && metaItem.meta.prompt) || (metaItem && metaItem.prompt) || '';
                 const seedVal = ((metaItem && metaItem.meta) ? (metaItem.meta.seed ?? null) : null) ?? (metaItem ? (metaItem.seed ?? null) : null);
                 const seedText = (seedVal === null || seedVal === undefined) ? '' : String(seedVal);
+                const mbVal = ((metaItem && metaItem.meta) ? (metaItem.meta.rmbg_mask_blur ?? null) : null) ?? null;
+                const moVal = ((metaItem && metaItem.meta) ? (metaItem.meta.rmbg_mask_offset ?? null) : null) ?? null;
                 const wfEl = document.getElementById('lb-workflow');
                 const ctEl = document.getElementById('lb-created');
                 const sdEl = document.getElementById('lb-seed');
+                const sdLabel = document.getElementById('lb-seed-label');
                 const prEl = document.getElementById('lb-prompt');
+                const mbEl = document.getElementById('lb-rmbg-mask-blur');
+                const mbLabel = document.getElementById('lb-rmbg-mask-blur-label');
+                const moEl = document.getElementById('lb-rmbg-mask-offset');
+                const moLabel = document.getElementById('lb-rmbg-mask-offset-label');
                 if (wfEl) wfEl.value = wf || '';
                 if (ctEl) ctEl.value = createdText || '';
                 if (sdEl) sdEl.value = seedText;
                 if (prEl) prEl.value = prompt || '';
+                if (mbEl) mbEl.value = (mbVal === null || mbVal === undefined) ? '' : String(mbVal);
+                if (moEl) moEl.value = (moVal === null || moVal === undefined) ? '' : String(moVal);
+                const affect = (el, show) => { if (!el) return; el.style.display = show ? '' : 'none'; };
+                affect(sdLabel, !isRmbg2);
+                affect(sdEl, !isRmbg2);
+                affect(mbLabel, isRmbg2);
+                affect(mbEl, isRmbg2);
+                affect(moLabel, isRmbg2);
+                affect(moEl, isRmbg2);
             } catch (_) {}
             // If this is a background-removed (alpha) workflow, show a checkerboard behind the image.
             try {
@@ -2949,8 +3094,12 @@
                         <input class="meta-input" id="lb-workflow" type="text" readonly value="" />
                         <label class="meta-label">생성 시간</label>
                         <input class="meta-input" id="lb-created" type="text" readonly value="" />
-                        <label class="meta-label">시드(seed)</label>
+                        <label class="meta-label" id="lb-seed-label">시드(seed)</label>
                         <input class="meta-input" id="lb-seed" type="text" readonly value="" />
+                        <label class="meta-label" id="lb-rmbg-mask-blur-label" style="display:none;">마스크 블러(mask blur)</label>
+                        <input class="meta-input" id="lb-rmbg-mask-blur" type="text" readonly value="" style="display:none;" />
+                        <label class="meta-label" id="lb-rmbg-mask-offset-label" style="display:none;">마스크 오프셋(mask offset)</label>
+                        <input class="meta-input" id="lb-rmbg-mask-offset" type="text" readonly value="" style="display:none;" />
                         <label class="meta-label">프롬프트</label>
                         <textarea class="meta-textarea" id="lb-prompt" rows="6" readonly></textarea>
                         <div class="meta-actions">

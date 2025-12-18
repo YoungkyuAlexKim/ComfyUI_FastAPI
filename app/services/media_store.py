@@ -94,6 +94,9 @@ def _save_image_and_meta(anon_id: str, image_bytes: bytes, req, original_filenam
         "aspect_ratio": getattr(req, "aspect_ratio", None),
         "seed": getattr(req, "seed", None),
         "prompt": getattr(req, "user_prompt", None),
+        # RMBG2 parameters (if any)
+        "rmbg_mask_blur": getattr(req, "rmbg_mask_blur", None),
+        "rmbg_mask_offset": getattr(req, "rmbg_mask_offset", None),
         # Img2Img: 입력 이미지(보관함) id를 기록해두면, 이후 공유/재현에 도움이 됩니다.
         "input_image_id": getattr(req, "input_image_id", None),
         "original_filename": original_filename,

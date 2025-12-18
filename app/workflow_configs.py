@@ -26,8 +26,17 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "templateMode": "utility",
             "disableAspect": True,
             "hideUserPrompt": True,
+            # RMBG2는 seed가 결과에 큰 의미가 없으므로 UI에서 숨김(서버는 내부적으로 seed를 생성/기록할 수 있음)
+            "hideSeed": True,
             "generateLabel": "배경 제거하기",
+            # RMBG2 전용 파라미터(UI에 노출할 값의 기본값/범위)
+            "rmbgParams": {
+                "mask_blur": {"min": 0, "max": 64, "step": 1, "default": 0},
+                "mask_offset": {"min": -64, "max": 64, "step": 1, "default": 0},
+            },
         },
+        # RMBG 워크플로우 파라미터가 적용되는 노드 정보 (RMBG2.json 기준)
+        "rmbg": {"node": "11"},
     },
 
     "BasicWorkFlow_PixelArt": {
