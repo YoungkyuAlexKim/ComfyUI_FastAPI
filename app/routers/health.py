@@ -56,12 +56,11 @@ def healthz():
         results["disk"]["reason"] = str(e)
         status_code = 503
     try:
-        # Best-effort: consider LLM ok if a model file seems present (optional component)
-        model_path = os.path.join("models", "gemma-3-4b-it-Q6_K.gguf")
-        exists = os.path.exists(model_path)
-        results["llm"]["ok"] = exists
-        if not exists:
-            results["llm"]["reason"] = "model not loaded"
+        # Optional component: prompt translation (external Gemini API)
+        api_key_present = bool(os.getenv("GOOGLE_AI_STUDIO_API_KEY") or os.getenv("GEMINI_API_KEY"))
+        results["llm"]["ok"] = api_key_present
+        if not api_key_present:
+            results["llm"]["reason"] = "GOOGLE_AI_STUDIO_API_KEY not set"
     except Exception as e:
         results["llm"]["reason"] = str(e)
     overall_ok = results["comfyui"]["ok"] and results["db"]["ok"] and results["disk"]["ok"]

@@ -246,8 +246,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showLora": True,
             "showStyleLora": True,
             "showCharacterLora": False,
-            # 이 워크플로우는 자연어(Qwen) 기반이라 Danbooru 태그 변환 버튼은 숨깁니다.
-            "showPromptTranslate": False,
+            # LOS 스타일: 한국어 자연어 → 이미지 생성용 영어 프롬프트 변환 버튼 사용
+            "showPromptTranslate": True,
             # 자연어 템플릿 모드 표시(프론트의 중복 병합 로직에 사용)
             "templateMode": "natural",
             # 편집(img2img) 관련 워크플로우 링크(목록 비노출 전용)
@@ -322,8 +322,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showLora": True,
             "showStyleLora": True,
             "showCharacterLora": False,
-            # 편집 워크플로우 역시 자연어 기반이므로 변환 버튼을 숨깁니다.
-            "showPromptTranslate": False,
+            # LOS 스타일(편집): 동일하게 영문 프롬프트 변환 버튼 사용
+            "showPromptTranslate": True,
             "templateMode": "natural",
             # Img2Img에서는 입력 비율을 따르므로 프론트에서 비율 UI 비활성 힌트
             "disableAspect": True
@@ -360,8 +360,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showLora": True,
             "showStyleLora": True,
             "showCharacterLora": False,
-            # 자연어(Qwen) 기반이라 Danbooru 태그 변환 버튼은 숨깁니다.
-            "showPromptTranslate": False,
+            # OHD 스타일: 한국어 자연어 → 이미지 생성용 영어 프롬프트 변환 버튼 사용
+            "showPromptTranslate": True,
             "templateMode": "natural",
             # 편집(img2img) 관련 워크플로우 링크(목록 비노출 전용)
             "related": {"img2img": "OHDstyle_Qwen_ImageEdit"},
@@ -438,7 +438,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showLora": True,
             "showStyleLora": True,
             "showCharacterLora": False,
-            "showPromptTranslate": False,
+            # OHD 스타일(편집): 동일하게 영문 프롬프트 변환 버튼 사용
+            "showPromptTranslate": True,
             "templateMode": "natural",
             # Img2Img에서는 입력 비율을 따르므로 프론트에서 비율 UI 비활성 힌트
             "disableAspect": True,

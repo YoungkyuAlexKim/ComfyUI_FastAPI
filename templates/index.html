@@ -837,9 +837,9 @@
             try {
                 const targetWf = getTargetWorkflowForMode();
                 const uiSchema = (targetWf && targetWf.ui) || {};
-                // 기본값: 설정이 없으면 버튼 표시, showPromptTranslate === false 인 워크플로우만 숨김
-                const hasFlag = Object.prototype.hasOwnProperty.call(uiSchema, 'showPromptTranslate');
-                const show = hasFlag ? !!uiSchema.showPromptTranslate : true;
+                // 이 기능은 특정 워크플로우(LOS/OHD 등)에서만 사용합니다.
+                // 명시적으로 showPromptTranslate === true 인 경우에만 표시합니다.
+                const show = uiSchema.showPromptTranslate === true;
                 if (ui.translateBtn) {
                     ui.translateBtn.style.display = show ? '' : 'none';
                 }

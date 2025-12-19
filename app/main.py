@@ -30,12 +30,6 @@ from .config import COMFY_INPUT_DIR
 from .job_manager import JobManager, Job
 from .job_store import JobStore
 from .logging_utils import setup_logging
-"""
-Optional LLM feature (prompt translation)
-
-The service should still start even when `llama-cpp-python` is not installed.
-So we import PromptTranslator lazily inside a try/except below.
-"""
 from .config import UPLOAD_CONFIG
 from .auth.user_management import _ensure_anon_id_cookie, _get_anon_id_from_request, _get_anon_id_from_ws, ANON_COOKIE_NAME, ANON_COOKIE_PREFIX
 from .services.media_store import (
@@ -70,22 +64,6 @@ from .beta_access import beta_enabled, is_request_authed, beta_cookie_name, expe
 from .auth.user_management import _parse_bool as _parse_bool_cookie_secure
 
 logger = setup_logging()
-try:
-    from llm.prompt_translator import PromptTranslator  # optional dependency
-
-    translator = PromptTranslator(model_path="./models/gemma-3-4b-it-Q6_K.gguf")
-except ModuleNotFoundError as e:
-    # Most common case on Windows: `llama-cpp-python` is not installed,
-    # so importing `llm.prompt_translator` fails due to missing `llama_cpp`.
-    logger.warning({"event": "llm_missing_dependency", "message": str(e)})
-    translator = None
-except FileNotFoundError as e:
-    logger.warning({"event": "llm_load_warning", "message": str(e)})
-    translator = None
-except Exception as e:
-    # Any other initialization error should not block the server
-    logger.warning({"event": "llm_init_warning", "message": str(e)})
-    translator = None
 
 templates = Jinja2Templates(directory="templates")
 app = FastAPI(title="ComfyUI FastAPI Server", version="0.4.0 (Jobs & Queues)")
@@ -328,10 +306,13 @@ async def landing(request: Request):
 @app.get("/create", response_class=HTMLResponse, tags=["Page"])
 async def create_page(request: Request):
     default_values = get_default_values()
+    api_key_present = bool(os.getenv("GOOGLE_AI_STUDIO_API_KEY") or os.getenv("GEMINI_API_KEY"))
     prompt_translate_enabled = _parse_bool_cookie_secure(
         os.getenv("ENABLE_PROMPT_TRANSLATE"),
-        bool(translator is not None),
+        api_key_present,
     )
+    # Always require API key for this feature to appear (avoid confusing UI)
+    prompt_translate_enabled = bool(prompt_translate_enabled and api_key_present)
     existing = request.cookies.get(ANON_COOKIE_NAME)
     if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
         anon_id = existing
@@ -557,11 +538,159 @@ async def cancel_active_for_user(request: Request):
 
 @app.post("/api/v1/translate-prompt", tags=["Prompt Translation"], response_model=TranslateResponse)
 async def translate_prompt_endpoint(text: str = Form(...)):
-    if translator is None: raise HTTPException(status_code=503, detail="LLM model not loaded.")
+    api_key = os.getenv("GOOGLE_AI_STUDIO_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="번역 기능(API)이 설정되지 않았습니다. 서버 .env에 GOOGLE_AI_STUDIO_API_KEY를 설정해 주세요.")
+    model = os.getenv("PROMPT_TRANSLATE_GOOGLE_MODEL") or "gemini-2.5-flash-lite"
+    raw = (text or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="번역할 내용을 입력해주세요.")
+
+    instruction = (
+        "아래 한국어 설명을 이미지 생성 AI가 이해하기 좋은 영어 프롬프트로 변환해줘.\n"
+        "조건:\n"
+        "- 사용자의 의도를 최대한 그대로 유지\n"
+        "- 영어로만 작성\n"
+        "- 결과는 가장 베스트 1개만\n"
+        "- 설명/해설/옵션/번호/따옴표/마크다운 없이, 프롬프트 문장만 한 줄로 출력\n"
+        "- Danbooru 태그 나열이 아니라 자연스러운 영어 프롬프트 문장으로 작성\n\n"
+        f"한국어 원문:\n{raw}\n"
+    )
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     try:
-        return {"translated_text": translator.translate_to_danbooru(text)}
+        resp = requests.post(
+            url,
+            params={"key": api_key},
+            json={
+                "contents": [
+                    {"role": "user", "parts": [{"text": instruction}]}
+                ],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "topP": 0.95,
+                    "maxOutputTokens": 256,
+                },
+            },
+            timeout=(5.0, 20.0),
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning({"event": "prompt_translate_upstream_error", "error": str(e)})
+        raise HTTPException(status_code=502, detail="번역 API 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+
+    if not resp.ok:
+        detail = None
+        err_status = None
+        err_reason = None
+        try:
+            data = resp.json()
+            err = (data.get("error") or {}) if isinstance(data, dict) else {}
+            if isinstance(err, dict):
+                detail = err.get("message")
+                err_status = err.get("status")
+                # Try to detect a structured reason, e.g. API_KEY_INVALID
+                try:
+                    details = err.get("details") or []
+                    if isinstance(details, list):
+                        for d in details:
+                            if not isinstance(d, dict):
+                                continue
+                            r = d.get("reason")
+                            if isinstance(r, str) and r:
+                                err_reason = r
+                                break
+                            # google.rpc.ErrorInfo form
+                            r2 = d.get("reason") or (d.get("metadata") or {}).get("reason")
+                            if isinstance(r2, str) and r2:
+                                err_reason = r2
+                                break
+                except Exception:
+                    err_reason = None
+        except Exception:
+            detail = None
+            err_status = None
+            err_reason = None
+
+        s = int(resp.status_code)
+        low = str(detail or "").lower()
+        reason = str(err_reason or "").upper()
+        status_txt = str(err_status or "").upper()
+
+        def _looks_like_key_issue() -> bool:
+            # Google APIs sometimes return 400 even when the API key is invalid.
+            if s in (401, 403):
+                return True
+            if "api key" in low or "apikey" in low or "api_key" in low:
+                return True
+            if "key not valid" in low or "invalid api key" in low or "invalid api-key" in low:
+                return True
+            if "permission" in low or "unauth" in low or "forbidden" in low:
+                return True
+            if "billing" in low:
+                return True
+            if reason in ("API_KEY_INVALID", "API_KEY_EXPIRED", "API_KEY_SERVICE_BLOCKED", "API_KEY_HTTP_REFERRER_BLOCKED", "API_KEY_IP_ADDRESS_BLOCKED"):
+                return True
+            if status_txt in ("PERMISSION_DENIED", "UNAUTHENTICATED"):
+                return True
+            return False
+
+        def _looks_like_quota_issue() -> bool:
+            if s == 429:
+                return True
+            if "quota" in low or "rate limit" in low or "resource exhausted" in low:
+                return True
+            if status_txt == "RESOURCE_EXHAUSTED":
+                return True
+            return False
+
+        # User-friendly messages (avoid leaking upstream internal details)
+        if _looks_like_key_issue():
+            msg = "번역 API 키(권한)가 올바르지 않거나 비활성화되었습니다. 서버 .env의 GOOGLE_AI_STUDIO_API_KEY를 확인한 뒤 서버를 재시작해 주세요."
+            out_status = 401
+        elif _looks_like_quota_issue():
+            msg = "요청이 너무 많거나 사용량 한도를 초과했습니다. 잠시 후 다시 시도해 주세요."
+            out_status = 429
+        elif s == 400:
+            msg = "요청 내용이 올바르지 않습니다. 문장을 조금 더 자세히 적어주세요."
+            out_status = 400
+        else:
+            msg = detail or f"번역 API 오류 (HTTP {s})"
+            out_status = 502
+
+        logger.warning({
+            "event": "prompt_translate_bad_status",
+            "status": s,
+            "out_status": out_status,
+            "upstream_status": err_status,
+            "reason": err_reason,
+            "message": msg,
+        })
+        raise HTTPException(status_code=out_status, detail=msg)
+
+    try:
+        data = resp.json()
+    except Exception:
+        raise HTTPException(status_code=502, detail="번역 API 응답을 해석하지 못했습니다.")
+
+    out = ""
+    try:
+        candidates = data.get("candidates") if isinstance(data, dict) else None
+        content = (candidates[0] or {}).get("content") if isinstance(candidates, list) and candidates else None
+        parts = content.get("parts") if isinstance(content, dict) else None
+        out = (parts[0] or {}).get("text") if isinstance(parts, list) and parts else ""
+    except Exception:
+        out = ""
+
+    out = (out or "").strip()
+    if not out:
+        raise HTTPException(status_code=502, detail="번역 결과가 비어 있습니다. 잠시 후 다시 시도해 주세요.")
+
+    # Ensure single-line response (best-effort)
+    out = out.splitlines()[0].strip()
+    # Remove accidental quotes
+    out = out.strip().strip('"').strip("'").strip()
+
+    return {"translated_text": out}
 
 # WebSocket routes moved to app/ws/routes.py
 
