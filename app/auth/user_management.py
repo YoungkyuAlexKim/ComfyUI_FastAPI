@@ -19,12 +19,19 @@ def _parse_bool(val: str | None, default: bool = False) -> bool:
         return default
     return val.strip().lower() in ("1", "true", "yes", "on")
 
-def _ensure_anon_id_cookie(req: "Request", resp: "HTMLResponse") -> str:
+def _ensure_anon_id_cookie(req: "Request", resp: "HTMLResponse", preferred_id: str | None = None) -> str:
     """익명 사용자 ID 쿠키를 보장하고 반환합니다."""
     existing = req.cookies.get(ANON_COOKIE_NAME)
     if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
         return existing
-    new_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
+    new_id = None
+    try:
+        if isinstance(preferred_id, str) and preferred_id.startswith(ANON_COOKIE_PREFIX):
+            new_id = preferred_id
+    except Exception:
+        new_id = None
+    if not new_id:
+        new_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
     # ~180 days
     max_age = 60 * 60 * 24 * 180
     # In HTTPS deployments, you should set COOKIE_SECURE=true so the cookie is only sent over HTTPS.
@@ -51,6 +58,14 @@ def _get_anon_id_from_request(req: "Request") -> str:
     value = req.cookies.get(ANON_COOKIE_NAME)
     if value and isinstance(value, str) and value.startswith(ANON_COOKIE_PREFIX):
         return value
+    # Some environments (in-app browsers / strict privacy) may block cookies.
+    # Allow a best-effort header override so the UI can still function.
+    try:
+        hdr = req.headers.get("x-anon-id") or req.headers.get("X-Anon-Id")
+        if hdr and isinstance(hdr, str) and hdr.startswith(ANON_COOKIE_PREFIX):
+            return hdr
+    except Exception:
+        pass
     # Fallback anonymous namespace when no cookie is present (should be rare for API calls)
     return ANON_COOKIE_PREFIX + "guest"
 

@@ -130,6 +130,30 @@
         }
 
         const anonId = document.querySelector('.app-container')?.getAttribute('data-anon-id') || '';
+        // Attach anon id to API requests to survive environments where cookies are blocked.
+        // (e.g., in-app browsers / strict privacy settings)
+        (function installAnonFetchHeader(){
+            try {
+                const origFetch = window.fetch;
+                if (typeof origFetch !== 'function') return;
+                window.fetch = function(input, init){
+                    try {
+                        const url = (typeof input === 'string')
+                            ? input
+                            : (input && typeof input === 'object' && 'url' in input ? String(input.url || '') : '');
+                        const isApi = (typeof url === 'string') && (url.startsWith('/api/') || url === '/healthz' || url.startsWith('/ws/'));
+                        if (isApi && anonId) {
+                            const nextInit = init ? Object.assign({}, init) : {};
+                            const headers = new Headers(nextInit.headers || (init && init.headers) || {});
+                            if (!headers.has('X-Anon-Id')) headers.set('X-Anon-Id', anonId);
+                            nextInit.headers = headers;
+                            return origFetch(input, nextInit);
+                        }
+                    } catch (_) {}
+                    return origFetch(input, init);
+                };
+            } catch (_) {}
+        })();
         const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
         let ws = null;
         // Selected input image (runtime state) to avoid stale localStorage reads under fast interactions
@@ -1507,7 +1531,9 @@
                 return;
             }
             if (typeof data.progress === 'number') updateProgress(data.progress);
-            if (data.status === 'running') { setGenerationState(true, 'AI 생성 중...'); hideQueueInfo(); stopQueuePolling(); }
+            // Keep HTTP polling running as a fallback even when WebSocket works,
+            // because some client environments block WebSocket connections.
+            if (data.status === 'running') { setGenerationState(true, 'AI 생성 중...'); hideQueueInfo(); }
             if (data.status === 'complete') {
                 showStatus('🎉 이미지 생성 완료!', 'success');
                 updateProgress(0); // 완료 후 진행률을 0%로 리셋
@@ -1826,9 +1852,12 @@
         async function pollQueueOnce(){
             if (!currentJobId) return;
             try {
-                const res = await fetch(`/api/v1/jobs/${currentJobId}`);
+                const jobId = currentJobId;
+                const res = await fetch(`/api/v1/jobs/${jobId}`);
                 if (!res.ok) return;
                 const data = await res.json();
+                // Guard against races (WS may have completed and cleared currentJobId)
+                if (currentJobId !== jobId) return;
                 if (data.status === 'queued') {
                     const pos = (typeof data.position === 'number') ? data.position + 1 : null;
                     if (pos) showQueueInfo(pos); else showQueueInfo();
@@ -1847,7 +1876,47 @@
                     } catch (_) {}
                 } else if (data.status === 'running') {
                     hideQueueInfo();
+                    if (typeof data.progress === 'number') updateProgress(data.progress);
+                    setGenerationState(true, 'AI 생성 중...');
+                } else if (data.status === 'complete') {
+                    hideQueueInfo();
                     stopQueuePolling();
+                    showStatus('🎉 이미지 생성 완료!', 'success');
+                    updateProgress(0);
+                    // data.result may contain image_path
+                    const imagePath = (data && data.result && data.result.image_path) ? data.result.image_path : (data && data.image_path ? data.image_path : null);
+                    if (imagePath) {
+                        try { lastResultLightboxMetaItem = buildResultLightboxMeta(imagePath); } catch(_) {}
+                        displayImage(imagePath, () => {
+                            hidePreviewOverlay();
+                            const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && (window.APP_CONFIG.loading.overlayFadeOutMs || window.APP_CONFIG.loading.fadeMs)) || 300;
+                            setTimeout(() => setGenerationState(false, '이미지 생성하기'), Math.max(50, fadeMs));
+                        });
+                    } else {
+                        hidePreviewOverlay();
+                        const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && (window.APP_CONFIG.loading.overlayFadeOutMs || window.APP_CONFIG.loading.fadeMs)) || 300;
+                        setTimeout(() => setGenerationState(false, '이미지 생성하기'), Math.max(50, fadeMs));
+                    }
+                    setGenerationState(false, '이미지 생성하기');
+                    currentJobId = null;
+                    setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, '이미지 생성하기'); }, 2500);
+                } else if (data.status === 'cancelled') {
+                    hideQueueInfo();
+                    stopQueuePolling();
+                    showStatus('🛑 이미지 생성을 취소했습니다.', 'error');
+                    updateProgress(0);
+                    hidePreviewOverlay();
+                    setGenerationState(false, '이미지 생성하기');
+                    currentJobId = null;
+                } else if (data.status === 'error') {
+                    hideQueueInfo();
+                    stopQueuePolling();
+                    const errMsg = (data && data.error) ? String(data.error) : '알 수 없는 오류';
+                    showStatus(`❌ 오류: ${errMsg}`, 'error');
+                    setGenerationState(false, '이미지 생성하기');
+                    updateProgress(0);
+                    hidePreviewOverlay();
+                    currentJobId = null;
                 }
             } catch (e) {}
         }

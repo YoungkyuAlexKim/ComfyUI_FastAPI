@@ -317,6 +317,7 @@ async def create_page(request: Request):
     if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
         anon_id = existing
     else:
+        # Use a deterministic value for both template + cookie (avoid mismatch between UI and backend owner_id)
         anon_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
     response = templates.TemplateResponse(
         "index.html",
@@ -335,7 +336,7 @@ async def create_page(request: Request):
             "workflow_prompt_templates_json": json.dumps(default_values.get("workflow_prompt_templates", {})),
         },
     )
-    _ensure_anon_id_cookie(request, response)
+    _ensure_anon_id_cookie(request, response, anon_id)
     return response
 
 
@@ -354,7 +355,7 @@ async def feed_page(request: Request):
             "current_page": "feed",
         },
     )
-    _ensure_anon_id_cookie(request, response)
+    _ensure_anon_id_cookie(request, response, anon_id)
     return response
 
 
