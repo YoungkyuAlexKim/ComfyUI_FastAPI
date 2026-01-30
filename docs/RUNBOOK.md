@@ -148,4 +148,4 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
 - [ ] 로그: enqueue → job_start → job_progress(스텝) → job_complete 순서 확인
 
 ---
-참고: 레거시 `BasicWorkFlow_LOSStyle`는 제거되었으며, 현재는 `LOSstyle_Qwen` + `LOSstyle_Qwen_ImageEdit` 조합을 사용합니다.
+참고: 레거시 `BasicWorkFlow_LOSStyle`는 제거되었으며, 현재는 `LOSstyle_Qwen` + `LOSStyle_Klein_Img2Img` 조합을 사용합니다.

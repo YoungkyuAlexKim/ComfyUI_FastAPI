@@ -251,7 +251,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             # 자연어 템플릿 모드 표시(프론트의 중복 병합 로직에 사용)
             "templateMode": "natural",
             # 편집(img2img) 관련 워크플로우 링크(목록 비노출 전용)
-            "related": {"img2img": "LOSstyle_Qwen_ImageEdit"}
+            "related": {"img2img": "LOSStyle_Klein_Img2Img"}
         },
 
         # LoRA 매핑: Lightning(고정), 스타일(조절), 캐릭터(0.0, 비노출)
@@ -287,47 +287,62 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         }
     },
 
-    "LOSstyle_Qwen_ImageEdit": {
+    "LOSStyle_Klein_Img2Img": {
         "hidden": True,
-        "display_name": "LOS 스타일 — 편집",
-        "description": "LOS 스타일 원본을 기반으로 입력 이미지를 편집합니다.",
+        "display_name": "LOS 스타일 — 편집 (Klein)",
+        "description": "Klein 기반 Flux2 Img2Img 편집 워크플로우입니다. (LOS 스타일 편집 대체)",
 
-        # 프롬프트 노드와 입력 키('prompt')
-        "prompt_node": "111",
-        "negative_prompt_node": "110",
-        "prompt_input_key": "prompt",
-        "negative_prompt_input_key": "prompt",
+        # 프롬프트: 단일 positive conditioning만 사용 (negative는 ConditioningZeroOut 기반)
+        # - CLIPTextEncode(107) inputs.text
+        "prompt_node": "107",
+        "prompt_input_key": "text",
+        # Negative prompt node 없음(워크플로우 구조상 별도 네거티브 텍스트 인코딩을 쓰지 않음)
+        # "negative_prompt_node": 없음
+
         # Img2Img 기본 사용자 프롬프트
         "default_user_prompt": "이미지에서 파란 슬라임을 제거하고, 강아지로 교체해 주세요.",
 
-        # 시드/입력 이미지 매핑(필수)
-        "seed_node": "3",
-        "image_input": {"image_node": "78", "input_field": "image"},
+        # 워크플로우 기본 스타일 토큰 (유저 프롬프트와 함께 positive 텍스트로 들어감)
+        # (학습 캡션 형태와 맞추기 위해 콤마 형태 사용)
+        "style_prompt": "LOSart",
+        "negative_prompt": "",
 
-        # LoRA: 스타일만 노출(노드 389). 편집용 워크플로우엔 ControlNet 없음
+        # Seed: RandomNoise(104) inputs.noise_seed
+        "seed_node": "104",
+        "seed_input_key": "noise_seed",
+
+        # 입력 이미지 매핑(필수): LoadImage(81) inputs.image
+        "image_input": {"image_node": "81", "input_field": "image"},
+
+        # LoRA: 스타일 LoRA 강도 조절(노드 117)
         "loras": {
             "style": {
-                "node": "389",
+                "node": "117",
                 "name_input": "lora_name",
                 "unet_input": "strength_model",
+                # LoraLoaderModelOnly는 clip strength가 없으므로 동일 키로 매핑
                 "clip_input": "strength_model",
                 "defaults": {"unet": 1.0, "clip": 1.0},
                 "min": 0.0,
                 "max": 1.5,
-                "step": 0.05
+                "step": 0.05,
             }
         },
+        "lora_hint": {
+            "style": "강도를 높일수록 LOS 스타일 성향이 강해집니다.",
+            "character": "",
+        },
+
+        # UI 힌트: Img2Img에서는 입력 비율을 따르므로 비율 UI 비활성
         "ui": {
             "showControlNet": False,
             "showLora": True,
             "showStyleLora": True,
             "showCharacterLora": False,
-            # LOS 스타일(편집): 동일하게 영문 프롬프트 변환 버튼 사용
             "showPromptTranslate": True,
             "templateMode": "natural",
-            # Img2Img에서는 입력 비율을 따르므로 프론트에서 비율 UI 비활성 힌트
-            "disableAspect": True
-        }
+            "disableAspect": True,
+        },
     },
 
     "OHDstyle_Qwen": {
