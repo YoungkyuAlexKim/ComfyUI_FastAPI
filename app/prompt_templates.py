@@ -171,8 +171,8 @@ PROMPT_TEMPLATES: Dict[str, List[PromptTemplate]] = {
         }
     ],
 
-    # OHD Img2Img: LOS 편집 템플릿을 동일하게 재사용합니다.
-    "OHDstyle_Qwen_ImageEdit": [
+    # OHD Img2Img (Klein): 기존 OHD 편집 템플릿을 그대로 재사용합니다.
+    "OHDStyle_Klein_Img2Img": [
         {
             "title": "슬라임→강아지 교체",
             "text": "이미지에서 파란 슬라임을 제거하고, 강아지로 교체해 주세요.",
