@@ -134,7 +134,18 @@ def get_prompt_overrides(
     try:
         user_tags = _clean_tags(user_prompt)
         style_tags = _clean_tags(config.get("style_prompt", ""))
-        final_positive_tags = user_tags + [tag for tag in style_tags if tag not in user_tags]
+        style_pos = ""
+        try:
+            style_pos = str(config.get("style_prompt_position") or "").strip().lower()
+        except Exception:
+            style_pos = ""
+
+        # 기본 동작: user_prompt 뒤에 style_prompt를 덧붙임 (기존 호환)
+        # 옵션: style_prompt_position == "prepend" => style_prompt를 앞에 둠 (스타일 토큰 우선)
+        if style_pos == "prepend":
+            final_positive_tags = style_tags + [tag for tag in user_tags if tag not in style_tags]
+        else:
+            final_positive_tags = user_tags + [tag for tag in style_tags if tag not in user_tags]
         final_positive_prompt = ", ".join(final_positive_tags)
     except Exception:
         final_positive_prompt = user_prompt or ""
@@ -172,6 +183,23 @@ def get_prompt_overrides(
         ln = config.get("latent_image_node")
         if ln and width is not None and height is not None:
             overrides[ln] = {"inputs": {"width": width, "height": height}}
+    except Exception:
+        pass
+
+    # --- [선택] PrimitiveInt(또는 유사) 기반 width/height 노드 오버라이드 ---
+    # 일부 Flux/Klein 워크플로우는 width/height를 직접 받지 않고,
+    # PrimitiveInt 노드의 inputs.value를 참조하도록 구성합니다.
+    # 이 경우 latent_image_node를 건드리지 말고 width/height 노드 값을 바꾸는 것이 안전합니다.
+    try:
+        size_nodes = config.get("size_nodes") if isinstance(config, dict) else None
+        if isinstance(size_nodes, dict) and width is not None and height is not None:
+            w_node = size_nodes.get("width_node")
+            h_node = size_nodes.get("height_node")
+            value_key = size_nodes.get("value_key", "value")
+            if w_node:
+                overrides[str(w_node)] = {"inputs": {str(value_key): int(width)}}
+            if h_node:
+                overrides[str(h_node)] = {"inputs": {str(value_key): int(height)}}
     except Exception:
         pass
     

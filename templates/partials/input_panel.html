@@ -58,17 +58,24 @@
                         <i class="fas fa-sliders"></i> LoRA 강도 조절
                     </label>
                     <div class="lora-row" id="lora-row-style" style="display:none; gap:12px; align-items:center;">
-                        <span class="badge" style="min-width:92px; text-align:center;">Style LoRA</span>
+                        <span class="badge" id="lora-label-style" style="min-width:92px; text-align:center;">Style LoRA</span>
                         <label style="display:flex; align-items:center; gap:6px; width:100%;">
                             <input id="lora-style-strength" type="range" min="0" max="1.5" step="0.05" value="0.8" style="flex:1;" />
                             <input id="lora-style-strength-num" type="number" min="0" max="1.5" step="0.05" value="0.8" style="width:80px;" />
                         </label>
                     </div>
                     <div class="lora-row" id="lora-row-character" style="display:none; gap:12px; align-items:center;">
-                        <span class="badge" style="min-width:92px; text-align:center;">Character LoRA</span>
+                        <span class="badge" id="lora-label-character" style="min-width:92px; text-align:center;">Character LoRA</span>
                         <label style="display:flex; align-items:center; gap:6px; width:100%;">
                             <input id="lora-char-strength" type="range" min="0" max="1.5" step="0.05" value="0" style="flex:1;" />
                             <input id="lora-char-strength-num" type="number" min="0" max="1.5" step="0.05" value="0" style="width:80px;" />
+                        </label>
+                    </div>
+                    <div class="lora-row" id="lora-advanced-toggle-wrap" style="display:none; gap:12px; align-items:center; margin-top:6px;">
+                        <span class="badge" style="min-width:92px; text-align:center;">고급</span>
+                        <label style="display:flex; align-items:center; gap:8px; width:100%; user-select:none;">
+                            <input id="lora-advanced-toggle" type="checkbox" />
+                            <span id="lora-advanced-toggle-label">서브 LoRA 조절</span>
                         </label>
                     </div>
                     <p class="hint" id="lora-hint" title="LoRA 강도 힌트" style="margin-top:6px; color:var(--text-muted); font-size:12px; line-height:1.25; display:none;">워크플로우에 따라 LoRA 강도 조절이 제공됩니다.</p>

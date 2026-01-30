@@ -510,8 +510,18 @@
             tabs.style.cssText = 'display:none; margin:8px 0;';
             tabs.innerHTML = `
               <div style="display:inline-flex; gap:6px;">
-                <button id="tab-txt2img" type="button" class="chip-btn active">Txt2Img</button>
-                <button id="tab-img2img" type="button" class="chip-btn"><span aria-hidden="true" style="margin-right:4px">🍌</span>Img2Img</button>
+                <button id="tab-txt2img" type="button" class="chip-btn active">
+                  <span id="tab-icon-txt2img" aria-hidden="true" style="margin-right:4px; display:none;">👤</span>
+                  <span id="tab-label-txt2img">Txt2Img</span>
+                </button>
+                <button id="tab-img2img" type="button" class="chip-btn">
+                  <span id="tab-icon-img2img" aria-hidden="true" style="margin-right:4px">🍌</span>
+                  <span id="tab-label-img2img">Img2Img</span>
+                </button>
+                <button id="tab-items" type="button" class="chip-btn">
+                  <span id="tab-icon-items" aria-hidden="true" style="margin-right:4px; display:none;">💎</span>
+                  <span id="tab-label-items">Items</span>
+                </button>
               </div>`;
             let inWrap = document.getElementById('input-image-wrap') || document.getElementById('input-image-section') || document.getElementById('img2img-input-wrap');
             if (!inWrap) {
@@ -577,7 +587,8 @@
                                 return;
                             }
                             // Fallback: file drop
-                            if (!currentWorkflow || !currentWorkflow.image_input) {
+                            const targetWf2 = getTargetWorkflowForMode();
+                            if (!targetWf2 || !targetWf2.image_input) {
                                 showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
                                 return;
                             }
@@ -621,19 +632,23 @@
             }
             const btnTxt = tabs.querySelector('#tab-txt2img');
             const btnImg = tabs.querySelector('#tab-img2img');
+            const btnItems = tabs.querySelector('#tab-items');
             const setMode = (m) => {
                 tabs.dataset.mode = m;
                 btnTxt.classList.toggle('active', m === 'txt2img');
                 btnImg.classList.toggle('active', m === 'img2img');
-                // Input image UI: show only in img2img mode (or when workflow inherently needs image_input)
+                if (btnItems) btnItems.classList.toggle('active', m === 'items');
+                // Input image UI: show only when the *target workflow* actually needs image_input
                 try {
-                    const needImg = (m === 'img2img') || (currentWorkflow && currentWorkflow.image_input);
+                    const targetWf = getTargetWorkflowForMode();
+                    const needImg = !!(targetWf && targetWf.image_input);
                     if (inWrap) inWrap.style.display = needImg ? '' : 'none';
                 } catch(_) {}
                 applyAspectUiForMode();
                 applyPromptTranslateUiForMode();
                 try { applyPromptVisibilityForWorkflow(); } catch(_) {}
                 try { applySeedVisibilityForWorkflow(); } catch(_) {}
+                try { applyLoraUiForMode(); } catch(_) {}
                 try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
                 try { updateInputImagePreview(); } catch(_) {}
                 // Update default prompt when switching modes
@@ -703,6 +718,7 @@
             };
             btnTxt.addEventListener('click', () => setMode('txt2img'));
             btnImg.addEventListener('click', () => setMode('img2img'));
+            if (btnItems) btnItems.addEventListener('click', () => setMode('items'));
             return tabs;
         }
 
@@ -717,13 +733,23 @@
             try { return (currentWorkflow && currentWorkflow.ui && currentWorkflow.ui.related && currentWorkflow.ui.related.img2img) || null; } catch(_) { return null; }
         }
 
+        function getRelatedItemsId() {
+            try { return (currentWorkflow && currentWorkflow.ui && currentWorkflow.ui.related && currentWorkflow.ui.related.items) || null; } catch(_) { return null; }
+        }
+
         function getTargetWorkflowForMode() {
             try {
-                if (isImg2ImgMode()) {
+                const m = getGenerationMode();
+                const all = (window.ALL_WORKFLOWS || []);
+                if (m === 'img2img') {
                     const id = getRelatedImg2ImgId();
-                    const all = (window.ALL_WORKFLOWS || []);
                     const wf = all.find(w => w.id === id);
                     return wf || {};
+                }
+                if (m === 'items') {
+                    const id2 = getRelatedItemsId();
+                    const wf2 = all.find(w => w.id === id2);
+                    return wf2 || {};
                 }
             } catch(_) {}
             return currentWorkflow || {};
@@ -768,6 +794,141 @@
                 const uiSchema = (targetWf && targetWf.ui) || {};
                 const row = document.getElementById('seed-row');
                 if (row) row.style.display = uiSchema.hideSeed ? 'none' : 'flex';
+            } catch(_) {}
+        }
+
+        function applyLoraUiForMode() {
+            // LoRA 강도 UI 표시/초기화 (target workflow 기준) - single value
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const loraMeta = (targetWf && targetWf.lora_slots) || null;
+                const wrap = document.getElementById('lora-strengths-wrap');
+                const rowStyle = document.getElementById('lora-row-style');
+                const rowChar = document.getElementById('lora-row-character');
+                const hint = document.getElementById('lora-hint');
+                const labelStyle = document.getElementById('lora-label-style');
+                const labelChar = document.getElementById('lora-label-character');
+                const advWrap = document.getElementById('lora-advanced-toggle-wrap');
+                const advToggle = document.getElementById('lora-advanced-toggle');
+                const advLabel = document.getElementById('lora-advanced-toggle-label');
+                const showLora = !!(targetWf && targetWf.ui && targetWf.ui.showLora);
+                const showStyle = !!(targetWf && targetWf.ui && (targetWf.ui.showStyleLora !== false));
+                const showChar = !!(targetWf && targetWf.ui && !!targetWf.ui.showCharacterLora);
+
+                if (!wrap) return;
+                if (!(showLora && loraMeta && typeof loraMeta === 'object')) {
+                    wrap.style.display = 'none';
+                    if (rowStyle) rowStyle.style.display = 'none';
+                    if (rowChar) rowChar.style.display = 'none';
+                    if (advWrap) advWrap.style.display = 'none';
+                    if (hint) hint.style.display = 'none';
+                    return;
+                }
+
+                wrap.style.display = '';
+
+                // Labels (optional overrides)
+                try {
+                    const uiCfg = (targetWf && targetWf.ui) || {};
+                    const labels = (uiCfg && uiCfg.loraLabels) ? uiCfg.loraLabels : {};
+                    if (labelStyle) labelStyle.textContent = (labels && labels.style) ? String(labels.style) : 'Style LoRA';
+                    if (labelChar) labelChar.textContent = (labels && labels.character) ? String(labels.character) : 'Character LoRA';
+                } catch(_) {}
+
+                // Style slot
+                if (loraMeta.style && showStyle) {
+                    rowStyle.style.display = '';
+                    const d = (loraMeta.style.defaults || {});
+                    const min = Number.isFinite(loraMeta.style.min) ? loraMeta.style.min : 0;
+                    const max = Number.isFinite(loraMeta.style.max) ? loraMeta.style.max : 1.5;
+                    const step = Number.isFinite(loraMeta.style.step) ? loraMeta.style.step : 0.05;
+                    const s = document.getElementById('lora-style-strength');
+                    const sNum = document.getElementById('lora-style-strength-num');
+                    [s, sNum].forEach((el) => { if (el) { el.min = String(min); el.max = String(max); el.step = String(step); }});
+                    const defVal = Number.isFinite(d.unet) ? d.unet : (Number.isFinite(d.clip) ? d.clip : 0.8);
+                    if (s) s.value = String(defVal);
+                    if (sNum) sNum.value = String(defVal);
+                } else {
+                    rowStyle.style.display = 'none';
+                }
+
+                // Character slot
+                if (loraMeta.character && showChar) {
+                    rowChar.style.display = '';
+                    const d2 = (loraMeta.character.defaults || {});
+                    const min2 = Number.isFinite(loraMeta.character.min) ? loraMeta.character.min : 0;
+                    const max2 = Number.isFinite(loraMeta.character.max) ? loraMeta.character.max : 1.5;
+                    const step2 = Number.isFinite(loraMeta.character.step) ? loraMeta.character.step : 0.05;
+                    const s2 = document.getElementById('lora-char-strength');
+                    const sNum2 = document.getElementById('lora-char-strength-num');
+                    [s2, sNum2].forEach((el) => { if (el) { el.min = String(min2); el.max = String(max2); el.step = String(step2); }});
+                    const defVal2 = Number.isFinite(d2.unet) ? d2.unet : (Number.isFinite(d2.clip) ? d2.clip : 0.0);
+                    if (s2) s2.value = String(defVal2);
+                    if (sNum2) sNum2.value = String(defVal2);
+                } else {
+                    rowChar.style.display = 'none';
+                }
+
+                // Optional: advanced toggle to unlock/adjust character (sub) LoRA
+                try {
+                    const uiCfg = (targetWf && targetWf.ui) || {};
+                    const adv = (uiCfg && uiCfg.loraAdvanced) ? uiCfg.loraAdvanced : null;
+                    const hasCharRow = !!(loraMeta.character && showChar);
+                    const enabled = !!(adv && adv.enableCharacterToggle);
+                    if (advWrap && advToggle && advLabel && enabled && hasCharRow) {
+                        const key = `loraAdv:${targetWf.id}:character`;
+                        let unlocked = false;
+                        try {
+                            const stored = localStorage.getItem(key);
+                            unlocked = (stored === '1');
+                        } catch(_) { unlocked = false; }
+                        const defaultUnlocked = !!(adv && adv.defaultUnlocked);
+                        if (!unlocked && defaultUnlocked) unlocked = true;
+
+                        advWrap.style.display = '';
+                        advLabel.textContent = String((adv && adv.label) ? adv.label : '서브 LoRA 조절(고급)');
+                        advToggle.checked = !!unlocked;
+
+                        // When locked: hide row so request payload doesn't include it (keeps workflow default, e.g. 0.3)
+                        rowChar.style.display = unlocked ? '' : 'none';
+
+                        advToggle.onchange = () => {
+                            const isOn = !!advToggle.checked;
+                            try { localStorage.setItem(key, isOn ? '1' : '0'); } catch(_) {}
+                            rowChar.style.display = isOn ? '' : 'none';
+                            if (isOn) {
+                                try {
+                                    const d2 = (loraMeta.character.defaults || {});
+                                    const defVal2 = Number.isFinite(d2.unet) ? d2.unet : (Number.isFinite(d2.clip) ? d2.clip : 0.0);
+                                    const s2 = document.getElementById('lora-char-strength');
+                                    const sNum2 = document.getElementById('lora-char-strength-num');
+                                    if (s2) s2.value = String(defVal2);
+                                    if (sNum2) sNum2.value = String(defVal2);
+                                } catch(_) {}
+                            }
+                        };
+                    } else {
+                        if (advWrap) advWrap.style.display = 'none';
+                        if (advToggle) advToggle.checked = false;
+                    }
+                } catch(_) {}
+
+                if (hint) {
+                    hint.style.display = '';
+                    try {
+                        const hints = (targetWf && targetWf.lora_hint) || {};
+                        const styleMsg = hints.style || '';
+                        const charMsg = hints.character || '';
+                        const showCharNow = (rowChar && rowChar.style.display !== 'none');
+                        if (showCharNow && charMsg) {
+                            hint.textContent = [styleMsg, charMsg].filter(Boolean).join(' / ') || '워크플로우에 따라 LoRA 강도 조절이 제공됩니다.';
+                        } else if (charMsg && advWrap && advWrap.style.display !== 'none') {
+                            hint.textContent = [styleMsg, `${charMsg} (기본값 유지 · 고급에서 조절 가능)`].filter(Boolean).join(' / ') || '워크플로우에 따라 LoRA 강도 조절이 제공됩니다.';
+                        } else {
+                            hint.textContent = styleMsg || '워크플로우에 따라 LoRA 강도 조절이 제공됩니다.';
+                        }
+                    } catch(_) {}
+                }
             } catch(_) {}
         }
 
@@ -927,12 +1088,60 @@
             try {
                 const tabs = ensureModeTabs();
                 const related = (workflow && workflow.ui && workflow.ui.related) || {};
-                const hasEdit = related && related.img2img;
+                const hasEdit = related && (related.img2img || related.items);
                 tabs.style.display = hasEdit ? '' : 'none';
+                // Customize tab labels per workflow (optional)
+                try {
+                    const labels = (workflow && workflow.ui && workflow.ui.modeTabLabels) || null;
+                    const txtEl = tabs.querySelector('#tab-label-txt2img');
+                    const imgEl = tabs.querySelector('#tab-label-img2img');
+                    const txtIconEl = tabs.querySelector('#tab-icon-txt2img');
+                    const iconEl = tabs.querySelector('#tab-icon-img2img');
+                    const itemsEl = tabs.querySelector('#tab-label-items');
+                    const itemsIconEl = tabs.querySelector('#tab-icon-items');
+                    const tabItemsBtn = tabs.querySelector('#tab-items');
+                    const icons = (workflow && workflow.ui && workflow.ui.modeTabIcons) || null;
+                    if (txtEl) txtEl.textContent = (labels && labels.txt2img) ? String(labels.txt2img) : 'Txt2Img';
+                    if (imgEl) imgEl.textContent = (labels && labels.img2img) ? String(labels.img2img) : 'Img2Img';
+                    if (itemsEl) itemsEl.textContent = (labels && labels.items) ? String(labels.items) : 'Items';
+                    // Icons: optional per-workflow overrides
+                    if (txtIconEl) {
+                        const v = (icons && icons.txt2img) ? String(icons.txt2img) : '';
+                        if (v) {
+                            txtIconEl.textContent = v;
+                            txtIconEl.style.display = '';
+                        } else {
+                            txtIconEl.style.display = 'none';
+                        }
+                    }
+                    if (iconEl) {
+                        const v2 = (icons && icons.img2img) ? String(icons.img2img) : '';
+                        if (v2) {
+                            iconEl.textContent = v2;
+                            iconEl.style.display = '';
+                        } else {
+                            // If this tab is repurposed (not real Img2Img), hide the emoji icon to reduce confusion
+                            const repurposed = !!(labels && labels.img2img && String(labels.img2img) !== 'Img2Img');
+                            iconEl.style.display = repurposed ? 'none' : '';
+                        }
+                    }
+                    if (itemsIconEl) {
+                        const v3 = (icons && icons.items) ? String(icons.items) : '';
+                        if (v3) {
+                            itemsIconEl.textContent = v3;
+                            itemsIconEl.style.display = '';
+                        } else {
+                            itemsIconEl.style.display = 'none';
+                        }
+                    }
+                    // Show/hide the Items tab based on whether a related items workflow exists
+                    if (tabItemsBtn) tabItemsBtn.style.display = (related && related.items) ? '' : 'none';
+                } catch(_) {}
                 // reset mode to txt2img on workflow switch
                 tabs.dataset.mode = 'txt2img';
                 tabs.querySelector('#tab-txt2img')?.classList.add('active');
                 tabs.querySelector('#tab-img2img')?.classList.remove('active');
+                tabs.querySelector('#tab-items')?.classList.remove('active');
                 // Hide input image UI when not needed
                 const inWrap = document.getElementById('input-image-wrap') || document.getElementById('input-image-section') || document.getElementById('img2img-input-wrap');
                 if (inWrap) inWrap.style.display = (workflow.image_input ? '' : 'none');
@@ -941,69 +1150,10 @@
             applyPromptVisibilityForWorkflow();
             // Hide/show seed row for workflows where it isn't meaningful (e.g., RMBG2)
             applySeedVisibilityForWorkflow();
+            // LoRA UI (target workflow 기준)
+            try { applyLoraUiForMode(); } catch(_) {}
             // RMBG2 params (mask blur / mask offset)
             applyRmbgParamsUiForWorkflow();
-            // LoRA 강도 UI 표시/초기화 (워크플로우 제공 메타 기반) - single value
-            try {
-                const loraMeta = workflow.lora_slots || null;
-                const wrap = document.getElementById('lora-strengths-wrap');
-                const rowStyle = document.getElementById('lora-row-style');
-                const rowChar = document.getElementById('lora-row-character');
-                const hint = document.getElementById('lora-hint');
-                const showLora = !!(workflow.ui && workflow.ui.showLora);
-                const showStyle = !!(workflow.ui && (workflow.ui.showStyleLora !== false));
-                const showChar = !!(workflow.ui && !!workflow.ui.showCharacterLora);
-                if (!wrap) { /* no-op */ }
-                else if (showLora && loraMeta && typeof loraMeta === 'object') {
-                    wrap.style.display = '';
-                    // Style
-                    if (loraMeta.style && showStyle) {
-                        rowStyle.style.display = '';
-                        const d = (loraMeta.style.defaults||{});
-                        const min = Number.isFinite(loraMeta.style.min) ? loraMeta.style.min : 0;
-                        const max = Number.isFinite(loraMeta.style.max) ? loraMeta.style.max : 1.5;
-                        const step = Number.isFinite(loraMeta.style.step) ? loraMeta.style.step : 0.05;
-                        const s = document.getElementById('lora-style-strength');
-                        const sNum = document.getElementById('lora-style-strength-num');
-                        [s, sNum].forEach(el=>{ if (el) { el.min = String(min); el.max = String(max); el.step = String(step); }});
-                        const defVal = Number.isFinite(d.unet) ? d.unet : (Number.isFinite(d.clip) ? d.clip : 0.8);
-                        if (s) s.value = String(defVal);
-                        if (sNum) sNum.value = String(defVal);
-                    } else {
-                        rowStyle.style.display = 'none';
-                    }
-                    // Character
-                    if (loraMeta.character && showChar) {
-                        rowChar.style.display = '';
-                        const d2 = (loraMeta.character.defaults||{});
-                        const min2 = Number.isFinite(loraMeta.character.min) ? loraMeta.character.min : 0;
-                        const max2 = Number.isFinite(loraMeta.character.max) ? loraMeta.character.max : 1.5;
-                        const step2 = Number.isFinite(loraMeta.character.step) ? loraMeta.character.step : 0.05;
-                        const s2 = document.getElementById('lora-char-strength');
-                        const sNum2 = document.getElementById('lora-char-strength-num');
-                        [s2, sNum2].forEach(el=>{ if (el) { el.min = String(min2); el.max = String(max2); el.step = String(step2); }});
-                        const defVal2 = Number.isFinite(d2.unet) ? d2.unet : (Number.isFinite(d2.clip) ? d2.clip : 0.0);
-                        if (s2) s2.value = String(defVal2);
-                        if (sNum2) sNum2.value = String(defVal2);
-                    } else {
-                        rowChar.style.display = 'none';
-                    }
-                    if (hint) {
-                        hint.style.display = '';
-                        try {
-                            const hints = workflow.lora_hint || {};
-                            const styleMsg = hints.style || '';
-                            // 캐릭터는 현재 숨김이므로 우선 스타일 문구만 표시
-                            hint.textContent = styleMsg || '워크플로우에 따라 LoRA 강도 조절이 제공됩니다.';
-                        } catch(_) {}
-                    }
-                } else {
-                    wrap.style.display = 'none';
-                    if (rowStyle) rowStyle.style.display = 'none';
-                    if (rowChar) rowChar.style.display = 'none';
-                    if (hint) hint.style.display = 'none';
-                }
-            } catch(_) {}
             // 추천 프롬프트 템플릿 chips (사용자 입력란 아래)
             try {
                 const wrap = document.getElementById('prompt-templates');
@@ -1637,7 +1787,9 @@
                 workflow_id: (function(){
                     try {
                         const related = (currentWorkflow && currentWorkflow.ui && currentWorkflow.ui.related) || {};
-                        if ((document.getElementById('txtimg-img2img-tabs')?.dataset.mode)==='img2img' && related && related.img2img) return related.img2img;
+                            const mode = (document.getElementById('txtimg-img2img-tabs')?.dataset.mode) || 'txt2img';
+                            if (mode === 'img2img' && related && related.img2img) return related.img2img;
+                            if (mode === 'items' && related && related.items) return related.items;
                     } catch(_) {}
                     return currentWorkflow.id;
                 })(),
@@ -1686,7 +1838,8 @@
             // Image-to-image mode: require input image selection
             try {
                 const targetWf = getTargetWorkflowForMode();
-                const needsInput = !!(targetWf && targetWf.image_input) || ((document.getElementById('txtimg-img2img-tabs')?.dataset.mode) === 'img2img');
+                // Only require input image when the target workflow actually needs it.
+                const needsInput = !!(targetWf && targetWf.image_input);
                 if (needsInput) {
                     const inputImageId = getInputImageId();
                     if (!inputImageId) {

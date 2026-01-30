@@ -248,21 +248,88 @@ class ComfyUIClient:
         ws_url = f"{self._ws_base()}/ws?clientId={self.client_id}"
 
         ws = None
+        import time as _t
+
+        def _history_has_any_images() -> bool:
+            """History 기반으로 prompt_id 결과가 준비되었는지 확인합니다.
+
+            - ComfyUI는 작업이 매우 빠르게 끝나면, 웹소켓 연결 전에 완료 이벤트를 이미 보내버릴 수 있습니다.
+              그 경우 웹소켓에서 '완료 신호'를 못 받고 무한 대기가 발생할 수 있어,
+              history(/history/{prompt_id})로 결과 준비 여부를 보조 판단합니다.
+            """
+            try:
+                h_all = self.get_history(prompt_id)
+                h = (h_all.get(prompt_id) if isinstance(h_all, dict) else None) or {}
+                outputs = (h.get("outputs", {}) or {}) if isinstance(h, dict) else {}
+                if not isinstance(outputs, dict) or not outputs:
+                    return False
+                for _node_id, node_output in outputs.items():
+                    if not isinstance(node_output, dict):
+                        continue
+                    imgs = node_output.get("images")
+                    if isinstance(imgs, list) and len(imgs) > 0:
+                        return True
+                return False
+            except Exception:
+                return False
+
         try:
             ws = websocket.create_connection(ws_url, timeout=self._ws_connect_timeout())
             try:
-                ws.settimeout(self._ws_idle_timeout())
+                # NOTE:
+                # - ComfyUI는 ping/pong 프레임을 주기적으로 보내는 경우가 있어 "idle timeout"만으로는
+                #   무한 대기를 끊지 못할 수 있습니다.
+                # - 그래서 짧은 recv timeout으로 루프를 돌리며, history를 주기적으로 폴링해
+                #   결과 준비/완료를 감지합니다.
+                ws.settimeout(min(2.0, self._ws_idle_timeout()))
             except Exception:
                 pass
+            start_ts = _t.time()
+            last_hist_check = 0.0
+            # Fast-path: 이미 history가 준비돼 있으면 WS 없이 바로 결과 다운로드로 진행
+            try:
+                if _history_has_any_images():
+                    try:
+                        self._logger.info({"event": "comfy_history_ready_fastpath", "prompt_id": prompt_id})
+                    except Exception:
+                        pass
+                    # Skip WS receive loop; proceed to history-based selection below
+                    raise StopIteration()
+            except StopIteration:
+                raise
+            except Exception:
+                pass
+
             while True:
                 try:
                     opcode, data = ws.recv_data()
                 except websocket.WebSocketTimeoutException as e:
+                    # Regular poll loop: on timeout, check history to see whether the prompt already completed.
+                    pass
+                except StopIteration:
+                    raise
+
+                # Periodic history polling to avoid missing completion events (or getting stuck on pongs).
+                try:
+                    now = _t.time()
+                    if (now - last_hist_check) >= 0.75:
+                        last_hist_check = now
+                        if _history_has_any_images():
+                            try:
+                                self._logger.info({"event": "comfy_history_ready", "prompt_id": prompt_id})
+                            except Exception:
+                                pass
+                            break
+                    # Absolute guardrail to avoid infinite waits if ComfyUI/WS gets into a bad state.
+                    # (JobManager also has its own timeout, but this makes the hang less confusing.)
+                    if (now - start_ts) > max(30.0, self._ws_idle_timeout() + 30.0):
+                        raise RuntimeError("ComfyUI에서 결과 이미지를 받지 못했습니다. (시간 초과)")
+                except Exception as e:
+                    # If we fail to poll history, continue relying on WS messages.
                     try:
-                        self._logger.error({"event": "comfy_timeout", "stage": "ws_idle", "url": ws_url, "error": str(e)})
+                        self._logger.debug({"event": "comfy_history_poll_failed", "prompt_id": prompt_id, "error": str(e)})
                     except Exception:
                         pass
-                    raise
 
                 if opcode == 1:
                     message = json.loads(data.decode('utf-8'))
@@ -305,6 +372,9 @@ class ComfyUIClient:
                 self._logger.info({"event": "comfy_ws_closed"})
             except Exception:
                 pass
+        except StopIteration:
+            # Fast-path: history already ready
+            pass
         except Exception as e:
             try:
                 self._logger.error({"event": "comfy_ws_exception", "error": str(e)})

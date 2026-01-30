@@ -84,6 +84,40 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     except Exception:
         pass
     workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
+    # Some workflows rely on a hidden reference image already present in ComfyUI's input directory.
+    # Example: a fixed LoadImage node used as a style/character reference (user does not upload it).
+    # If that file is missing, ComfyUI will fail with a confusing error. We preflight-check and
+    # return a user-friendly message instead.
+    try:
+        wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+        required_inputs = wf_cfg.get("required_comfy_inputs") if isinstance(wf_cfg, dict) else None
+        if isinstance(required_inputs, list) and required_inputs:
+            if not isinstance(COMFY_INPUT_DIR, str) or not COMFY_INPUT_DIR:
+                raise RuntimeError(
+                    "이 워크플로우는 서버의 ComfyUI input 폴더에 미리 준비된 레퍼런스 이미지가 필요합니다. "
+                    "하지만 서버 설정(COMFY_INPUT_DIR)이 비어있어 파일 존재 여부를 확인할 수 없습니다. "
+                    "서버 .env에 COMFY_INPUT_DIR을 설정해 주세요."
+                )
+            missing: List[str] = []
+            for name in required_inputs:
+                try:
+                    if not isinstance(name, str) or not name.strip():
+                        continue
+                    cand = os.path.join(COMFY_INPUT_DIR, name.strip())
+                    if not os.path.exists(cand):
+                        missing.append(name.strip())
+                except Exception:
+                    continue
+            if missing:
+                raise RuntimeError(
+                    "이 워크플로우는 숨겨진 레퍼런스 이미지를 사용합니다. "
+                    f"ComfyUI input 폴더(`COMFY_INPUT_DIR`)에 다음 파일을 넣어주세요: {', '.join(missing)}"
+                )
+    except RuntimeError:
+        raise
+    except Exception:
+        # Fail-safe: do not block generation due to preflight-check errors.
+        pass
     control = None
     multi_controls: List[dict] = []
     uploaded_multi_filenames: List[str] = []

@@ -115,6 +115,11 @@
         url: '/static/img/banner/img_banner_RMBG2.png',
         showTitle: false,
         showDescription: false
+      },
+      'CJKStyle_Klein_Character': {
+        url: '/static/img/banner/img_banner_workflow_CJKStyle_Klein.png',
+        showTitle: false,
+        showDescription: false
       }
     }
   };

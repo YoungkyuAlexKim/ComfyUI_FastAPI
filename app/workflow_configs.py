@@ -210,6 +210,250 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         }
     },
 
+    "CJKStyle_Klein_Character": {
+        "display_name": "CJK 아트생성",
+        "description": "CJK 아트 생성 워크플로우입니다. 상단 탭에서 캐릭터/펫을 전환할 수 있습니다.",
+
+        # 기본 사용자 프롬프트: 자연어(영문) 예시.
+        # (한국어로 작성했다면 '프롬프트 변환' 버튼으로 영어로 바꾼 뒤 생성하는 것을 권장합니다.)
+        "default_user_prompt": (
+            "school girl with serahuku. blue sailor collar,\n\n"
+            "light_green hair with blunt_bang. side-twintail hair. star-shaped golden hair ornament. pinky cheek.\n\n"
+            "a single brown school bag is positioned next to her.\n\n"
+            "featured in simple gray background."
+        ),
+
+        # 프롬프트: CLIPTextEncode(107).inputs.text
+        "prompt_node": "107",
+        "prompt_input_key": "text",
+
+        # 스타일 토큰/룰(숨김 마스터 프롬프트): 항상 프롬프트 앞에 붙습니다.
+        # - 트리거 워드 + 캐릭터 핵심 규칙(필수)
+        "style_prompt": "CJKUnit., An armless character with simple dot eyes, featuring tiny black legs.",
+        "style_prompt_position": "prepend",
+        "negative_prompt": "",
+
+        # Seed: RandomNoise(104).inputs.noise_seed
+        "seed_node": "104",
+        "seed_input_key": "noise_seed",
+
+        # 비율 기반 사이즈 (프론트는 square/landscape/portrait 선택)
+        "sizes": {
+            "square": {"width": 1024, "height": 1024},
+            "landscape": {"width": 1344, "height": 768},
+            "portrait": {"width": 768, "height": 1344},
+        },
+
+        # 이 워크플로우는 width/height가 PrimitiveInt 노드(122/123)에서 결정됩니다.
+        # 서버는 이 노드들의 inputs.value만 업데이트하면, 연결된 모든 노드가 동일한 크기를 참조하게 됩니다.
+        "size_nodes": {"width_node": "122", "height_node": "123", "value_key": "value"},
+
+        # LoRA: LoraLoaderModelOnly(117).inputs.strength_model
+        "loras": {
+            "style": {
+                "node": "117",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                # LoraLoaderModelOnly는 clip strength가 없으므로 동일 키로 매핑
+                "clip_input": "strength_model",
+                "defaults": {"unet": 1.0, "clip": 1.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05,
+            }
+        },
+        "lora_hint": {
+            "style": "강도를 높일수록 CJK 스타일 성향이 강해집니다.",
+            "character": "",
+        },
+
+        # 사용자 입력 이미지 없이, ComfyUI input 폴더에 미리 존재하는 레퍼런스 이미지를 사용합니다.
+        # (없으면 서버가 친절한 에러로 안내합니다.)
+        "required_comfy_inputs": ["CJKCharacterBase.png"],
+
+        # UI 힌트
+        "ui": {
+            "showControlNet": False,
+            "showLora": True,
+            "showStyleLora": True,
+            "showCharacterLora": False,
+            "showPromptTranslate": True,
+            "templateMode": "natural",
+            # 내부 뎁스(탭) 분기:
+            # - 기본(Txt2Img) 탭: 캐릭터 생성
+            # - 보조(Img2Img) 탭: 펫 생성 (입력 이미지를 요구하지 않는 Txt2Img 워크플로우지만, UI 탭 구조를 재사용합니다)
+            "related": {"img2img": "CJKStyle_Klein_Pet", "items": "CJKStyle_Klein_Items"},
+            "modeTabLabels": {"txt2img": "캐릭터생성", "img2img": "펫생성", "items": "아이템생성"},
+            "modeTabIcons": {"txt2img": "🧑", "img2img": "🐾", "items": "🪚"},
+        },
+    },
+
+    "CJKStyle_Klein_Pet": {
+        # 좌측 목록에서는 숨기고, CJK 아트생성 내부 탭에서만 사용합니다.
+        "hidden": True,
+        "display_name": "CJK 아트생성 (펫)",
+        "description": "Klein(Flux2) 기반 CJK 펫 아트 생성 워크플로우입니다. 메인(펫) LoRA + 서브(톤 맞춤) LoRA를 함께 사용합니다.",
+
+        # 기본 사용자 프롬프트(간단 예시)
+        "default_user_prompt": "a small dog pet with single horn. two-tone fur.\n\nsimple gray background",
+
+        # 프롬프트: CLIPTextEncode(94).inputs.text
+        "prompt_node": "94",
+        "prompt_input_key": "text",
+
+        # 트리거: CJKPet.
+        "style_prompt": "CJKPet.",
+        "style_prompt_position": "prepend",
+        "negative_prompt": "",
+
+        # Seed: RandomNoise(92).inputs.noise_seed
+        "seed_node": "92",
+        "seed_input_key": "noise_seed",
+
+        # Size: PrimitiveInt(90/91).inputs.value
+        "sizes": {
+            "square": {"width": 768, "height": 768},
+            "landscape": {"width": 1024, "height": 576},
+            "portrait": {"width": 576, "height": 1024},
+        },
+        "size_nodes": {"width_node": "90", "height_node": "91", "value_key": "value"},
+
+        # LoRA 매핑:
+        # - 메인(펫) LoRA: node 100 (CJKStyle_pet.safetensors)
+        # - 서브(톤 맞춤) LoRA: node 102 (CJKStyle_ver3.safetensors, 기본 0.3 유지 권장)
+        #
+        # UI에서 슬롯 이름은 기존 구조를 재사용합니다:
+        # - style => 메인(펫)
+        # - character => 서브(톤 맞춤)
+        "loras": {
+            "style": {
+                "node": "100",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_model",
+                "defaults": {"unet": 1.0, "clip": 1.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05,
+            },
+            "character": {
+                "node": "102",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_model",
+                "defaults": {"unet": 0.3, "clip": 0.3},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05,
+            },
+        },
+        "lora_hint": {
+            "style": "메인(펫) LoRA 강도입니다. 기본값 1.0을 기준으로 조절하세요.",
+            "character": "서브(톤 맞춤) LoRA입니다. 기본값 0.3을 유지하는 것을 권장합니다.",
+        },
+
+        "ui": {
+            "showControlNet": False,
+            "showLora": True,
+            "showStyleLora": True,
+            "showCharacterLora": True,
+            "showPromptTranslate": True,
+            "templateMode": "natural",
+            # LoRA 라벨 커스텀(기존 CSS/DOM 구조 유지)
+            "loraLabels": {
+                "style": "Pet LoRA (main)",
+                "character": "Style LoRA (sub)",
+            },
+            # 기본값(0.3)을 보존하기 위해, 서브 LoRA는 "고급 토글"로 잠금(기본: 숨김)
+            "loraAdvanced": {
+                "enableCharacterToggle": True,
+                "defaultUnlocked": False,
+                "label": "서브 LoRA 조절(고급 · 기본 0.3 유지 권장)",
+            },
+        },
+    },
+
+    "CJKStyle_Klein_Items": {
+        # 좌측 목록에서는 숨기고, CJK 아트생성 내부 탭에서만 사용합니다.
+        "hidden": True,
+        "display_name": "CJK 아트생성 (아이템)",
+        "description": "Klein(Flux2) 기반 CJK 아이템/오브젝트 어셋 생성 워크플로우입니다. 메인(아이템) LoRA + 서브(톤 맞춤) LoRA를 함께 사용합니다.",
+
+        # 기본 사용자 프롬프트(간단 예시)
+        "default_user_prompt": "a single game item asset, featured in simple gray background.",
+
+        # 프롬프트: CLIPTextEncode(94).inputs.text
+        "prompt_node": "94",
+        "prompt_input_key": "text",
+
+        # 트리거: 워크플로우 JSON에선 CJKUnit. 로 구성되어 있어 그대로 사용합니다.
+        "style_prompt": "CJKUnit.",
+        "style_prompt_position": "prepend",
+        "negative_prompt": "",
+
+        # Seed: RandomNoise(92).inputs.noise_seed
+        "seed_node": "92",
+        "seed_input_key": "noise_seed",
+
+        # Size: PrimitiveInt(90/91).inputs.value
+        "sizes": {
+            "square": {"width": 768, "height": 768},
+            "landscape": {"width": 1024, "height": 576},
+            "portrait": {"width": 576, "height": 1024},
+        },
+        "size_nodes": {"width_node": "90", "height_node": "91", "value_key": "value"},
+
+        # LoRA 매핑:
+        # - 메인(아이템) LoRA: node 100 (CJKItems_001.safetensors)
+        # - 서브(톤 맞춤) LoRA: node 102 (CJKStyle_ver3.safetensors, 기본 0.3 유지 권장)
+        "loras": {
+            "style": {
+                "node": "100",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_model",
+                "defaults": {"unet": 1.0, "clip": 1.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05,
+            },
+            "character": {
+                "node": "102",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                "clip_input": "strength_model",
+                "defaults": {"unet": 0.3, "clip": 0.3},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05,
+            },
+        },
+        "lora_hint": {
+            "style": "메인(아이템) LoRA 강도입니다. 기본값 1.0을 기준으로 조절하세요.",
+            "character": "서브(톤 맞춤) LoRA입니다. 기본값 0.3을 유지하는 것을 권장합니다.",
+        },
+
+        "ui": {
+            "showControlNet": False,
+            "showLora": True,
+            "showStyleLora": True,
+            "showCharacterLora": True,
+            "showPromptTranslate": True,
+            "templateMode": "natural",
+            # 라벨 커스텀(기존 CSS/DOM 구조 유지)
+            "loraLabels": {
+                "style": "Item LoRA (main)",
+                "character": "Style LoRA (sub)",
+            },
+            # 기본값(0.3)을 보존하기 위해, 서브 LoRA는 "고급 토글"로 잠금(기본: 숨김)
+            "loraAdvanced": {
+                "enableCharacterToggle": True,
+                "defaultUnlocked": False,
+                "label": "서브 LoRA 조절(고급 · 기본 0.3 유지 권장)",
+            },
+        },
+    },
+
 
     "LOSstyle_Qwen": {
         "display_name": "LOS 스타일",
