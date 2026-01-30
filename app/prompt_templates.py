@@ -206,59 +206,6 @@ PROMPT_TEMPLATES: Dict[str, List[PromptTemplate]] = {
             "text": "이미지를 반 고흐 스타일의 그림으로 바꿔주세요. 특유의 붓터치와 소용돌이 무늬 질감을 강조해 주세요.",
         },
     ],
-
-    # Z Image Turbo: AuraFlow / Qwen 기반 일반 일러스트용 자연어 프리셋
-    "Z_ImageTurbo": [
-        {
-            "title": "여름 바닷가 교복 소녀",
-            "text": "맑은 여름 하늘 아래, 교복을 입은 소녀가 파도가 살짝 닿는 모래사장을 맨발로 천천히 걷고 있는 장면. 부드러운 역광과 반짝이는 수면, 가벼운 바람에 머리카락과 교복 자락이 살짝 흩날리는 느낌으로 그려 주세요."
-        },
-        {
-            "title": "도시 야경 거리",
-            "text": "비가 막 그친 도시의 밤거리, 네온사인과 간판 불빛이 젖은 도로에 은은하게 반사되는 장면. 한두 명의 인물이 우산을 들고 걸어가고 있고, 전체적으로 차분하면서도 분위기 있는 일러스트로 표현해 주세요."
-        },
-        {
-            "title": "교실 창가 장면",
-            "text": "늦은 오후 햇살이 교실 창문으로 들어와 책상 위와 바닥에 길게 그림자를 만들고 있는 장면. 창가에 앉은 학생 한 명이 바깥을 바라보고 있고, 따뜻하고 조용한 분위기를 강조해 주세요."
-        },
-        {
-            "title": "판타지 숲길",
-            "text": "키 큰 나무와 안개가 살짝 낀 판타지 숲길, 부드러운 빛줄기가 나뭇가지 사이로 내려오는 장면. 길 위에는 여행자 한 명이 작은 가방을 메고 걷고 있고, 신비롭지만 너무 어둡지 않은 느낌으로 묘사해 주세요."
-        },
-        {
-            "title": "카페 내부 일러스트",
-            "text": "따뜻한 조명의 작은 카페 내부, 목재 테이블과 의자, 진열장에 놓인 디저트와 컵들이 보이는 장면. 창밖에서 들어오는 자연광과 실내 조명이 어우러져 아늑한 분위기를 만드는 일러스트로 그려 주세요."
-        },
-        {
-            "title": "성화 그림",
-            "text": "스테인드 글라스 이미지. 성녀 느낌의 금발머리 여성이 하늘에서 지상으로 내려오는 그림을 그려줘. 성스러운 느낌을 강조하며, 노란 빛이 위에서 내려오는 분위기가 되었음 해 ."
-        },
-        {
-            "title": "일론 머스크 초상화",
-            "text": "일론 머스크를 르네상스 유화 페인팅 스타일로 그려줘. 중세 귀족 의상을 입고있게 해줘. "
-        },
-        # Anime-flavored English presets (Z Image Turbo는 영어 프롬프트에서 성능이 더 잘 나오는 편)
-        {
-            "title": "스티브 잡스 잡지표지",
-            "text": "스티브 잡스 사진을 포토리얼리스틱하게 만들어줘. 잡지 표지 느낌이 나게 텍스트도 적어줘. 타이틀 제목은 TIMES 로 해줘. 배경은 컴퓨터가 많이 배치되있는 lab 느낌으로 해줘."
-        },
-        {
-            "title": "아니메스타일 방",
-            "text": "cuteanime style cozy bedroom interior, soft warm light from a desk lamp and window, books and plushies on shelves, a PC and drawing tablet on the desk, slightly messy but lived-in, relaxing evening atmosphere"
-        },
-        {
-            "title": "판타지 아니메 캐릭터",
-            "text": "anime style fantasy heroine with a sword, standing on a cliff, cape and hair flowing in the wind, distant mountains and clouds in the background, heroic pose, strong but kind expression"
-        },
-        {
-            "title": "3D 캐릭터시트",
-            "text": "gcreate 3d blender game sprite sheet. create chibi priest girl in isometric view. front view, side view, and back view. holding staff, standing pose."
-        },
-        {
-            "title": "피규어사진",
-            "text": "cute anime figure style girl with school uniform. she has blue long hair. she is walking shore in clear summer sky. her bag on her shoulder. wave touches her bare foot."
-        }
-    ],
 }
 
 

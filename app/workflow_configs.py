@@ -446,53 +446,6 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         },
     },
 
-    "Z_ImageTurbo": {
-        "display_name": "Z Image Turbo",
-        "description": "AuraFlow / Qwen 기반의 빠른 일반 일러스트 생성 워크플로우입니다.",
-        # 테스트 동안 워크플로우 목록에서 숨김 처리
-        "hidden": True,
-
-        # 기본 사용자 프롬프트 (자유 입력 권장)
-        "default_user_prompt": "여름 바닷가를 걷는 교복 소녀 일러스트",
-
-        # 노드 ID 매핑 (Z_ImageTurbo.json 기준)
-        # - 포지티브/네거티브 프롬프트 인코딩: 6 / 7
-        # - 시드: KSampler(3)
-        # - 빈 잠재 이미지: 13 (1024x1024)
-        "prompt_node": "6",
-        "negative_prompt_node": "7",
-        "seed_node": "3",
-        "latent_image_node": "13",
-
-        # 최신 모델 기준: 별도의 품질 태그 없이도 충분히 동작하므로 스타일 프롬프트는 비움
-        "style_prompt": "",
-        # 최소한의 네거티브 프롬프트만 유지
-        "negative_prompt": "blurry, ugly, bad",
-
-        # 추천 프롬프트 예시 (UI에서 참고용)
-        "recommended_prompt": "a girl in school uniform walking along the summer beach, clear sky, gentle waves, soft lighting",
-
-        # 기본 해상도: 정사각 1024x1024 + 16:9 가로/세로 비율
-        "sizes": {
-            "square": {"width": 1024, "height": 1024},
-            "landscape": {"width": 1344, "height": 768},
-            "portrait": {"width": 768, "height": 1344},
-        },
-
-        # ControlNet, LoRA 미사용 워크플로우
-        # UI 스키마
-        "ui": {
-            "showControlNet": False,
-            "showLora": False,
-            # 비율 선택: Square / Landscape / Portrait 허용
-            "aspectOptions": ["square", "landscape", "portrait"],
-            # 최신 Z Image Turbo는 영어 자연어 프롬프트 위주 사용을 권장하므로 변환 버튼을 숨깁니다.
-            "showPromptTranslate": False,
-            # 자연어 프롬프트 모드 (LOS 스타일과 동일 계열로 취급)
-            "templateMode": "natural",
-        },
-    },
-
     # 멀티 ControlNet 매핑 샘플 (참고용 주석)
     # 실제 노드 ID는 워크플로우 JSON에서 확인해 입력하세요.
     # "PhotoWithMultiControls": {
