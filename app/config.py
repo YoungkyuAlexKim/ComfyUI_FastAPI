@@ -162,7 +162,8 @@ def get_prompt_overrides(
     try:
         sn = config.get("seed_node")
         if sn is not None:
-            overrides[sn] = {"inputs": {"seed": seed}}
+            seed_key = (config.get("seed_input_key") or "seed") if isinstance(config, dict) else "seed"
+            overrides[sn] = {"inputs": {str(seed_key): seed}}
     except Exception:
         pass
 

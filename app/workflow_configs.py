@@ -363,8 +363,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             # OHD 스타일: 한국어 자연어 → 이미지 생성용 영어 프롬프트 변환 버튼 사용
             "showPromptTranslate": True,
             "templateMode": "natural",
-            # 편집(img2img) 관련 워크플로우 링크(목록 비노출 전용)
-            "related": {"img2img": "OHDstyle_Qwen_ImageEdit"},
+            # Img2Img는 Klein 워크플로우로 연결
+            "related": {"img2img": "OHDStyle_Klein_Img2Img"},
         },
 
         # LoRA 매핑: Lightning(고정), 스타일(조절), 캐릭터(0.0, 비노출)
@@ -399,33 +399,39 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         },
     },
 
-    "OHDstyle_Qwen_ImageEdit": {
+    "OHDStyle_Klein_Img2Img": {
         "hidden": True,
-        "display_name": "OHD 스타일 — 편집",
-        "description": "OHD 스타일 원본을 기반으로 입력 이미지를 편집합니다.",
+        "display_name": "OHD 스타일 — 편집 (Klein)",
+        "description": "Klein 기반 Flux2 Img2Img 편집 워크플로우입니다. (OHD 스타일 편집 대체)",
 
-        # 프롬프트 노드와 입력 키('prompt')
-        "prompt_node": "111",
-        "negative_prompt_node": "110",
-        "prompt_input_key": "prompt",
-        "negative_prompt_input_key": "prompt",
+        # 프롬프트: 단일 positive conditioning만 사용 (negative는 ConditioningZeroOut 기반)
+        # - CLIPTextEncode(107) inputs.text
+        "prompt_node": "107",
+        "prompt_input_key": "text",
+        # Negative prompt node 없음(워크플로우 구조상 별도 네거티브 텍스트 인코딩을 쓰지 않음)
+        # "negative_prompt_node": 없음
+
         # Img2Img 기본 사용자 프롬프트
         "default_user_prompt": "이미지에서 파란 슬라임을 제거하고, 강아지로 교체해 주세요.",
 
-        # 시스템 스타일 프롬프트(편집에도 동일 적용)
-        "style_prompt": "OHDart, Cute cozy cartoon style with thick clean outlines and soft pastel coloring",
+        # 워크플로우 기본 스타일 토큰 (유저 프롬프트와 함께 positive 텍스트로 들어감)
+        "style_prompt": "OHDart.",
         "negative_prompt": "",
 
-        # 시드/입력 이미지 매핑(필수)
-        "seed_node": "3",
-        "image_input": {"image_node": "78", "input_field": "image"},
+        # Seed: RandomNoise(104) inputs.noise_seed
+        "seed_node": "104",
+        "seed_input_key": "noise_seed",
 
-        # LoRA: 스타일만 노출(노드 389). 편집용 워크플로우엔 ControlNet 없음
+        # 입력 이미지 매핑(필수): LoadImage(81) inputs.image
+        "image_input": {"image_node": "81", "input_field": "image"},
+
+        # LoRA: 스타일 LoRA 강도 조절(노드 117). (name은 고정이지만 슬라이더로 strength_model 조절)
         "loras": {
             "style": {
-                "node": "389",
+                "node": "117",
                 "name_input": "lora_name",
                 "unet_input": "strength_model",
+                # LoraLoaderModelOnly는 clip strength가 없으므로 동일 키로 매핑
                 "clip_input": "strength_model",
                 "defaults": {"unet": 1.0, "clip": 1.0},
                 "min": 0.0,
@@ -433,63 +439,20 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
                 "step": 0.05,
             }
         },
+        "lora_hint": {
+            "style": "강도를 높일수록 Klein 스타일 성향이 강해집니다.",
+            "character": "",
+        },
+
+        # UI 힌트: Img2Img에서는 입력 비율을 따르므로 비율 UI 비활성
         "ui": {
             "showControlNet": False,
             "showLora": True,
             "showStyleLora": True,
             "showCharacterLora": False,
-            # OHD 스타일(편집): 동일하게 영문 프롬프트 변환 버튼 사용
             "showPromptTranslate": True,
             "templateMode": "natural",
-            # Img2Img에서는 입력 비율을 따르므로 프론트에서 비율 UI 비활성 힌트
             "disableAspect": True,
-        },
-    },
-
-    "Z_ImageTurbo": {
-        "display_name": "Z Image Turbo",
-        "description": "AuraFlow / Qwen 기반의 빠른 일반 일러스트 생성 워크플로우입니다.",
-        # 테스트 동안 워크플로우 목록에서 숨김 처리
-        "hidden": True,
-
-        # 기본 사용자 프롬프트 (자유 입력 권장)
-        "default_user_prompt": "여름 바닷가를 걷는 교복 소녀 일러스트",
-
-        # 노드 ID 매핑 (Z_ImageTurbo.json 기준)
-        # - 포지티브/네거티브 프롬프트 인코딩: 6 / 7
-        # - 시드: KSampler(3)
-        # - 빈 잠재 이미지: 13 (1024x1024)
-        "prompt_node": "6",
-        "negative_prompt_node": "7",
-        "seed_node": "3",
-        "latent_image_node": "13",
-
-        # 최신 모델 기준: 별도의 품질 태그 없이도 충분히 동작하므로 스타일 프롬프트는 비움
-        "style_prompt": "",
-        # 최소한의 네거티브 프롬프트만 유지
-        "negative_prompt": "blurry, ugly, bad",
-
-        # 추천 프롬프트 예시 (UI에서 참고용)
-        "recommended_prompt": "a girl in school uniform walking along the summer beach, clear sky, gentle waves, soft lighting",
-
-        # 기본 해상도: 정사각 1024x1024 + 16:9 가로/세로 비율
-        "sizes": {
-            "square": {"width": 1024, "height": 1024},
-            "landscape": {"width": 1344, "height": 768},
-            "portrait": {"width": 768, "height": 1344},
-        },
-
-        # ControlNet, LoRA 미사용 워크플로우
-        # UI 스키마
-        "ui": {
-            "showControlNet": False,
-            "showLora": False,
-            # 비율 선택: Square / Landscape / Portrait 허용
-            "aspectOptions": ["square", "landscape", "portrait"],
-            # 최신 Z Image Turbo는 영어 자연어 프롬프트 위주 사용을 권장하므로 변환 버튼을 숨깁니다.
-            "showPromptTranslate": False,
-            # 자연어 프롬프트 모드 (LOS 스타일과 동일 계열로 취급)
-            "templateMode": "natural",
         },
     },
 
