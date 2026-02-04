@@ -19,6 +19,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # UI 힌트: 프롬프트 입력은 숨기고(누끼 전용), 비율/번역/컨트롤/LoRA 등은 비노출
         "ui": {
+            # FontAwesome icon name (frontend): <i class="fas fa-...">
+            "icon": "cut",
             "showLora": False,
             "showPromptTranslate": False,
             # 분류용: 태그 기반/자연어가 아닌 "도구" 워크플로우
@@ -39,7 +41,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
     },
 
     "NanoBanana": {
-        "display_name": "나노바나나 Pro",
+        "display_name": "기본 워크플로우",
         "description": "Google Gemini 기반 자연어 프롬프트로 이미지를 생성합니다.",
         "hidden": False,
 
@@ -53,6 +55,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "google": {"model": "gemini-3-pro-image-preview", "mode": "text-to-image"},
 
         "ui": {
+            "icon": "magic",
             # Separate category for NanoBanana family
             "templateMode": "nanobanana",
             "showLora": False,
@@ -64,7 +67,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
     "NanoBanana_Img2Img": {
         "hidden": True,
-        "display_name": "나노바나나 Pro — 편집",
+        "display_name": "기본 워크플로우 — 편집",
         "description": "이미지를 입력으로 받아 자연어로 편집합니다. (단일 입력)",
 
         "default_user_prompt": "Remove the logo and make it look like watercolor",
@@ -79,6 +82,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "image_input": {"image_node": "_google", "input_field": "image"},
 
         "ui": {
+            "icon": "edit",
             "templateMode": "nanobanana",
             "showLora": False,
             "showPromptTranslate": True,
@@ -222,6 +226,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "image_input": {"image_node": "_google", "input_field": "image"},
 
         "ui": {
+            "icon": "sun",
             "templateMode": "nanobanana",
             "showLora": False,
             "showPromptTranslate": False,
@@ -558,6 +563,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         },
         # UI schema
         "ui": {
+            "icon": "th",
             # 추천 프롬프트 템플릿(초보자용 클릭 추가)
             # 프론트에서 chips 형태로 노출되며 클릭 시 사용자 프롬프트에 병합됩니다.
             "promptTemplates": [
@@ -603,6 +609,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # UI 힌트
         "ui": {
+            "icon": "paint-brush",
             # LoRA 강도 조절 UI 노출 (슬라이더)
             "showLora": True,
             # 당분간 캐릭터 LoRA 슬라이더는 숨김, 스타일만 노출
@@ -708,6 +715,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # UI 힌트
         "ui": {
+            # 컵/음료(주스) 느낌 아이콘
+            "icon": "glass-water",
             "showLora": True,
             "showStyleLora": True,
             "showCharacterLora": False,
@@ -914,6 +923,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # UI 힌트: 컨트롤넷 비노출, 스타일 LoRA만 노출(캐릭터 LoRA는 숨김)
         "ui": {
+            # 슬라임/젤리 느낌에 가장 가까운 무료 아이콘: droplet(물방울)
+            "icon": "droplet",
             "showLora": True,
             "showStyleLora": True,
             "showCharacterLora": False,
@@ -1041,6 +1052,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # UI 힌트: 컨트롤넷 비노출, 스타일 LoRA만 노출(캐릭터 LoRA는 숨김)
         "ui": {
+            "icon": "dog",
             "showLora": True,
             "showStyleLora": True,
             "showCharacterLora": False,

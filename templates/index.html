@@ -326,16 +326,23 @@
                 else tagBased.push(wf);
             });
 
-            const renderItem = (wf) => `
+            const renderItem = (wf) => {
+                const uiSchema = (wf && wf.ui) || {};
+                const rawIcon = (uiSchema && uiSchema.icon) ? String(uiSchema.icon) : '';
+                const iconName = (rawIcon || '').trim() || 'project-diagram';
+                // Defensive: allow only common FontAwesome name characters
+                const safeIcon = iconName.replace(/[^a-z0-9-]/gi, '') || 'project-diagram';
+                return `
                 <div class="workflow-item" data-workflow-id="${wf.id}">
                     <div class="workflow-item-header">
-                        <div class="workflow-icon"><i class="fas fa-project-diagram"></i></div>
+                        <div class="workflow-icon"><i class="fas fa-${safeIcon}"></i></div>
                         <div class="workflow-item-info">
                             <div class="workflow-name">${wf.name}</div>
                             <div class="workflow-description">${wf.description}</div>
                         </div>
                     </div>
                 </div>`;
+            };
 
             let html = '';
             if (utility.length > 0) {
@@ -348,7 +355,7 @@
             if (nanobanana.length > 0) {
                 html += `
                 <div class="workflow-group">
-                    <div class="workflow-group-label">나노바나나</div>
+                    <div class="workflow-group-label">나노바나나 Pro</div>
                     ${nanobanana.map(renderItem).join('')}
                 </div>`;
             }
@@ -362,7 +369,7 @@
             if (natural.length > 0) {
                 html += `
                 <div class="workflow-group">
-                    <div class="workflow-group-label">자연어 프롬프트</div>
+                    <div class="workflow-group-label">사내 게임 스타일</div>
                     ${natural.map(renderItem).join('')}
                 </div>`;
             }
