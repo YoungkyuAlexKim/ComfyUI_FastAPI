@@ -101,6 +101,60 @@
     padding-right: 48px;
 }
 
+/* Prompt highlights layer (for @Name mentions) */
+.prompt-highlights {
+    display: none; /* disabled: overlay can desync caret/wrap in textarea */
+    position: absolute;
+    inset: 0;
+    padding: var(--space-md);
+    padding-right: 48px; /* keep in sync with textarea */
+    border: 2px solid transparent; /* match textarea box model */
+    border-radius: var(--radius-lg);
+    font-size: var(--font-size-base);
+    font-family: var(--font-family-sans);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    box-sizing: border-box;
+    /* Important: match textarea wrapping when scrollbar appears */
+    overflow-y: scroll;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    -ms-overflow-style: none; /* IE/Edge legacy */
+    scrollbar-width: none; /* Firefox */
+    pointer-events: none;
+    color: var(--text-primary);
+}
+
+.prompt-highlights::-webkit-scrollbar { display: none; }
+
+.prompt-highlights .mention {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    border-radius: 6px;
+    padding: 0 2px;
+}
+
+.prompt-highlights .mention--ok {
+    color: rgba(96, 165, 250, 0.95);
+    background: rgba(37, 99, 235, 0.12);
+}
+
+/* Make textarea text transparent so highlight layer shows through */
+.input-with-action .form-input.prompt-highlight-enabled {
+    background: transparent;
+    color: transparent;
+    caret-color: var(--text-primary);
+    /* Keep content width stable vs highlight layer */
+    overflow-y: scroll;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+}
+
+.input-with-action .form-input.prompt-highlight-enabled::selection {
+    background: rgba(96, 165, 250, 0.22);
+}
+
 .translate-btn--icon {
     position: absolute;
     top: var(--space-sm);
@@ -1799,6 +1853,104 @@
 .chip-btn.icon-only { width: 32px; height: 32px; padding: 0; justify-content: center; }
 .chip-btn.icon-only i { font-size: 14px; }
 .chip-btn--danger.icon-only i { font-size: 15px; }
+
+/* Global character thumbnails (public registry) */
+.global-character-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+    width: 100%;
+}
+
+.global-character-row__label {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.global-character-row__items {
+    display: flex;
+    gap: 10px;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px; /* keep scrollbar space minimal */
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+    cursor: grab;
+    user-select: none;
+}
+
+.global-character-row__items::-webkit-scrollbar { display: none; }
+.global-character-row__items.is-dragging { cursor: grabbing; }
+
+.global-character-card {
+    border: 1px solid var(--bg-surface);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-primary);
+    border-radius: 14px;
+    padding: 8px 8px 6px;
+    min-width: 72px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+    scroll-snap-align: start;
+}
+
+.global-character-card:hover {
+    transform: translateY(-1px);
+    border-color: rgba(96, 165, 250, 0.55);
+    box-shadow: var(--shadow-sm);
+}
+
+.global-character-card--add {
+    border-style: dashed;
+    border-color: rgba(96, 165, 250, 0.35);
+    background: rgba(37, 99, 235, 0.06);
+}
+
+.global-character-card--add:hover {
+    border-color: rgba(96, 165, 250, 0.65);
+}
+
+.global-character-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 9999px;
+    object-fit: cover;
+    display: block;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: var(--bg-tertiary);
+}
+
+.global-character-avatar--fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(229, 231, 235, 0.8);
+}
+
+.global-character-avatar--add {
+    background: rgba(37, 99, 235, 0.14);
+    border-color: rgba(96, 165, 250, 0.35);
+    color: rgba(191, 219, 254, 0.95);
+}
+
+.global-character-name {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--text-primary);
+    max-width: 80px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
 
 /* Confirm modal */
 .confirm-overlay {

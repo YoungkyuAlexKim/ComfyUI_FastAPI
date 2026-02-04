@@ -49,6 +49,8 @@ from .routers.health import router as health_router
 from .routers.jobs import router as jobs_router
 from .routers.feed import router as feed_router
 from .routers.admin_feed import router as admin_feed_router
+from .routers.characters import router as characters_router
+from .routers.global_characters import router as global_characters_router
 from .ws.manager import manager
 from .ws.routes import router as ws_router
 from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActiveResponse, TranslateResponse
@@ -70,6 +72,8 @@ app.include_router(health_router)
 app.include_router(jobs_router)
 app.include_router(feed_router)
 app.include_router(admin_feed_router)
+app.include_router(characters_router)
+app.include_router(global_characters_router)
 
 # --- Beta access gate (shared password) ---
 @app.middleware("http")

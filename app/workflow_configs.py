@@ -58,6 +58,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "icon": "magic",
             # Separate category for NanoBanana family
             "templateMode": "nanobanana",
+            # Enable @Name character mentions UI/logic ONLY for this base txt2img workflow.
+            "characterMentions": True,
             "showLora": False,
             "showPromptTranslate": True,
             "related": {"img2img": "NanoBanana_Img2Img"},

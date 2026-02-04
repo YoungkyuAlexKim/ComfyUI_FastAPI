@@ -52,6 +52,40 @@ class UploadMediaResponse(BaseModel):
     url: str
 
 
+class CharacterItem(BaseModel):
+    character_id: str
+    name: str
+    reference_image_ids: List[str]
+    thumbnail_image_id: Optional[str] = None
+    status: str
+    created_at: float
+    updated_at: float
+
+
+class CharactersResponse(BaseModel):
+    items: List[CharacterItem]
+
+
+class CharacterUpsertRequest(BaseModel):
+    name: str
+    reference_image_ids: List[str]
+
+
+class CharacterUpsertResponse(BaseModel):
+    ok: bool
+    character: CharacterItem
+
+
+class GlobalCharacterItem(BaseModel):
+    name: str
+    reference_image_count: int
+    thumbnail_url: Optional[str] = None
+
+
+class GlobalCharactersResponse(BaseModel):
+    items: List[GlobalCharacterItem]
+
+
 class EnqueueResponse(BaseModel):
     job_id: str
     status: str

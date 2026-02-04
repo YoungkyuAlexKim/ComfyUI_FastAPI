@@ -34,6 +34,7 @@
                         <i class="fas fa-comment-dots"></i> 프롬프트 (내용)
                     </label>
                     <div class="input-with-action">
+                        <div id="user-prompt-highlights" class="prompt-highlights" aria-hidden="true"></div>
                         <textarea class="form-input" id="user_prompt" placeholder="그리고 싶은 내용을 입력하세요 (예: 한복을 입은 소녀)..." rows="5">{{ default_user_prompt }}</textarea>
                         {% if prompt_translate_enabled %}
                         <button class="translate-btn--icon" data-target="user_prompt" data-tooltip="영문 프롬프트로 변환" aria-label="영문 프롬프트로 변환">
@@ -41,9 +42,24 @@
                         </button>
                         {% endif %}
                     </div>
+                    <div id="prompt-mentions-bar" style="display:none; margin-top:8px;"></div>
                     <div id="prompt-templates" style="display:none; margin-top:8px;">
                         <p class="prompt-suggestion" id="prompt-suggestion-text" style="margin: 0 0 6px 0; color: var(--text-muted); font-size: 12px; display:none;" title=""></p>
                         <div id="prompt-template-chips" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                    </div>
+                </div>
+
+                <!-- Character Mentions (@Name) - shown only on /newfeature + supported workflows -->
+                <div class="form-group" id="character-mentions-wrap" style="display:none;">
+                    <label class="form-label">
+                        <i class="fas fa-user-tag"></i> 캐릭터
+                    </label>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div id="character-quick-list" style="width:100%; min-width:0; display:flex; flex-direction:column; gap:10px;"></div>
+                        <p class="hint" style="margin:0; color:var(--text-muted); font-size:12px; line-height:1.35;">
+                            팁: 프롬프트에 <strong>@이름</strong>을 넣으면, 등록된 캐릭터 레퍼런스를 자동으로 참고해 씬을 생성합니다. (예: <strong>@제임스 @마리안</strong>)
+                        </p>
+                        <p class="hint" id="character-mentions-warning" style="display:none; margin:0; color:rgba(239,68,68,0.92); font-size:12px; line-height:1.35;"></p>
                     </div>
                 </div>
 

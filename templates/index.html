@@ -536,6 +536,7 @@
                 try { applyPromptVisibilityForWorkflow(); } catch(_) {}
                 try { applySeedVisibilityForWorkflow(); } catch(_) {}
                 try { applyLoraUiForMode(); } catch(_) {}
+                try { applyCharacterMentionsUiForWorkflow(); } catch(_) {}
                 try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
                 try { applyTurnaroundToolUiForWorkflow(); } catch(_) {}
                 try { applyExpressionToolUiForWorkflow(); } catch(_) {}
@@ -1199,6 +1200,1004 @@
                 }
             } catch(_) {}
         }
+
+        // ---- Character mentions (@Name) for NanoBanana (newfeature only) ----
+        let _characterCache = [];
+        let _globalCharacterCache = [];
+        let _characterUiBound = false;
+        let _characterGateBlocked = false;
+        let _characterGateReason = '';
+        let _characterGateLastKey = '';
+        let _characterGateTimer = null;
+        let _characterFetchInFlight = null;
+        let _globalCharacterFetchInFlight = null;
+
+        function isNewFeaturePage() {
+            try {
+                return !!(window.location && window.location.pathname === '/newfeature');
+            } catch (_) {
+                return false;
+            }
+        }
+
+        function canUseCharacterMentions() {
+            try {
+                if (!isNewFeaturePage()) return false;
+                const mode = (document.getElementById('txtimg-img2img-tabs')?.dataset.mode) || 'txt2img';
+                if (mode !== 'txt2img') return false;
+                const targetWf = getTargetWorkflowForMode();
+                if (!targetWf) return false;
+                const provider = String(targetWf.provider || '').trim().toLowerCase();
+                if (provider !== 'google') return false;
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const templateMode = String(uiSchema.templateMode || '').trim().toLowerCase();
+                if (templateMode !== 'nanobanana') return false;
+                // Only enable for the base NanoBanana txt2img workflow.
+                if (String(targetWf.id || '') !== 'NanoBanana') return false;
+                if (uiSchema.characterMentions !== true) return false;
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        function insertTextAtCursor(el, text) {
+            try {
+                if (!el) return;
+                const v = String(el.value || '');
+                const start = Number.isFinite(el.selectionStart) ? el.selectionStart : v.length;
+                const end = Number.isFinite(el.selectionEnd) ? el.selectionEnd : v.length;
+                const before = v.slice(0, start);
+                const after = v.slice(end);
+                el.value = before + text + after;
+                const pos = (before + text).length;
+                try {
+                    el.selectionStart = pos;
+                    el.selectionEnd = pos;
+                } catch (_) {}
+                try { el.dispatchEvent(new Event('input')); } catch(_) {}
+                try { el.focus(); } catch(_) {}
+            } catch (_) {}
+        }
+
+        async function fetchCharacters() {
+            try {
+                const res = await fetch('/api/v1/characters?include=active', { cache: 'no-store' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error((data && data.detail) ? data.detail : `캐릭터 목록 로드 실패 (${res.status})`);
+                const items = Array.isArray(data.items) ? data.items : [];
+                _characterCache = items
+                    .map((x) => ({
+                        name: (x && x.name) ? String(x.name) : '',
+                        character_id: (x && x.character_id) ? String(x.character_id) : '',
+                        thumbnail_image_id: (x && x.thumbnail_image_id) ? String(x.thumbnail_image_id) : null,
+                        reference_image_ids: Array.isArray(x && x.reference_image_ids) ? x.reference_image_ids.slice() : [],
+                    }))
+                    .filter((x) => !!x.name);
+                return _characterCache.slice();
+            } catch (err) {
+                _characterCache = [];
+                throw err;
+            }
+        }
+
+        async function fetchGlobalCharacters() {
+            try {
+                const res = await fetch('/api/v1/global-characters', { cache: 'no-store' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    throw new Error((data && data.detail) ? data.detail : `공용 캐릭터 목록 로드 실패 (${res.status})`);
+                }
+                const items = Array.isArray(data.items) ? data.items : [];
+                _globalCharacterCache = items
+                    .map((x) => ({
+                        name: (x && x.name) ? String(x.name) : '',
+                        reference_image_count: Number.isFinite(parseInt(x && x.reference_image_count, 10)) ? parseInt(x.reference_image_count, 10) : 0,
+                        thumbnail_url: (x && x.thumbnail_url) ? String(x.thumbnail_url) : null,
+                    }))
+                    .filter((x) => !!x.name);
+                return _globalCharacterCache.slice();
+            } catch (err) {
+                _globalCharacterCache = [];
+                throw err;
+            }
+        }
+
+        function setCharacterMentionsWarning(msg) {
+            try {
+                const el = document.getElementById('character-mentions-warning');
+                if (!el) return;
+                const t = (typeof msg === 'string') ? msg.trim() : '';
+                if (!t) {
+                    el.textContent = '';
+                    el.style.display = 'none';
+                    return;
+                }
+                el.textContent = t;
+                el.style.display = '';
+            } catch (_) {}
+        }
+
+        function extractAtMentions(text) {
+            try {
+                const s = String(text || '');
+                if (!s.includes('@')) return [];
+                const re = /@([A-Za-z0-9가-힣_-]{1,32})/g;
+                const out = [];
+                const seen = new Set();
+                let m;
+                while ((m = re.exec(s)) !== null) {
+                    const nm = (m[1] || '').trim();
+                    if (!nm || seen.has(nm)) continue;
+                    seen.add(nm);
+                    out.push(nm);
+                }
+                return out;
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function escapeHtml(s) {
+            return String(s || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function bindHorizontalDragScroll(el) {
+            try {
+                if (!el) return;
+                if (el.dataset && el.dataset.dragScrollBound === '1') return;
+                if (el.dataset) el.dataset.dragScrollBound = '1';
+
+                let isDown = false;
+                let startX = 0;
+                let startScrollLeft = 0;
+                let didMove = false;
+                let pointerId = null;
+                let hasCapture = false;
+
+                const thresholdPx = 6;
+                const setDragging = (v) => {
+                    try {
+                        if (el.dataset) el.dataset.dragging = v ? '1' : '0';
+                        el.classList.toggle('is-dragging', !!v);
+                    } catch (_) {}
+                };
+
+                const onDown = (e) => {
+                    try {
+                        // Mouse-only drag; touch devices use native swipe scrolling.
+                        if (e && e.pointerType && e.pointerType !== 'mouse') return;
+                        isDown = true;
+                        didMove = false;
+                        pointerId = e.pointerId;
+                        startX = e.clientX;
+                        startScrollLeft = el.scrollLeft;
+                        hasCapture = false;
+                        setDragging(false);
+                    } catch (_) {}
+                };
+
+                const onMove = (e) => {
+                    try {
+                        if (!isDown) return;
+                        const dx = e.clientX - startX;
+                        if (!didMove && Math.abs(dx) >= thresholdPx) {
+                            didMove = true;
+                            setDragging(true);
+                            // Only capture pointer after we *actually* start dragging.
+                            try {
+                                if (!hasCapture && pointerId != null) {
+                                    el.setPointerCapture(pointerId);
+                                    hasCapture = true;
+                                }
+                            } catch (_) {}
+                        }
+                        if (!didMove) return;
+                        el.scrollLeft = startScrollLeft - dx;
+                        try { e.preventDefault(); } catch (_) {}
+                    } catch (_) {}
+                };
+
+                const onUp = () => {
+                    try {
+                        if (!isDown) return;
+                        isDown = false;
+                        try {
+                            if (hasCapture && pointerId != null) {
+                                el.releasePointerCapture(pointerId);
+                            }
+                        } catch (_) {}
+                        hasCapture = false;
+                        pointerId = null;
+                        if (didMove) {
+                            // Keep dragging flag briefly so click handlers can ignore accidental clicks.
+                            setTimeout(() => setDragging(false), 80);
+                        } else {
+                            setDragging(false);
+                        }
+                    } catch (_) {}
+                };
+
+                el.addEventListener('pointerdown', onDown);
+                el.addEventListener('pointermove', onMove, { passive: false });
+                el.addEventListener('pointerup', onUp);
+                el.addEventListener('pointercancel', onUp);
+                el.addEventListener('pointerleave', onUp);
+            } catch (_) {}
+        }
+
+        function renderPromptHighlightLayer() {
+            try {
+                const hl = document.getElementById('user-prompt-highlights');
+                const ta = ui && ui.userPromptInput ? ui.userPromptInput : null;
+                if (!hl || !ta) return;
+
+                // NOTE: The highlight overlay can cause caret/line-wrap desync in some browsers.
+                // We keep the element for future use, but disable overlay rendering for stability.
+                hl.innerHTML = '';
+                ta.classList.remove('prompt-highlight-enabled');
+            } catch (_) {}
+        }
+
+        function renderPromptMentionsBar() {
+            try {
+                const el = document.getElementById('prompt-mentions-bar');
+                const ta = ui && ui.userPromptInput ? ui.userPromptInput : null;
+                if (!el || !ta) return;
+                if (!canUseCharacterMentions()) {
+                    el.innerHTML = '';
+                    el.style.display = 'none';
+                    return;
+                }
+                const prompt = String(ta.value || '');
+                const mentions = extractAtMentions(prompt);
+                if (!mentions.length) {
+                    el.innerHTML = '';
+                    el.style.display = 'none';
+                    return;
+                }
+
+                const set = getCharacterNameSet();
+                const ok = mentions.filter((nm) => set.has(nm));
+                const missing = mentions.filter((nm) => !set.has(nm));
+
+                const chip = (name, kind) => {
+                    const safe = String(name || '').replace(/"/g, '&quot;');
+                    if (kind === 'missing') {
+                        return `<button type="button" class="chip-btn chip-btn--danger" data-mention="${safe}" title="등록 필요">@${safe}</button>`;
+                    }
+                    if (isPersonalCharacter(name)) {
+                        return `<button type="button" class="chip-btn" data-mention="${safe}" title="내 캐릭터">@${safe}</button>`;
+                    }
+                    return `<button type="button" class="chip-btn chip-btn--ghost" data-mention="${safe}" title="공용 캐릭터">@${safe}</button>`;
+                };
+
+                el.innerHTML = `
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                        <span class="hint" style="color:var(--text-muted); font-size:12px; font-weight:800;">감지된 캐릭터</span>
+                        ${ok.map((x) => chip(x, 'ok')).join('')}
+                        ${missing.map((x) => chip(x, 'missing')).join('')}
+                    </div>
+                `;
+                el.style.display = '';
+
+                el.querySelectorAll('button[data-mention]').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        const name = btn.getAttribute('data-mention') || '';
+                        if (!name) return;
+                        if (isPersonalCharacter(name)) {
+                            openCharacterManagerModal();
+                            try { showStatus(`@${name} 캐릭터 관리로 이동합니다.`, 'info'); } catch (_) {}
+                        } else if (getCharacterNameSet().has(name)) {
+                            try { showStatus(`@${name} 는 공용 캐릭터입니다.`, 'info'); } catch (_) {}
+                        } else {
+                            try { showStatus(`@${name} 캐릭터가 등록되어 있지 않습니다.`, 'warning'); } catch (_) {}
+                        }
+                    });
+                });
+            } catch (_) {}
+        }
+
+        function getMentionNameAtCursor(text, cursorIndex) {
+            try {
+                const s = String(text || '');
+                const pos = Number(cursorIndex);
+                if (!Number.isFinite(pos) || pos < 0 || pos > s.length) return null;
+                // Find nearest '@' to the left within a reasonable window (same token)
+                const maxBack = 64;
+                const leftStart = Math.max(0, pos - maxBack);
+                const left = s.slice(leftStart, pos);
+                const at = left.lastIndexOf('@');
+                if (at < 0) return null;
+                const atPos = leftStart + at;
+                // Extract token from '@' forward
+                const tail = s.slice(atPos);
+                const m = tail.match(/^@([A-Za-z0-9가-힣_-]{1,32})/);
+                if (!m) return null;
+                const name = (m[1] || '').trim();
+                // Ensure cursor is inside the token span (including '@')
+                const tokenLen = 1 + name.length;
+                if (pos < atPos || pos > atPos + tokenLen) return null;
+                return name || null;
+            } catch (_) {
+                return null;
+            }
+        }
+
+        async function handlePromptMentionClick() {
+            try {
+                if (!canUseCharacterMentions()) return;
+                const ta = ui && ui.userPromptInput ? ui.userPromptInput : null;
+                if (!ta) return;
+                const prompt = String(ta.value || '');
+                const pos = Number.isFinite(ta.selectionStart) ? ta.selectionStart : null;
+                if (pos === null) return;
+                const name = getMentionNameAtCursor(prompt, pos);
+                if (!name) return;
+
+                // Ensure we have the latest character list before deciding
+                if (!_characterCache.length) {
+                    try {
+                        if (!_characterFetchInFlight) {
+                            _characterFetchInFlight = fetchCharacters()
+                                .catch(() => [])
+                                .finally(() => { _characterFetchInFlight = null; });
+                        }
+                        await _characterFetchInFlight;
+                    } catch (_) {}
+                }
+                if (!_globalCharacterCache.length) {
+                    try {
+                        if (!_globalCharacterFetchInFlight) {
+                            _globalCharacterFetchInFlight = fetchGlobalCharacters()
+                                .catch(() => [])
+                                .finally(() => { _globalCharacterFetchInFlight = null; });
+                        }
+                        await _globalCharacterFetchInFlight;
+                    } catch (_) {}
+                }
+
+                const set = getCharacterNameSet();
+                if (!set.has(name)) return; // 미등록은 아무 동작도 하지 않음
+                if (isPersonalCharacter(name)) {
+                    openCharacterManagerModal();
+                    try { showStatus(`@${name} 캐릭터 관리로 이동합니다.`, 'info'); } catch (_) {}
+                } else {
+                    try { showStatus(`@${name} 는 공용 캐릭터입니다.`, 'info'); } catch (_) {}
+                }
+            } catch (_) {}
+        }
+
+        function syncPromptHighlightScroll() {
+            try {
+                const hl = document.getElementById('user-prompt-highlights');
+                const ta = ui && ui.userPromptInput ? ui.userPromptInput : null;
+                if (!hl || !ta) return;
+                hl.scrollTop = ta.scrollTop;
+                hl.scrollLeft = ta.scrollLeft;
+            } catch (_) {}
+        }
+
+        function getCharacterNameSet() {
+            const set = new Set();
+            try {
+                (_characterCache || []).forEach((ch) => {
+                    const nm = (ch && ch.name) ? String(ch.name).trim() : '';
+                    if (nm) set.add(nm);
+                });
+            } catch (_) {}
+            try {
+                (_globalCharacterCache || []).forEach((ch) => {
+                    const nm = (ch && ch.name) ? String(ch.name).trim() : '';
+                    if (nm) set.add(nm);
+                });
+            } catch (_) {}
+            return set;
+        }
+
+        function isPersonalCharacter(name) {
+            const nm = String(name || '').trim();
+            if (!nm) return false;
+            try {
+                return (_characterCache || []).some((x) => String((x && x.name) || '').trim() === nm);
+            } catch (_) {
+                return false;
+            }
+        }
+
+        function applyCharacterGateToGenerateButton() {
+            try {
+                if (!ui || !ui.generateBtn) return;
+                if (_characterGateBlocked) {
+                    ui.generateBtn.disabled = true;
+                    try { ui.generateBtn.setAttribute('title', _characterGateReason || '캐릭터 확인이 필요합니다.'); } catch (_) {}
+                } else {
+                    // If we're not generating, restore enabled state (other guards may still disable later).
+                    try {
+                        const cancelBtn = document.getElementById('cancel-btn');
+                        const isGenerating = cancelBtn && cancelBtn.disabled === false;
+                        if (!isGenerating) {
+                            ui.generateBtn.disabled = false;
+                            ui.generateBtn.removeAttribute('title');
+                        }
+                    } catch (_) {}
+                }
+            } catch (_) {}
+        }
+
+        async function validateCharacterMentionsAndUpdateGate() {
+            try {
+                if (!canUseCharacterMentions()) {
+                    _characterGateBlocked = false;
+                    _characterGateReason = '';
+                    setCharacterMentionsWarning('');
+                    applyCharacterGateToGenerateButton();
+                    return;
+                }
+
+                const prompt = ui && ui.userPromptInput ? String(ui.userPromptInput.value || '') : '';
+                const mentions = extractAtMentions(prompt);
+                if (!mentions.length) {
+                    _characterGateBlocked = false;
+                    _characterGateReason = '';
+                    setCharacterMentionsWarning('');
+                    applyCharacterGateToGenerateButton();
+                    return;
+                }
+
+                // If we haven't loaded the list yet, load once before deciding.
+                if (!_characterCache.length || !_globalCharacterCache.length) {
+                    if (!_characterCache.length && !_characterFetchInFlight) {
+                        _characterFetchInFlight = fetchCharacters()
+                            .catch(() => [])
+                            .finally(() => { _characterFetchInFlight = null; });
+                    }
+                    if (!_globalCharacterCache.length && !_globalCharacterFetchInFlight) {
+                        _globalCharacterFetchInFlight = fetchGlobalCharacters()
+                            .catch(() => [])
+                            .finally(() => { _globalCharacterFetchInFlight = null; });
+                    }
+                    _characterGateBlocked = true;
+                    _characterGateReason = '캐릭터 목록을 확인하는 중입니다...';
+                    setCharacterMentionsWarning('캐릭터 목록을 확인하는 중입니다...');
+                    applyCharacterGateToGenerateButton();
+                    try { if (_characterFetchInFlight) await _characterFetchInFlight; } catch (_) {}
+                    try { if (_globalCharacterFetchInFlight) await _globalCharacterFetchInFlight; } catch (_) {}
+                }
+
+                const set = getCharacterNameSet();
+                const missing = mentions.filter((nm) => !set.has(nm));
+                if (missing.length) {
+                    _characterGateBlocked = true;
+                    _characterGateReason = `등록되지 않은 캐릭터가 있어요: ${missing.map((x) => `@${x}`).join(', ')}. 먼저 '캐릭터 등록/관리'에서 추가하거나 공용 폴더에 등록해 주세요.`;
+                    const key = missing.join('|');
+                    setCharacterMentionsWarning(_characterGateReason);
+                    applyCharacterGateToGenerateButton();
+                    // Avoid spamming status area; only show when missing set changes
+                    if (key !== _characterGateLastKey) {
+                        _characterGateLastKey = key;
+                        try { showStatus(_characterGateReason, 'warning'); } catch (_) {}
+                    }
+                    return;
+                }
+
+                _characterGateBlocked = false;
+                _characterGateReason = '';
+                _characterGateLastKey = '';
+                setCharacterMentionsWarning('');
+                applyCharacterGateToGenerateButton();
+            } catch (_) {}
+        }
+
+        function scheduleCharacterGateValidation() {
+            try {
+                if (_characterGateTimer) clearTimeout(_characterGateTimer);
+                _characterGateTimer = setTimeout(() => {
+                    _characterGateTimer = null;
+                    validateCharacterMentionsAndUpdateGate();
+                }, 180);
+            } catch (_) {}
+        }
+
+        function renderCharacterQuickList() {
+            try {
+                const wrap = document.getElementById('character-quick-list');
+                if (!wrap) return;
+                const mine = (_characterCache || []).slice(0, 12);
+                const global = (_globalCharacterCache || []).slice(0, 12);
+
+                const addCardHtml = `
+                    <button type="button" id="character-manage-btn" class="global-character-card global-character-card--add" title="캐릭터 등록/관리" aria-label="캐릭터 등록/관리">
+                        <div class="global-character-avatar global-character-avatar--fallback global-character-avatar--add">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <div class="global-character-name">추가</div>
+                    </button>
+                `;
+
+                const globalCardsHtml = global
+                    .map((ch) => {
+                        const name = String(ch.name || '');
+                        const safe = name.replace(/"/g, '&quot;');
+                        const thumb = ch.thumbnail_url ? String(ch.thumbnail_url) : '';
+                        const img = thumb
+                            ? `<img class="global-character-avatar" src="${thumb}" alt="${safe}" loading="lazy" />`
+                            : `<div class="global-character-avatar global-character-avatar--fallback"><i class="fas fa-user"></i></div>`;
+                        return `
+                            <button type="button" class="global-character-card" data-char="${safe}" title="@${safe}">
+                                ${img}
+                                <div class="global-character-name">${safe}</div>
+                            </button>
+                        `;
+                    })
+                    .join('');
+
+                const mineCardsHtml = mine
+                    .map((ch) => {
+                        const name = String(ch.name || '');
+                        const safe = name.replace(/"/g, '&quot;');
+                        return `<button type="button" class="global-character-card" data-char="${safe}" title="@${safe}">
+                            <div class="global-character-avatar global-character-avatar--fallback"><i class="fas fa-at"></i></div>
+                            <div class="global-character-name">${safe}</div>
+                        </button>`;
+                    })
+                    .join('');
+
+                if (!mine.length && !global.length) {
+                    wrap.innerHTML = `
+                        <div class="global-character-row" style="margin-top:0;">
+                            <div class="global-character-row__items">${addCardHtml}</div>
+                        </div>
+                        <span class="hint" style="color:var(--text-muted); font-size:12px;">공용 캐릭터 폴더에 등록하면 여기에 표시됩니다.</span>
+                    `;
+                } else {
+                    wrap.innerHTML = `
+                        <div class="global-character-row" style="margin-top:0;">
+                            <div class="global-character-row__label">${global.length ? '추천(공용)' : '캐릭터'}</div>
+                            <div class="global-character-row__items">${addCardHtml}${globalCardsHtml}</div>
+                        </div>
+                        ${mine.length ? `
+                            <div class="global-character-row" style="margin-top:0;">
+                                <div class="global-character-row__label">내 캐릭터</div>
+                                <div class="global-character-row__items">${mineCardsHtml}</div>
+                            </div>
+                        ` : ''}
+                    `;
+                }
+
+                try {
+                    const manageBtn = wrap.querySelector('#character-manage-btn');
+                    if (manageBtn) manageBtn.addEventListener('click', () => openCharacterManagerModal());
+                } catch (_) {}
+
+                wrap.querySelectorAll('.global-character-row__items').forEach((list) => {
+                    try { bindHorizontalDragScroll(list); } catch (_) {}
+                });
+
+                wrap.querySelectorAll('button[data-char]').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        try {
+                            const list = btn.closest('.global-character-row__items');
+                            if (list && list.dataset && list.dataset.dragging === '1') return;
+                        } catch (_) {}
+                        const name = btn.getAttribute('data-char') || '';
+                        if (!name) return;
+                        insertTextAtCursor(ui.userPromptInput, `@${name} `);
+                    });
+                });
+            } catch (_) {}
+        }
+
+        function bindCharacterUiOnce() {
+            if (_characterUiBound) return;
+            _characterUiBound = true;
+            try {
+                const btn = document.getElementById('character-manage-btn');
+                if (btn) btn.addEventListener('click', () => openCharacterManagerModal());
+            } catch (_) {}
+            try {
+                if (ui && ui.userPromptInput) {
+                    ui.userPromptInput.addEventListener('input', () => {
+                        scheduleCharacterGateValidation();
+                        renderPromptHighlightLayer();
+                        renderPromptMentionsBar();
+                    });
+                }
+            } catch (_) {}
+        }
+
+        function applyCharacterMentionsUiForWorkflow() {
+            try {
+                bindCharacterUiOnce();
+                const wrap = document.getElementById('character-mentions-wrap');
+                if (!wrap) return;
+                const enabled = canUseCharacterMentions();
+                wrap.style.display = enabled ? '' : 'none';
+                if (!enabled) return;
+                // Lazy load list
+                if (!_characterCache.length) {
+                    fetchCharacters()
+                        .then(() => renderCharacterQuickList())
+                        .catch((err) => showStatus(err?.message || '캐릭터 목록 로드 실패', 'warning'));
+                }
+                if (!_globalCharacterCache.length) {
+                    fetchGlobalCharacters()
+                        .then(() => renderCharacterQuickList())
+                        .catch((err) => showStatus(err?.message || '공용 캐릭터 목록 로드 실패', 'warning'));
+                }
+                if (_characterCache.length || _globalCharacterCache.length) {
+                    renderCharacterQuickList();
+                }
+                scheduleCharacterGateValidation();
+                renderPromptHighlightLayer();
+                renderPromptMentionsBar();
+            } catch (_) {}
+        }
+
+        function openCharacterRefPicker(opts) {
+            const existing = document.getElementById('character-ref-picker');
+            if (existing) existing.remove();
+
+            const max = (opts && Number.isFinite(parseInt(opts.max, 10))) ? Math.max(1, Math.min(12, parseInt(opts.max, 10))) : 6;
+            const initial = Array.isArray(opts && opts.selected) ? opts.selected.slice() : [];
+            const onDone = (opts && typeof opts.onDone === 'function') ? opts.onDone : null;
+
+            let selected = (function () {
+                const out = [];
+                const seen = new Set();
+                initial.forEach((x) => {
+                    const s = (typeof x === 'string') ? x.trim() : '';
+                    if (!s || seen.has(s)) return;
+                    seen.add(s);
+                    out.push(s);
+                });
+                return out.slice(0, max);
+            })();
+
+            const wrap = document.createElement('div');
+            wrap.id = 'character-ref-picker';
+            wrap.style.cssText =
+                'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;';
+            wrap.classList.add('fade-in-overlay');
+
+            wrap.innerHTML = `
+                <div class="fade-in-panel" style="width:min(980px,92vw); height:min(78vh,820px); background:var(--bg-card); border:1px solid var(--bg-surface); border-radius:12px; overflow:hidden; display:flex; flex-direction:column;">
+                    <div style="padding:10px 12px; border-bottom:1px solid var(--bg-surface); display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <strong><i class="fas fa-images"></i> 레퍼런스 이미지 선택</strong>
+                            <div style="color:var(--text-muted); font-size:12px;">클릭으로 선택/해제합니다. (${max}장 필요)</div>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <span id="crp-count" style="color:var(--text-muted); font-size:12px;">0/${max}</span>
+                            <button class="chip-btn" id="crp-upload-btn"><i class="fas fa-upload"></i> 업로드</button>
+                            <input id="crp-upload" type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" multiple />
+                            <button class="chip-btn" id="crp-done"><i class="fas fa-check"></i> 완료</button>
+                            <button class="chip-btn" id="crp-close">닫기</button>
+                        </div>
+                    </div>
+                    <div style="padding:12px; overflow:auto; flex:1;">
+                        <div id="crp-grid" style="display:grid; grid-template-columns: repeat(auto-fill, 128px); grid-auto-rows: 128px; gap:10px; justify-content:flex-start;"></div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(wrap);
+
+            const closeWithFade = () => {
+                try {
+                    const panel = wrap.firstElementChild;
+                    wrap.classList.remove('fade-in-overlay');
+                    panel && panel.classList && panel.classList.remove('fade-in-panel');
+                    wrap.classList.add('fade-out-overlay');
+                    panel && panel.classList && panel.classList.add('fade-out-panel');
+                    setTimeout(() => {
+                        try { wrap.remove(); } catch (_) {}
+                    }, 180);
+                } catch (_) {
+                    try { wrap.remove(); } catch (__) {}
+                }
+            };
+
+            wrap.addEventListener('click', (e) => {
+                if (e.target === wrap) closeWithFade();
+            });
+            wrap.querySelector('#crp-close').addEventListener('click', closeWithFade);
+
+            const countEl = wrap.querySelector('#crp-count');
+            const syncCount = () => {
+                try { if (countEl) countEl.textContent = `${selected.length}/${max}`; } catch (_) {}
+            };
+
+            // Upload
+            const crpUpload = wrap.querySelector('#crp-upload');
+            wrap.querySelector('#crp-upload-btn').addEventListener('click', () => crpUpload.click());
+            crpUpload.addEventListener('change', async (e) => {
+                const files = (e.target.files) ? Array.from(e.target.files) : [];
+                if (!files.length) return;
+                const remaining = Math.max(0, max - selected.length);
+                if (!remaining) {
+                    showStatus(`이미 ${max}장을 선택했습니다.`, 'warning');
+                    return;
+                }
+                const pick = files.slice(0, remaining);
+                try {
+                    for (const file of pick) {
+                        const fd = new FormData();
+                        fd.append('file', file);
+                        const res = await fetch('/api/v1/inputs/upload', { method: 'POST', body: fd });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error((data && data.detail) ? data.detail : `업로드 실패 (${res.status})`);
+                        if (data && data.id) selected.push(String(data.id));
+                    }
+                    selected = selected.slice(0, max);
+                    syncCount();
+                    renderGrid();
+                    showStatus('레퍼런스 이미지가 업로드되었습니다.', 'success');
+                } catch (err) {
+                    showStatus(err?.message || '업로드 실패', 'error');
+                }
+            });
+
+            wrap.querySelector('#crp-done').addEventListener('click', () => {
+                if (selected.length !== max) {
+                    showStatus(`레퍼런스 이미지를 ${max}장 선택해 주세요.`, 'warning');
+                    return;
+                }
+                try { if (onDone) onDone(selected.slice()); } catch (_) {}
+                closeWithFade();
+            });
+
+            async function renderGrid() {
+                const grid = wrap.querySelector('#crp-grid');
+                const items = await fetchAllCandidates(200);
+                const sel = new Set(selected);
+                grid.innerHTML = items
+                    .map((it) => {
+                        const isSel = sel.has(it.id);
+                        const badge = isSel ? `<div style="position:absolute; top:6px; right:6px; background:rgba(37,99,235,0.92); color:#fff; font-size:12px; padding:2px 6px; border-radius:999px;">선택</div>` : '';
+                        const outline = isSel ? 'outline:2px solid var(--primary-500);' : '';
+                        return `
+                            <button type="button" class="thumb" data-id="${it.id}" style="position:relative; aspect-ratio:1/1; background:var(--bg-tertiary); border-radius:8px; overflow:hidden; cursor:pointer; border:0; padding:0; ${outline}">
+                                <img src="${it.url}" alt="${it.id}" style="width:100%; height:100%; object-fit:cover; display:block;" />
+                                ${badge}
+                            </button>
+                        `;
+                    })
+                    .join('');
+
+                grid.querySelectorAll('.thumb').forEach((el) => {
+                    el.addEventListener('click', () => {
+                        const id = el.getAttribute('data-id');
+                        if (!id) return;
+                        const idx = selected.indexOf(id);
+                        if (idx >= 0) {
+                            selected.splice(idx, 1);
+                            syncCount();
+                            renderGrid();
+                            return;
+                        }
+                        if (selected.length >= max) {
+                            showStatus(`최대 ${max}장까지만 선택할 수 있어요.`, 'warning');
+                            return;
+                        }
+                        selected.push(id);
+                        syncCount();
+                        renderGrid();
+                    });
+                });
+            }
+
+            syncCount();
+            renderGrid();
+        }
+
+        function openCharacterManagerModal() {
+            const existing = document.getElementById('character-manager');
+            if (existing) existing.remove();
+
+            const wrap = document.createElement('div');
+            wrap.id = 'character-manager';
+            wrap.style.cssText =
+                'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;';
+            wrap.classList.add('fade-in-overlay');
+
+            wrap.innerHTML = `
+                <div class="fade-in-panel" style="width:min(980px,92vw); height:min(82vh,860px); background:var(--bg-card); border:1px solid var(--bg-surface); border-radius:12px; overflow:hidden; display:flex; flex-direction:column;">
+                    <div style="padding:10px 12px; border-bottom:1px solid var(--bg-surface); display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <strong><i class="fas fa-user-tag"></i> 캐릭터 등록/관리</strong>
+                            <div style="color:var(--text-muted); font-size:12px;">이름은 공백 없이 (영문/숫자/한글/언더바/하이픈)만 가능합니다. 예: 제임스, Mariann_01</div>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button class="chip-btn" id="cm-close">닫기</button>
+                        </div>
+                    </div>
+                    <div style="padding:12px; overflow:auto; flex:1; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                        <div style="border:1px solid var(--bg-surface); border-radius:12px; padding:12px;">
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+                                <strong>등록된 캐릭터</strong>
+                                <button class="chip-btn" id="cm-refresh"><i class="fas fa-rotate"></i> 새로고침</button>
+                            </div>
+                            <div id="cm-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+                        </div>
+                        <div style="border:1px solid var(--bg-surface); border-radius:12px; padding:12px;">
+                            <strong>새 캐릭터 등록</strong>
+                            <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">
+                                <div>
+                                    <div class="hint" style="margin:0 0 6px 0; color:var(--text-muted); font-size:12px; font-weight:700;">캐릭터 이름</div>
+                                    <input id="cm-name" class="form-input" placeholder="예: 제임스" style="min-height:44px;" />
+                                </div>
+                                <div>
+                                    <div class="hint" style="margin:0 0 6px 0; color:var(--text-muted); font-size:12px; font-weight:700;">레퍼런스 이미지 (6장)</div>
+                                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                        <button class="chip-btn" id="cm-pick"><i class="fas fa-images"></i> 선택</button>
+                                        <span id="cm-picked" style="color:var(--text-muted); font-size:12px;">0/6 선택됨</span>
+                                    </div>
+                                    <div id="cm-preview" style="margin-top:10px; display:grid; grid-template-columns: repeat(6, 1fr); gap:8px;"></div>
+                                </div>
+                                <div style="display:flex; gap:10px; align-items:center; justify-content:flex-end;">
+                                    <button class="chip-btn" id="cm-save"><i class="fas fa-floppy-disk"></i> 저장</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(wrap);
+
+            const closeWithFade = () => {
+                try {
+                    const panel = wrap.firstElementChild;
+                    wrap.classList.remove('fade-in-overlay');
+                    panel && panel.classList && panel.classList.remove('fade-in-panel');
+                    wrap.classList.add('fade-out-overlay');
+                    panel && panel.classList && panel.classList.add('fade-out-panel');
+                    setTimeout(() => {
+                        try { wrap.remove(); } catch (_) {}
+                    }, 180);
+                } catch (_) {
+                    try { wrap.remove(); } catch (__) {}
+                }
+            };
+
+            wrap.addEventListener('click', (e) => {
+                if (e.target === wrap) closeWithFade();
+            });
+            wrap.querySelector('#cm-close').addEventListener('click', closeWithFade);
+
+            const nameEl = wrap.querySelector('#cm-name');
+            const pickedEl = wrap.querySelector('#cm-picked');
+            const previewEl = wrap.querySelector('#cm-preview');
+            let picked = [];
+
+            const syncPicked = async () => {
+                try {
+                    if (pickedEl) pickedEl.textContent = `${picked.length}/6 선택됨`;
+                } catch (_) {}
+                try {
+                    const byId = new Map((await fetchAllCandidates(200)).map((x) => [x.id, x.url]));
+                    if (previewEl) {
+                        previewEl.innerHTML = picked
+                            .map((id) => {
+                                const url = byId.get(id) || '';
+                                return `<div style="aspect-ratio:1/1; border-radius:10px; overflow:hidden; background:var(--bg-tertiary); border:1px solid var(--bg-surface);">
+                                    ${url ? `<img src="${url}" alt="${id}" style="width:100%; height:100%; object-fit:cover; display:block;" />` : `<div style="padding:10px; font-size:12px; color:var(--text-muted);">${id}</div>`}
+                                </div>`;
+                            })
+                            .join('');
+                    }
+                } catch (_) {}
+            };
+
+            wrap.querySelector('#cm-pick').addEventListener('click', () => {
+                openCharacterRefPicker({
+                    max: 6,
+                    selected: picked.slice(),
+                    onDone: (ids) => {
+                        picked = Array.isArray(ids) ? ids.slice(0, 6) : [];
+                        syncPicked();
+                    }
+                });
+            });
+
+            async function renderList() {
+                const listEl = wrap.querySelector('#cm-list');
+                if (!listEl) return;
+                listEl.innerHTML = `<div class="hint" style="color:var(--text-muted); font-size:12px;">로딩 중...</div>`;
+                try {
+                    await fetchCharacters();
+                    if (!_characterCache.length) {
+                        listEl.innerHTML = `<div class="hint" style="color:var(--text-muted); font-size:12px;">등록된 캐릭터가 없습니다.</div>`;
+                        return;
+                    }
+                    listEl.innerHTML = _characterCache
+                        .map((ch) => {
+                            const name = String(ch.name || '');
+                            const safe = name.replace(/"/g, '&quot;');
+                            return `
+                                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border:1px solid var(--bg-surface); border-radius:12px; background:rgba(255,255,255,0.02);">
+                                    <div style="display:flex; flex-direction:column; gap:2px;">
+                                        <strong style="font-size:14px;">@${safe}</strong>
+                                        <span style="color:var(--text-muted); font-size:12px;">레퍼런스 ${Array.isArray(ch.reference_image_ids) ? ch.reference_image_ids.length : 0}장</span>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center;">
+                                        <button class="chip-btn" data-insert="${safe}"><i class="fas fa-at"></i> 삽입</button>
+                                        <button class="chip-btn" data-delete="${safe}" style="border-color: rgba(239,68,68,0.35); color: rgba(239,68,68,0.95);"><i class="fas fa-trash"></i> 삭제</button>
+                                    </div>
+                                </div>
+                            `;
+                        })
+                        .join('');
+
+                    listEl.querySelectorAll('button[data-insert]').forEach((btn) => {
+                        btn.addEventListener('click', () => {
+                            const name = btn.getAttribute('data-insert') || '';
+                            if (!name) return;
+                            insertTextAtCursor(ui.userPromptInput, `@${name} `);
+                            showStatus(`@${name} 를 프롬프트에 추가했습니다.`, 'info');
+                        });
+                    });
+                    listEl.querySelectorAll('button[data-delete]').forEach((btn) => {
+                        btn.addEventListener('click', async () => {
+                            const name = btn.getAttribute('data-delete') || '';
+                            if (!name) return;
+                            try {
+                                const res = await fetch(`/api/v1/characters/${encodeURIComponent(name)}/delete`, { method: 'POST' });
+                                const data = await res.json().catch(() => ({}));
+                                if (!res.ok) throw new Error((data && data.detail) ? data.detail : `삭제 실패 (${res.status})`);
+                                await fetchCharacters();
+                                renderCharacterQuickList();
+                                renderList();
+                                showStatus(`@${name} 캐릭터가 삭제되었습니다.`, 'success');
+                            } catch (err) {
+                                showStatus(err?.message || '삭제 실패', 'error');
+                            }
+                        });
+                    });
+                } catch (err) {
+                    listEl.innerHTML = `<div class="hint" style="color:var(--text-muted); font-size:12px;">목록을 불러오지 못했습니다.</div>`;
+                }
+            }
+
+            wrap.querySelector('#cm-refresh').addEventListener('click', () => renderList());
+
+            wrap.querySelector('#cm-save').addEventListener('click', async () => {
+                const name = (nameEl && nameEl.value) ? String(nameEl.value).trim() : '';
+                if (!name) {
+                    showStatus('캐릭터 이름을 입력해 주세요.', 'warning');
+                    return;
+                }
+                if (picked.length !== 6) {
+                    showStatus('레퍼런스 이미지를 정확히 6장 선택해 주세요.', 'warning');
+                    return;
+                }
+                try {
+                    const res = await fetch('/api/v1/characters', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, reference_image_ids: picked })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error((data && data.detail) ? data.detail : `저장 실패 (${res.status})`);
+                    await fetchCharacters();
+                    renderCharacterQuickList();
+                    renderList();
+                    showStatus(`@${name} 캐릭터가 저장되었습니다.`, 'success');
+                    try { nameEl.value = ''; } catch (_) {}
+                    picked = [];
+                    syncPicked();
+                } catch (err) {
+                    showStatus(err?.message || '저장 실패', 'error');
+                }
+            });
+
+            syncPicked();
+            renderList();
+        }
         
         function selectWorkflow(workflow) {
             currentWorkflow = workflow;
@@ -1401,6 +2400,7 @@
             // 비율 옵션 및 프롬프트 변환 버튼 표시/숨김은 현재 모드 기준으로 갱신
             applyAspectUiForMode();
             applyPromptTranslateUiForMode();
+            try { applyCharacterMentionsUiForWorkflow(); } catch(_) {}
             try { applySeedVisibilityForWorkflow(); } catch(_) {}
             try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
             try { applyTurnaroundToolUiForWorkflow(); } catch(_) {}
@@ -2278,6 +3278,16 @@
                 }
             }
 
+            // Client-side guard: block if @Name includes missing characters (cost protection)
+            try {
+                await validateCharacterMentionsAndUpdateGate();
+                if (typeof _characterGateBlocked === 'boolean' && _characterGateBlocked) {
+                    showStatus(_characterGateReason || '캐릭터 등록이 필요합니다.', 'warning');
+                    try { document.getElementById('character-mentions-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(_) {}
+                    return;
+                }
+            } catch (_) {}
+
             // Preflight health check (silent guard)
             try {
                 const ok = await preflightHealthCheck();
@@ -2725,6 +3735,12 @@
             ui.generateBtn.innerHTML = isGenerating ? `<div class="loading-spinner"></div><span>${text}</span>` : `<i class="fas fa-sparkles"></i><span>${label}</span>`;
             if (isGenerating) setResultActionsEnabled(false);
             // 이전 방식: 오버레이 관련 로직 제거
+            // If character gate is active (missing @Name), keep generate button disabled.
+            try {
+                if (!isGenerating && typeof _characterGateBlocked === 'boolean' && _characterGateBlocked) {
+                    ui.generateBtn.disabled = true;
+                }
+            } catch (_) {}
         }
 
         function showStatus(message, type = 'info') {
