@@ -1,6 +1,6 @@
 import os
 import json
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from ..logging_utils import setup_logging
 from ..config import WORKFLOW_CONFIGS
 from ..schemas.api_models import WorkflowsResponse
@@ -13,9 +13,18 @@ WORKFLOW_DIR = "./workflows/"
 
 
 @router.get("/api/v1/workflows", response_model=WorkflowsResponse)
-async def get_workflows():
+async def get_workflows(
+    include_google: bool = Query(
+        default=False,
+        description="true면 Google(provider=google) 워크플로우도 목록에 포함합니다.",
+    ),
+):
     workflows = []
     for workflow_id, config in WORKFLOW_CONFIGS.items():
+        provider = str(config.get("provider", "comfyui") or "comfyui").strip().lower()
+        # 기본 목록에서는 비용이 드는 Google(NanoBanana) 워크플로우를 숨깁니다.
+        if provider == "google" and not include_google:
+            continue
         json_path = os.path.join(WORKFLOW_DIR, f"{workflow_id}.json")
         node_count = 0
         if os.path.exists(json_path):
@@ -30,6 +39,7 @@ async def get_workflows():
             "description": config.get("description", "워크플로우 설명이 없습니다."),
             "node_count": node_count,
             "hidden": bool(config.get("hidden", False)),
+            "provider": provider,
             "style_prompt": config.get("style_prompt", ""),
             "negative_prompt": config.get("negative_prompt", ""),
             "recommended_prompt": config.get("recommended_prompt", ""),
@@ -37,8 +47,6 @@ async def get_workflows():
             "ui": config.get("ui", {}),
             "sizes": config.get("sizes", {}),
             "image_input": config.get("image_input", None),
-            # Control slots meta for UI (ranges/defaults per slot)
-            "control_slots": config.get("control_slots", None),
             # LoRA slots metadata (if provided)
             "lora_slots": config.get("loras", None),
             # LoRA slider hint (if provided)

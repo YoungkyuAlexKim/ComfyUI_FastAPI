@@ -20,6 +20,8 @@
                     <div id="input-image-drop" style="width:100%; max-width:100%; height:240px; border:1px dashed var(--bg-surface); border-radius:12px; overflow:hidden; background:var(--bg-tertiary); display:flex; align-items:center; justify-content:center; position:relative;">
                         <img id="input-image-preview" alt="입력 이미지" style="display:none; width:100%; height:100%; object-fit:cover;" />
                         <div id="input-image-empty" style="color:var(--text-muted); font-size:14px;">클릭하거나 드래그하여 이미지 선택</div>
+                        <!-- Multi-input grid (shown only in multi mode; replaces big preview) -->
+                        <div id="input-image-multi-grid" style="display:none; position:absolute; inset:10px; overflow:auto; grid-template-columns:repeat(auto-fill, minmax(88px, 1fr)); grid-auto-rows:88px; gap:10px; align-content:start;"></div>
                     </div>
                     <div style="display:flex; gap:8px; margin-top:8px;">
                         <button type="button" class="chip-btn" id="input-image-choose"><i class="fas fa-folder-open"></i> 선택</button>
@@ -50,6 +52,127 @@
                         <i class="fas fa-palette"></i> 시스템 프롬프트 (스타일 & 품질)
                     </label>
                     <textarea class="form-input" id="style_prompt" rows="2" readonly>{{ default_style_prompt }}</textarea>
+                </div>
+
+                <!-- NanoBanana Tool Options: Turnaround Sheet -->
+                <div class="form-group" id="turnaround-options-wrap" style="display:none;">
+                    <label class="form-label">
+                        <i class="fas fa-th-large"></i> 턴어라운드 옵션
+                    </label>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <select id="turnaround-view-preset" class="form-input" style="min-height:44px; width:min(420px, 100%);">
+                                <option value="5">5뷰 (정면/3-4/측면/후면/3-4후면)</option>
+                                <option value="3">3뷰 (정면/측면/후면)</option>
+                                <option value="8">8뷰 (좌/우 포함)</option>
+                            </select>
+                        </div>
+                        <p class="hint" style="margin:0; color:var(--text-muted); font-size:12px; line-height:1.35;">
+                            팁: 이 도구는 기본적으로 원본 캐릭터/원본 스타일을 최대한 그대로 유지하도록 동작합니다.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- NanoBanana Tool Options: Expression Portrait Sheet -->
+                <div class="form-group" id="expression-options-wrap" style="display:none;">
+                    <label class="form-label">
+                        <i class="fas fa-face-smile"></i> 표정 시트 옵션
+                    </label>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <select id="expression-count-preset" class="form-input" style="min-height:44px; width:min(420px, 100%);">
+                                <option value="9">9개 (3×3 그리드 · 기본)</option>
+                                <option value="4">4개 (2×2 그리드)</option>
+                            </select>
+                        </div>
+                        <p class="hint" style="margin:0; color:var(--text-muted); font-size:12px; line-height:1.35;">
+                            팁: 이 도구는 원본 캐릭터/원본 그림체를 유지한 채, 표정만 다양하게 바꾸도록 동작합니다.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- NanoBanana Tool Options: Relight -->
+                <div class="form-group" id="relight-options-wrap" style="display:none;">
+                    <label class="form-label">
+                        <i class="fas fa-lightbulb"></i> 리라이트 옵션
+                    </label>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="display:grid; grid-template-columns: 1fr; gap:10px;">
+                            <div>
+                                <div class="hint" style="margin:0 0 6px 0; color:var(--text-muted); font-size:12px; font-weight:700;">조명 스타일</div>
+                                <select id="relight-style-preset" class="form-input" style="min-height:44px;">
+                                    <option value="motivated">기본(영화 조명 · 추천)</option>
+                                    <option value="natural">자연광(내추럴)</option>
+                                    <option value="high_key">밝게(하이 키)</option>
+                                    <option value="low_key">어둡게(로우 키)</option>
+                                    <option value="rembrandt">렘브란트(삼각형 빛)</option>
+                                    <option value="chiaroscuro">키아로스쿠로(극적 대비)</option>
+                                    <option value="silhouette">실루엣(역광)</option>
+                                    <option value="butterfly">버터플라이(글래머)</option>
+                                    <option value="split">스플릿(반쪽 조명)</option>
+                                    <option value="bottom">바텀(공포)</option>
+                                </select>
+                                <p class="hint" id="relight-style-desc" style="margin:6px 0 0 0; color:var(--text-muted); font-size:12px; line-height:1.35;"></p>
+                            </div>
+                            <div>
+                                <div class="hint" style="margin:0 0 6px 0; color:var(--text-muted); font-size:12px; font-weight:700;">빛의 질감</div>
+                                <select id="relight-quality-preset" class="form-input" style="min-height:44px;">
+                                    <option value="soft">부드럽게(소프트)</option>
+                                    <option value="hard">강하게(하드)</option>
+                                </select>
+                                <p class="hint" id="relight-quality-desc" style="margin:6px 0 0 0; color:var(--text-muted); font-size:12px; line-height:1.35;"></p>
+                            </div>
+                            <div>
+                                <div class="hint" style="margin:0 0 6px 0; color:var(--text-muted); font-size:12px; font-weight:700;">컬러 무드</div>
+                                <select id="relight-color-preset" class="form-input" style="min-height:44px;">
+                                    <option value="none">색감 유지(변경 없음)</option>
+                                    <option value="teal_orange">틸&오렌지(영화 톤)</option>
+                                    <option value="neon">네온(사이버펑크)</option>
+                                    <option value="golden_hour">골든 아워(따뜻한 햇살)</option>
+                                    <option value="warm_cool">웜 vs 쿨 대비</option>
+                                    <option value="gel_cto">컬러젤: CTO(따뜻한 주황)</option>
+                                    <option value="gel_ctb">컬러젤: CTB(차가운 블루)</option>
+                                    <option value="gel_amber">컬러젤: Bastard Amber</option>
+                                    <option value="gel_congo_blue">컬러젤: Congo Blue</option>
+                                    <option value="gel_rose_pink">컬러젤: Rose Pink</option>
+                                    <option value="gel_medium_red">컬러젤: Medium Red</option>
+                                    <option value="gel_dark_green">컬러젤: Dark Green</option>
+                                </select>
+                                <p class="hint" id="relight-color-desc" style="margin:6px 0 0 0; color:var(--text-muted); font-size:12px; line-height:1.35;"></p>
+                            </div>
+                        </div>
+                        <p class="hint" style="margin:0; color:var(--text-muted); font-size:12px; line-height:1.35;">
+                            팁: “조명만 변경”이 목적이라, 구도/캐릭터/의상/얼굴 형태는 유지되도록 자동으로 안내됩니다.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- NanoBanana Tool Options: Storyboard Cutboard -->
+                <div class="form-group" id="storyboard-options-wrap" style="display:none;">
+                    <label class="form-label">
+                        <i class="fas fa-th-large"></i> 스토리보드 컷보드 옵션
+                    </label>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <select id="storyboard-cuts-preset" class="form-input" style="min-height:44px; width:min(420px, 100%);">
+                                <option value="9">9컷 (3×3 그리드 · 기본)</option>
+                                <option value="6">6컷 (2×3 그리드)</option>
+                            </select>
+                        </div>
+                        <p class="hint" style="margin:0; color:var(--text-muted); font-size:12px; line-height:1.35;">
+                            팁: 입력 이미지를 “기준(인물/의상/장소/조명)”으로 고정하고, 컷마다 카메라 구도/거리/동작만 변화시키는 방식으로 컷보드를 만듭니다.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- NanoBanana Tool Options: What's Next Variations -->
+                <div class="form-group" id="whatsnext-options-wrap" style="display:none;">
+                    <label class="form-label">
+                        <i class="fas fa-wand-magic-sparkles"></i> 다음 장면 바리에이션
+                    </label>
+                    <p class="hint" style="margin:0; color:var(--text-muted); font-size:12px; line-height:1.35;">
+                        팁: 같은 화풍/같은 캐릭터로 “다음에 벌어질 법한 상황” 4가지를 2×2 그리드로 한 번에 만듭니다.
+                    </p>
                 </div>
 
                 <!-- LoRA Strength Controls (single value per slot) -->
@@ -86,6 +209,10 @@
                         <i class="fas fa-crop-alt"></i> 이미지 비율
                     </label>
                     <div class="aspect-ratio-group" id="aspect-ratio-group">
+                        <button class="aspect-ratio-btn" data-ratio="auto">
+                            <i class="fas fa-magic"></i>
+                            <span class="label">Auto</span>
+                        </button>
                         <button class="aspect-ratio-btn selected" data-ratio="square">
                             <i class="fas fa-square"></i>
                             <span class="label">Square</span>
@@ -100,6 +227,7 @@
                         </button>
                     </div>
                 </div>
+
             </div>
 
             <!-- Generator Toolbar -->
@@ -162,22 +290,6 @@
                     </div>
                 </div>
 
-                <div class="output-toolbar">
-                    <div class="output-tools">
-                        <label class="control-toggle">
-                            <input type="checkbox" id="control-enabled" />
-                            <span>ControlNet 사용</span>
-                        </label>
-                        <button id="open-canvas-btn" type="button" class="chip-btn" title="캔버스 열기" aria-label="캔버스 열기">
-                            <i class="fas fa-pencil"></i> 캔버스 열기
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="controlnet-strip">
-                <!-- Per-slot cards (thumb + sliders) -->
-                <div id="control-slots-grid" class="control-slots-grid" style="display:none;"></div>
             </div>
 
             <div class="status-container" id="status-container">

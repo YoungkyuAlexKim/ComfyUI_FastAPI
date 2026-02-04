@@ -11,12 +11,17 @@ from ..services.media_store import (
     _update_input_status,
     _build_web_path,
 )
-from ..schemas.api_models import PaginatedControls as PaginatedInputs, UploadControlResponse as UploadInputResponse, OkResponse
+from ..schemas.api_models import PaginatedImages as PaginatedInputs, UploadMediaResponse as UploadInputResponse, OkResponse
 
 try:
     from PIL import Image
 except Exception:
     Image = None
+try:
+    # Best-effort: fix EXIF orientation for portrait photos
+    from PIL import ImageOps
+except Exception:
+    ImageOps = None
 
 
 logger = setup_logging()
@@ -115,7 +120,21 @@ async def user_upload_input_image(request: Request, file: UploadFile = File(...)
             raise HTTPException(status_code=400, detail="서버에서 이미지 변환 기능이 준비되지 않았습니다. PNG로 변환 후 업로드해 주세요.")
         try:
             with Image.open(BytesIO(data)) as im:
-                im = im.convert("RGB")
+                # Some mobile photos rely on EXIF orientation; keep the visual orientation stable.
+                try:
+                    if ImageOps is not None:
+                        im = ImageOps.exif_transpose(im)
+                except Exception:
+                    pass
+                # Preserve alpha when present (e.g. WEBP with transparency)
+                try:
+                    has_alpha = (
+                        im.mode in ("RGBA", "LA")
+                        or (im.mode == "P" and "transparency" in (im.info or {}))
+                    )
+                except Exception:
+                    has_alpha = False
+                im = im.convert("RGBA" if has_alpha else "RGB")
                 out = BytesIO()
                 im.save(out, format="PNG")
                 png_bytes = out.getvalue()
@@ -138,27 +157,21 @@ async def user_copy_to_inputs(request: Request):
         raise HTTPException(status_code=400, detail="Invalid JSON body")
     source = str(body.get("source") or "").strip().lower()
     image_id = str(body.get("id") or "").strip()
-    if source not in ("generated", "controls"):
+    if source not in ("generated",):
         raise HTTPException(status_code=400, detail="Unsupported source")
     if not image_id:
         raise HTTPException(status_code=400, detail="Missing id")
 
     # Locate source PNG path
     try:
-        if source == "generated":
-            from ..services.media_store import _locate_image_meta_path
-            meta_path = _locate_image_meta_path(anon_id, image_id)
-            if not meta_path:
-                raise HTTPException(status_code=404, detail="Source image not found")
-            base_dir = os.path.dirname(meta_path)
-            png_path = os.path.join(base_dir, f"{image_id}.png")
-            if not os.path.exists(png_path):
-                raise HTTPException(status_code=404, detail="Source PNG not found")
-        else:
-            from ..services.media_store import _locate_control_png_path
-            png_path = _locate_control_png_path(anon_id, image_id)
-            if not png_path or not os.path.exists(png_path):
-                raise HTTPException(status_code=404, detail="Source PNG not found")
+        from ..services.media_store import _locate_image_meta_path
+        meta_path = _locate_image_meta_path(anon_id, image_id)
+        if not meta_path:
+            raise HTTPException(status_code=404, detail="Source image not found")
+        base_dir = os.path.dirname(meta_path)
+        png_path = os.path.join(base_dir, f"{image_id}.png")
+        if not os.path.exists(png_path):
+            raise HTTPException(status_code=404, detail="Source PNG not found")
     except HTTPException:
         raise
     except Exception:

@@ -126,6 +126,12 @@
         gap: var(--space-md);
     }
 
+    /* Grouped date grids inside drawer */
+    #gallery-panel .gallery-date-grid {
+        grid-template-columns: repeat(auto-fill, minmax(112px, 112px));
+        gap: 10px;
+    }
+
     /* Mobile Navigation */
     .workflow-list {
         display: grid;
@@ -189,16 +195,6 @@
         height: 44px;
     }
 
-    /* Mobile Control */
-    .controlnet-strip {
-        padding: var(--space-md);
-    }
-
-    #control-floating {
-        width: 60px;
-        height: 60px;
-    }
-
     /* Mobile Seed */
     .seed-input-group {
         flex-direction: column;
@@ -251,6 +247,12 @@
     .aspect-ratio-group {
         grid-template-columns: 1fr;
         gap: var(--space-md);
+    }
+
+    /* 4개 옵션(예: Auto 포함)은 모바일에서 2x2로 */
+    .aspect-ratio-group.aspect-ratio-group--4 {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-sm);
     }
 
     .aspect-ratio-btn {
@@ -371,7 +373,7 @@
     .icon-btn,
     .chip-btn,
     .aspect-ratio-btn,
-    #control-floating {
+    .aspect-ratio-btn {
         cursor: default;
     }
 
@@ -379,8 +381,7 @@
     .gallery-item:active,
     .icon-btn:active,
     .chip-btn:active,
-    .aspect-ratio-btn:active,
-    #control-floating:active {
+    .aspect-ratio-btn:active {
         transform: scale(0.98);
     }
 
@@ -427,7 +428,6 @@
     .sidebar,
     .gallery-panel,
     .output-toolbar,
-    .controlnet-strip,
     .generate-btn,
     .cancel-btn {
         display: none;

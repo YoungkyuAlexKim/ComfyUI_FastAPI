@@ -30,7 +30,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
   - `COMFYUI_SERVER=127.0.0.1:8188`
   - `OUTPUT_DIR=./outputs/`
   - `JOB_DB_PATH=db/app_data.db`
-  - (선택) `COMFY_INPUT_DIR=C:/path/to/ComfyUI/input`  ← ControlNet용 업로드/정리에 사용
+  - (선택) `COMFY_INPUT_DIR=C:/path/to/ComfyUI/input`  ← Img2Img 업로드/정리 및 숨김 레퍼런스 입력 확인에 사용
 - 큐/타임아웃
   - `MAX_PER_USER_QUEUE=3`
   - `MAX_PER_USER_CONCURRENT=1`
@@ -46,8 +46,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
   - `LOG_FILE_PATH=logs/app.log`, `LOG_MAX_BYTES=1048576`, `LOG_BACKUP_COUNT=3`
 - 진행률 로그(터미널 노이즈)
   - `PROGRESS_LOG_STEP=20`, `PROGRESS_LOG_MIN_MS=1000`, `PROGRESS_LOG_LEVEL=info`
- - 업로드 제한(컨트롤 이미지)
-   - `CONTROLS_MAX_BYTES=10485760` (기본 10MB)
+- 업로드 제한(입력 이미지)
+  - `INPUTS_MAX_BYTES=10485760` (기본 10MB)
 
 ## 3.1 베타/운영 시 필수 보안 설정(권장)
 - 베타 접속 비밀번호(전체 사용자 공통)
@@ -87,8 +87,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
   - 실행 시 실제 `workflow_id`는 편집 워크플로우 ID로 자동 스위칭됨(부모와 다를 수 있음)
 
 ### 5.2 입력 이미지 등록 방법
-- 갤러리 썸네일 드래그-드롭(생성이미지/컨트롤/입력)
-  - 생성/컨트롤 이미지는 서버가 `/api/v1/inputs/copy`를 통해 입력 보관함으로 복사 후 등록
+- 갤러리 썸네일 드래그-드롭(생성 이미지/입력 이미지)
+  - 생성 이미지는 서버가 `/api/v1/inputs/copy`를 통해 입력 보관함으로 복사 후 등록
   - 입력 보관함의 이미지는 즉시 선택
 - 파일 드롭/업로드 허용(png/jpg/webp) — 서버가 용량 검증, 썸네일/메타 생성
 - 등록 후 입력 이미지 미리보기 표시, ‘지우기’로 해제 가능
@@ -101,7 +101,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
 - 처리 지연/멈춤 느낌
   - `COMFY_HTTP_READ_TIMEOUT` 10→15 조정
   - 진행률 로그 스텝 `PROGRESS_LOG_STEP` 20→25/50 (노이즈 감소)
-  - ControlNet 사용 시 입력 이미지 업로드가 지연될 수 있음(WS 진행률은 정상)
+  - 입력 이미지 업로드가 많은 경우(또는 네트워크 느림) 체감 지연이 생길 수 있음(WS 진행률은 정상)
 - 디스크 부족 경고
   - 저장소 확보 또는 `HEALTHZ_DISK_MIN_FREE_MB` 조정
 - 로그 위치
@@ -121,11 +121,11 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --access-log false
 - 관리자 이미지: `GET /api/v1/admin/images?user_id=&page=&size=&include=&from_date=&to_date=`
 - 휴지통 비우기: `POST /api/v1/admin/purge-trash`
 - 잡 스냅샷 DB: `db/app_data.db` (SQLite)
- - 컨트롤/생성 이미지 임시 파일 정리
+ - 생성/입력 이미지 임시 파일 정리
    - `COMFY_INPUT_DIR`가 설정된 경우, 생성 파이프라인 완료 시 ComfyUI input 폴더의 업로드 파일을 베스트에포트로 삭제
 
 ### 7.1 로컬 데이터 초기화(개발/테스트 후 비우기)
-- 초기화 대상: 작업 DB + 갤러리(생성/컨트롤/입력) 파일
+- 초기화 대상: 작업 DB + 갤러리(생성/입력) 파일
 ```
 ./reset_local_data.bat
 ```

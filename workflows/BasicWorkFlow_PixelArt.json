@@ -12,12 +12,12 @@
         0
       ],
       "positive": [
-        "23",
+        "6",
         0
       ],
       "negative": [
-        "23",
-        1
+        "7",
+        0
       ],
       "latent_image": [
         "5",
@@ -213,42 +213,6 @@
       "title": "VAE 디코드"
     }
   },
-  "23": {
-    "inputs": {
-      "strength": 1,
-      "start_percent": 0,
-      "end_percent": 0.33,
-      "positive": [
-        "6",
-        0
-      ],
-      "negative": [
-        "7",
-        0
-      ],
-      "control_net": [
-        "25",
-        0
-      ],
-      "image": [
-        "28",
-        0
-      ]
-    },
-    "class_type": "ControlNetApplyAdvanced",
-    "_meta": {
-      "title": "컨트롤넷 적용"
-    }
-  },
-  "25": {
-    "inputs": {
-      "control_net_name": "controlnetxlCNXL_xinsirScribbleAnime.safetensors"
-    },
-    "class_type": "ControlNetLoader",
-    "_meta": {
-      "title": "컨트롤넷 모델 로드"
-    }
-  },
   "26": {
     "inputs": {
       "measurement": "percentage",
@@ -264,15 +228,6 @@
     "class_type": "Image Resize (rgthree)",
     "_meta": {
       "title": "Image Resize (rgthree)"
-    }
-  },
-  "28": {
-    "inputs": {
-      "image": "scribble0.png"
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "이미지 로드"
     }
   },
   "29": {

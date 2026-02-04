@@ -85,9 +85,7 @@ PROGRESS_LOG_CONFIG = {
 }
 
 # --- 3.5 Upload limits (.env) ---
-# Control image upload: maximum allowed size in bytes (default: 10MB)
 UPLOAD_CONFIG = {
-    "controls_max_bytes": int(os.getenv("CONTROLS_MAX_BYTES", str(10 * 1024 * 1024))),
     "inputs_max_bytes": int(os.getenv("INPUTS_MAX_BYTES", str(10 * 1024 * 1024))),
 }
 
@@ -101,7 +99,6 @@ def get_prompt_overrides(
     aspect_ratio: str,  # width, height 대신 aspect_ratio 사용
     workflow_name: str = "BasicWorkFlow_PixelArt",
     seed: int | None = None,
-    control: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """
     사용자 프롬프트와 시스템 스타일 프롬프트를 결합하여 최종 오버라이드를 생성합니다.
@@ -203,34 +200,6 @@ def get_prompt_overrides(
     except Exception:
         pass
     
-    # --- Optional ControlNet overrides ---
-    try:
-        cn_cfg = config.get("controlnet") if isinstance(config, dict) else None
-        if control and cn_cfg and cn_cfg.get("enabled"):
-            apply_node = cn_cfg.get("apply_node")
-            image_node = cn_cfg.get("image_node")
-            defaults = cn_cfg.get("defaults", {})
-            # Strength: if provided, otherwise keep workflow default
-            strength = control.get("strength") if isinstance(control, dict) else None
-            if apply_node and (strength is not None):
-                # Merge with default start/end percent
-                start_pct = defaults.get("start_percent", 0.0)
-                end_pct = defaults.get("end_percent", 0.33)
-                overrides[apply_node] = {
-                    "inputs": {
-                        "strength": float(strength),
-                        "start_percent": float(start_pct),
-                        "end_percent": float(end_pct),
-                    }
-                }
-            # Image filename override when available (must exist in ComfyUI input storage)
-            image_filename = control.get("image_filename") if isinstance(control, dict) else None
-            if image_node and image_filename:
-                overrides[image_node] = {"inputs": {"image": image_filename}}
-    except Exception:
-        # Fail-safe: ignore controlnet override errors
-        pass
-
     return overrides
 
 def get_workflow_default_prompt(workflow_id: str) -> str:
@@ -255,12 +224,6 @@ def get_default_values() -> Dict[str, Any]:
         wf_id: wf_config.get("default_user_prompt", "")
         for wf_id, wf_config in WORKFLOW_CONFIGS.items()
     }
-    # 워크플로우별 사용 가능한 ControlNet 슬롯 이름 배열(없으면 ["default"]) 추가
-    defaults["workflow_control_slots"] = {
-        wf_id: (list(wf_config.get("control_slots", {}).keys()) if isinstance(wf_config.get("control_slots", {}), dict) and wf_config.get("control_slots") else ["default"])
-        for wf_id, wf_config in WORKFLOW_CONFIGS.items()
-    }
-    
     # 더 이상 사용하지 않는 키 제거
     # defaults.pop("width", None) 
     # defaults.pop("height", None)

@@ -6,7 +6,7 @@ from ..logging_utils import setup_logging
 from ..comfy_client import ComfyUIClient
 from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, COMFY_INPUT_DIR
 from .media_store import (
-    _locate_control_png_path,
+    _locate_input_png_path,
     _save_image_and_meta,
     _build_web_path,
 )
@@ -49,14 +49,13 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             self.aspect_ratio = d.get("aspect_ratio")
             self.workflow_id = d.get("workflow_id")
             self.seed = d.get("seed")
+            self.image_size = d.get("image_size")
             # RMBG2 optional params
             self.rmbg_mask_blur = d.get("rmbg_mask_blur")
             self.rmbg_mask_offset = d.get("rmbg_mask_offset")
-            self.control_enabled = d.get("control_enabled")
-            self.control_image_id = d.get("control_image_id")
-            self.controls = d.get("controls")
             # Include optional image-to-image fields
             self.input_image_id = d.get("input_image_id")
+            self.input_image_ids = d.get("input_image_ids")
             self.input_image_filename = d.get("input_image_filename")
 
     request = _Req(req_dict)
@@ -83,6 +82,236 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         })
     except Exception:
         pass
+
+    # --- Provider routing (Google vs ComfyUI) ---
+    wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+    provider = (wf_cfg.get("provider", "comfyui") if isinstance(wf_cfg, dict) else "comfyui") or "comfyui"
+    provider = str(provider).strip().lower()
+    if provider == "google":
+        import threading
+        import base64
+
+        cancel_event = threading.Event()
+
+        def _cancel_google() -> bool:
+            try:
+                cancel_event.set()
+            except Exception:
+                pass
+            return True
+
+        try:
+            set_cancel_handle(_cancel_google)
+        except Exception:
+            pass
+
+        # Fake progress milestones (best-effort)
+        progress_cb(5)
+        if cancel_event.is_set():
+            raise RuntimeError("생성이 취소되었습니다.")
+
+        google_cfg = wf_cfg.get("google") if isinstance(wf_cfg, dict) else None
+        model = None
+        mode = None
+        try:
+            if isinstance(google_cfg, dict):
+                model = google_cfg.get("model")
+                mode = google_cfg.get("mode")
+        except Exception:
+            model = None
+            mode = None
+
+        mode_norm = str(mode or "").strip().lower()
+        is_txt2img = mode_norm in ("text-to-image", "text_to_image", "txt2img", "")
+        is_img2img = mode_norm in ("image-edit", "image_edit", "img2img")
+
+        progress_cb(20)
+        if cancel_event.is_set():
+            raise RuntimeError("생성이 취소되었습니다.")
+
+        from .google_nano_banana import build_google_prompt, generate_text_to_image, generate_image_edit
+
+        final_prompt = build_google_prompt(request, wf_cfg)
+
+        progress_cb(45)
+        if cancel_event.is_set():
+            raise RuntimeError("생성이 취소되었습니다.")
+
+        chosen_model = str(model or "").strip()
+
+        # 정책: NanoBanana 계열은 출력 메타 기록을 위해 image_size를 2K로 고정(서버 기준)
+        # (UI 선택지는 없음)
+        req_size = "2K"
+        try:
+            request.image_size = req_size
+        except Exception:
+            pass
+
+        if is_txt2img:
+            # Map UI aspect ratio -> Gemini API aspectRatio
+            ar = str(getattr(request, "aspect_ratio", "") or "").strip().lower()
+            google_aspect = "1:1"
+            if ar == "landscape":
+                google_aspect = "16:9"
+            elif ar == "portrait":
+                google_aspect = "9:16"
+            else:
+                google_aspect = "1:1"
+
+            image_bytes = generate_text_to_image(
+                model=chosen_model,
+                prompt=final_prompt,
+                aspect_ratio=google_aspect,
+                image_size=req_size,
+                timeout=(5.0, 90.0),
+            )
+        elif is_img2img:
+            # Phase C: 멀티 입력 이미지 편집(img2img)
+            # 규칙: input_image_ids가 비어있지 않으면 우선 사용, 없으면 input_image_id 사용
+            # 제한: 최대 14장
+            def _normalize_ids(v) -> list[str]:
+                out: list[str] = []
+                seen = set()
+                if not isinstance(v, list):
+                    return out
+                for x in v:
+                    try:
+                        s = str(x or "").strip()
+                    except Exception:
+                        s = ""
+                    if not s:
+                        continue
+                    if s in seen:
+                        continue
+                    seen.add(s)
+                    out.append(s)
+                return out
+
+            ids: list[str] = []
+            try:
+                ids = _normalize_ids(getattr(request, "input_image_ids", None))
+            except Exception:
+                ids = []
+
+            if not ids:
+                img_id = None
+                try:
+                    img_id = getattr(request, "input_image_id", None)
+                except Exception:
+                    img_id = None
+                if isinstance(img_id, str) and img_id.strip():
+                    ids = [img_id.strip()]
+
+            # Clamp to max 14
+            ids = ids[:14]
+
+            if not ids:
+                raise RuntimeError("편집할 입력 이미지가 없습니다. 먼저 이미지를 1장 이상 업로드/선택한 뒤 다시 시도해 주세요.")
+
+            # Backward-compat: always keep input_image_id as the first item
+            try:
+                request.input_image_ids = ids
+            except Exception:
+                pass
+            try:
+                request.input_image_id = ids[0]
+            except Exception:
+                pass
+
+            def _load_input_png_bytes(anon_id: str, image_id: str, ordinal: int) -> bytes:
+                # 1) inputs 저장소
+                local_png = None
+                resolve_source = None
+                try:
+                    from .media_store import _locate_input_png_path
+
+                    local_png = _locate_input_png_path(anon_id, image_id)
+                    if local_png:
+                        resolve_source = "inputs"
+                except Exception:
+                    local_png = None
+
+                # 2) generated images (gallery)
+                try:
+                    from .media_store import _locate_image_meta_path
+
+                    meta_path = _locate_image_meta_path(anon_id, image_id)
+                    if meta_path and os.path.exists(meta_path):
+                        base_dir = os.path.dirname(meta_path)
+                        cand = os.path.join(base_dir, f"{image_id}.png")
+                        if os.path.exists(cand):
+                            local_png = cand
+                            resolve_source = "images"
+                except Exception:
+                    pass
+
+                # 3) legacy controls store removed (no longer supported)
+
+                try:
+                    logger.info(
+                        {
+                            "event": "google_image_input_resolved",
+                            "job_id": job.id,
+                            "owner_id": anon_id,
+                            "input_image_id": image_id,
+                            "ordinal": ordinal,
+                            "local_png": local_png,
+                            "source": resolve_source,
+                        }
+                    )
+                except Exception:
+                    pass
+
+                if not local_png or not os.path.exists(local_png):
+                    raise RuntimeError(f"{ordinal}번째 입력 이미지를 찾지 못했습니다. 다시 업로드한 뒤 선택해 주세요.")
+
+                try:
+                    with open(local_png, "rb") as f:
+                        return f.read()
+                except Exception:
+                    raise RuntimeError(f"{ordinal}번째 입력 이미지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
+
+            input_png_bytes_list: list[bytes] = []
+            for i, image_id in enumerate(ids):
+                if cancel_event.is_set():
+                    raise RuntimeError("생성이 취소되었습니다.")
+                input_png_bytes_list.append(_load_input_png_bytes(job.owner_id, image_id, i + 1))
+
+            # 출력 비율 옵션:
+            # - "auto": 입력 비율 유지(기본/권장) => aspectRatio 생략
+            # - square/landscape/portrait => Gemini API aspectRatio로 전달
+            ar = str(getattr(request, "aspect_ratio", "") or "").strip().lower()
+            google_aspect = None
+            if ar and ar != "auto":
+                if ar == "landscape":
+                    google_aspect = "16:9"
+                elif ar == "portrait":
+                    google_aspect = "9:16"
+                else:
+                    google_aspect = "1:1"
+
+            image_bytes = generate_image_edit(
+                model=chosen_model,
+                prompt=final_prompt,
+                images=input_png_bytes_list,
+                aspect_ratio=google_aspect,
+                image_size=req_size,
+                timeout=(5.0, 90.0),
+            )
+        else:
+            raise RuntimeError("이 나노바나나 워크플로우의 모드 설정이 올바르지 않습니다. 서버 워크플로우 설정을 확인해 주세요.")
+
+        progress_cb(85)
+        if cancel_event.is_set():
+            raise RuntimeError("생성이 취소되었습니다.")
+
+        progress_cb(95)
+        saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, f"google:{chosen_model or 'gemini'}")
+        web_path = _build_web_path(saved_image_path)
+        job.result["image_path"] = web_path
+        progress_cb(100)
+        return
+
     workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
     # Some workflows rely on a hidden reference image already present in ComfyUI's input directory.
     # Example: a fixed LoadImage node used as a style/character reference (user does not upload it).
@@ -118,115 +347,14 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     except Exception:
         # Fail-safe: do not block generation due to preflight-check errors.
         pass
-    control = None
-    multi_controls: List[dict] = []
-    uploaded_multi_filenames: List[str] = []
-    uploaded_input_filename: Optional[str] = None  # control single
     uploaded_image_input_filename: Optional[str] = None  # image_input single
     uploaded_image_input_requested_name: Optional[str] = None
-
-    # Prepare ControlNet overrides if enabled
-    try:
-        if getattr(request, "control_enabled", None):
-            wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
-            slots_cfg = wf_cfg.get("control_slots") if isinstance(wf_cfg, dict) else None
-            provided_controls = []
-            try:
-                if isinstance(req_dict.get("controls"), list):
-                    provided_controls = [c for c in req_dict["controls"] if isinstance(c, dict) and c.get("slot") and c.get("image_id")]
-            except Exception:
-                provided_controls = []
-
-            if slots_cfg and provided_controls:
-                anon_id = job.owner_id
-                client_tmp = ComfyUIClient(SERVER_ADDRESS)
-                for item in provided_controls:
-                    slot = str(item.get("slot"))
-                    image_id = str(item.get("image_id"))
-                    if slot not in slots_cfg:
-                        continue
-                    local_png = _locate_control_png_path(anon_id, image_id)
-                    if not local_png or not os.path.exists(local_png):
-                        continue
-                    try:
-                        with open(local_png, "rb") as f:
-                            data = f.read()
-                        stored = None
-                        for _attempt in range(3):
-                            try:
-                                stored = client_tmp.upload_image_to_input(f"{image_id}_{job.id}.png", data, "image/png")
-                                if isinstance(stored, str) and stored:
-                                    break
-                            except Exception:
-                                time.sleep(0.15)
-                        if isinstance(stored, str) and stored:
-                            try:
-                                _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
-                            except Exception:
-                                pass
-                            multi_controls.append({
-                                "slot": slot,
-                                "image_filename": stored,
-                                "strength": 1.0,
-                            })
-                            try:
-                                uploaded_multi_filenames.append(stored)
-                            except Exception:
-                                pass
-                            try:
-                                time.sleep(0.1)
-                            except Exception:
-                                pass
-                        else:
-                            logger.info({"event": "controlnet_upload_failed_multi", "job_id": job.id, "owner_id": job.owner_id, "slot": slot, "error": "upload returned empty"})
-                    except Exception as e:
-                        logger.info({"event": "controlnet_upload_failed_multi", "job_id": job.id, "owner_id": job.owner_id, "slot": slot, "error": str(e)})
-                control = None
-            else:
-                control = {"strength": 0.0}
-                if isinstance(request.control_image_id, str) and len(request.control_image_id) > 0:
-                    anon_id = job.owner_id
-                    local_png = _locate_control_png_path(anon_id, request.control_image_id)
-                    if local_png and os.path.exists(local_png):
-                        try:
-                            with open(local_png, "rb") as f:
-                                data = f.read()
-                            client_tmp = ComfyUIClient(SERVER_ADDRESS)
-                            stored = None
-                            for _attempt in range(3):
-                                try:
-                                    stored = client_tmp.upload_image_to_input(f"{request.control_image_id}_{job.id}.png", data, "image/png")
-                                    if isinstance(stored, str) and stored:
-                                        break
-                                except Exception:
-                                    time.sleep(0.15)
-                            if isinstance(stored, str) and stored:
-                                try:
-                                    _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
-                                except Exception:
-                                    pass
-                                uploaded_input_filename = stored
-                                control = {"strength": 1.0, "image_filename": stored}
-                                try:
-                                    time.sleep(0.1)
-                                except Exception:
-                                    pass
-                            else:
-                                logger.info({"event": "controlnet_upload_failed", "job_id": job.id, "owner_id": job.owner_id, "error": "upload returned empty"})
-                        except Exception as e:
-                            logger.info({"event": "controlnet_upload_failed", "job_id": job.id, "owner_id": job.owner_id, "error": str(e)})
-                            pass
-        else:
-            control = {"strength": 0.0}
-    except Exception:
-        control = None
 
     prompt_overrides = get_prompt_overrides(
         user_prompt=getattr(request, "user_prompt", ""),
         aspect_ratio=getattr(request, "aspect_ratio", "square"),
         workflow_name=getattr(request, "workflow_id", "BasicWorkFlow_PixelArt"),
         seed=getattr(request, "seed", None),
-        control=control,
     )
 
     # --- Optional: RMBG2 parameter overrides (mask_blur / mask_offset) ---
@@ -314,143 +442,6 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     except Exception:
         pass
 
-    # Diagnostics: final control application intent
-    try:
-        cn_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}).get("controlnet")
-        apply_node = cn_cfg.get("apply_node") if isinstance(cn_cfg, dict) else None
-        image_node = cn_cfg.get("image_node") if isinstance(cn_cfg, dict) else None
-        logger.info({
-            "event": "controlnet_final_overrides",
-            "owner_id": job.owner_id,
-            "job_id": job.id,
-            "control_enabled": bool(getattr(request, "control_enabled", False)),
-            "control_image_id": getattr(request, "control_image_id", None),
-            "single_image": (control or {}).get("image_filename") if isinstance(control, dict) else None,
-            "multi_count": len(multi_controls),
-            "apply_node_inputs": (prompt_overrides.get(apply_node, {}) if apply_node else {}),
-            "image_node_inputs": (prompt_overrides.get(image_node, {}) if image_node else {}),
-        })
-    except Exception:
-        pass
-
-    # Apply multi-control overrides (with per-slot params)
-    try:
-        if multi_controls:
-            wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
-            slots_cfg = wf_cfg.get("control_slots") if isinstance(wf_cfg, dict) else None
-            defaults = {}
-            try:
-                defaults = wf_cfg.get("controlnet", {}).get("defaults", {}) or {}
-            except Exception:
-                defaults = {}
-            if slots_cfg and isinstance(prompt_overrides, dict):
-                for mc in multi_controls:
-                    slot = mc.get("slot")
-                    mapping = slots_cfg.get(slot) if isinstance(slots_cfg, dict) else None
-                    if not mapping:
-                        continue
-                    apply_node = mapping.get("apply_node")
-                    image_node = mapping.get("image_node")
-                    image_filename = mc.get("image_filename")
-                    # Per-slot UI defaults (optional)
-                    ui_cfg = (mapping.get("ui") if isinstance(mapping, dict) else {}) or {}
-                    def _d(key, fallback):
-                        try:
-                            return float(((ui_cfg.get(key) or {}).get("default")))
-                        except Exception:
-                            return float(fallback)
-                    start_def = _d("start_percent", defaults.get("start_percent", 0.0))
-                    end_def = _d("end_percent", defaults.get("end_percent", 0.33))
-                    strength_def = _d("strength", defaults.get("strength", 0.0))
-                    # If request.controls contains this slot, use its params
-                    req_strength = None
-                    req_start = None
-                    req_end = None
-                    try:
-                        if isinstance(req_dict.get("controls"), list):
-                            for it in req_dict["controls"]:
-                                if isinstance(it, dict) and it.get("slot") == slot:
-                                    if "strength" in it and isinstance(it["strength"], (int, float)):
-                                        req_strength = float(it["strength"]) 
-                                    if "start_percent" in it and isinstance(it["start_percent"], (int, float)):
-                                        req_start = float(it["start_percent"]) 
-                                    if "end_percent" in it and isinstance(it["end_percent"], (int, float)):
-                                        req_end = float(it["end_percent"]) 
-                                    break
-                    except Exception:
-                        pass
-                    # Clamp and compose, force strength=0 if no image_filename
-                    def _clamp(v, lo, hi, default_v):
-                        try:
-                            x = float(v) if v is not None else float(default_v)
-                            return max(float(lo), min(float(hi), x))
-                        except Exception:
-                            return float(default_v)
-                    # Resolve ranges
-                    def _range_of(key, fallback_min, fallback_max):
-                        try:
-                            cfg = ui_cfg.get(key) or {}
-                            lo = float(cfg.get("min", fallback_min))
-                            hi = float(cfg.get("max", fallback_max))
-                            return (lo, hi)
-                        except Exception:
-                            return (fallback_min, fallback_max)
-                    s_lo, s_hi = _range_of("strength", 0.0, 1.5)
-                    p_lo, p_hi = _range_of("start_percent", 0.0, 1.0)
-                    e_lo, e_hi = _range_of("end_percent", 0.0, 1.0)
-                    strength_val = _clamp(req_strength, s_lo, s_hi, strength_def)
-                    start_val = _clamp(req_start, p_lo, p_hi, start_def)
-                    end_val = _clamp(req_end, e_lo, e_hi, end_def)
-                    if not image_filename:
-                        strength_val = 0.0
-                    # Ensure start <= end
-                    if start_val > end_val:
-                        start_val, end_val = end_val, start_val
-                    if apply_node:
-                        prompt_overrides[apply_node] = {
-                            "inputs": {
-                                "strength": strength_val,
-                                "start_percent": start_val,
-                                "end_percent": end_val,
-                            }
-                        }
-                    if image_node and image_filename:
-                        prompt_overrides[image_node] = {"inputs": {"image": image_filename}}
-    except Exception:
-        pass
-
-    # Gate: if control enabled, ensure image override present (strict)
-    if getattr(request, "control_enabled", False):
-        wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
-        cn_cfg = wf_cfg.get("controlnet") if isinstance(wf_cfg, dict) else None
-        image_node = cn_cfg.get("image_node") if isinstance(cn_cfg, dict) else None
-        has_single = bool(isinstance(control, dict) and control.get("image_filename"))
-        has_override = bool(
-            image_node and isinstance(prompt_overrides, dict) and image_node in prompt_overrides and
-            isinstance(prompt_overrides[image_node], dict) and isinstance(prompt_overrides[image_node].get("inputs"), dict) and
-            prompt_overrides[image_node]["inputs"].get("image")
-        )
-        has_multi = bool(multi_controls)
-        # Relaxed gating: if enabled but no image, we keep strength at 0 and proceed
-
-    # Debug logging for ControlNet application
-    try:
-        cn_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}).get("controlnet")
-        apply_node = cn_cfg.get("apply_node") if isinstance(cn_cfg, dict) else None
-        image_node = cn_cfg.get("image_node") if isinstance(cn_cfg, dict) else None
-        logger.info({
-            "event": "controlnet_overrides",
-            "owner_id": job.owner_id,
-            "job_id": job.id,
-            "control_enabled": bool(getattr(request, "control_enabled", False)),
-            "control_image_id": getattr(request, "control_image_id", None),
-            "uploaded_input_filename": uploaded_input_filename,
-            "apply_node_inputs": (prompt_overrides.get(apply_node, {}) if apply_node else {}),
-            "image_node_inputs": (prompt_overrides.get(image_node, {}) if image_node else {}),
-        })
-    except Exception:
-        pass
-
     client = ComfyUIClient(SERVER_ADDRESS)
     # Allow cancellation from job manager via provided setter
     try:
@@ -463,7 +454,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
         io_cfg = wf_cfg.get("image_input") if isinstance(wf_cfg, dict) else None
         # image_input: { image_node: str (node_id), input_field: str (default 'image') }
-        # Support: request.input_image_id (user gallery/controls saved PNG) or request.input_image_filename (already uploaded to Comfy)
+        # Support: request.input_image_id (사용자 입력/생성 보관함에 저장된 PNG) 또는 request.input_image_filename (이미 Comfy input에 업로드된 파일명)
         if io_cfg and isinstance(io_cfg, dict):
             image_node = io_cfg.get("image_node")
             input_field = io_cfg.get("input_field", "image")
@@ -476,7 +467,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                 image_filename = None
             if image_filename:
                 resolve_source = "preuploaded"
-            # Else, if request.input_image_id refers to user input/gallery/control PNG, upload it
+            # Else, if request.input_image_id refers to user input/gallery PNG, upload it
             if not image_filename:
                 try:
                     img_id = getattr(request, "input_image_id", None)
@@ -504,11 +495,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                                 resolve_source = "images"
                     except Exception:
                         pass
-                    # 3) controls
-                    if not local_png:
-                        local_png = _locate_control_png_path(job.owner_id, img_id)
-                        if local_png:
-                            resolve_source = "controls"
+                    # 3) legacy controls store removed (no longer supported)
                     try:
                         logger.info({
                             "event": "image_input_resolved",
@@ -685,19 +672,10 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                         if ok:
                             break
 
-                if uploaded_input_filename:
-                    _try_delete(uploaded_input_filename, "control_single")
                 if uploaded_image_input_filename:
                     _try_delete(uploaded_image_input_filename, "img2img_single")
                 if uploaded_image_input_requested_name:
                     _try_delete(uploaded_image_input_requested_name, "img2img_single_requested")
-                try:
-                    for fname in list(uploaded_multi_filenames):
-                        if not fname:
-                            continue
-                        _try_delete(fname, "control_multi")
-                except Exception:
-                    pass
 
                 # 마지막 안전장치:
                 # ComfyUI가 업로드 파일명에 (1) 같은 접미사를 붙이거나, 반환값 파싱이 어긋나는 경우가 있습니다.

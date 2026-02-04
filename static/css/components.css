@@ -1,129 +1,9 @@
-/* ControlNet slots layout */
-.control-slots {
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-	width: 100%;
-	margin-top: 8px;
-}
-.control-slots-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 12px;
-    width: 100%;
-}
-.control-slot-card {
-	background: var(--bg-tertiary);
-	border: 1px solid var(--bg-surface);
-    border-radius: 8px;
-    padding: 8px;
-	display: flex;
-	flex-direction: column;
-    gap: 6px;
-	overflow: visible;
-}
-.control-slot-thumb {
-	position: relative;
-	width: 100%;
-    padding-top: 90%; /* slightly shorter to reduce height */
-    border-radius: 6px;
-	background: var(--bg-surface);
-	overflow: hidden;
-}
-.control-slot-thumb img {
-	position: absolute;
-	inset: 0;
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-.control-slot-thumb .empty {
-	position: absolute;
-	inset: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	color: var(--text-muted);
-}
-.control-slot-sliders { display: block; }
-.slot-field { display: grid; grid-template-columns: 40px 1fr 56px; align-items: center; gap: 6px; }
-.slot-label { width: 40px; text-align: right; color: var(--text-muted); font-size: 11px; }
-.slot-num { width: 56px; font-size: 12px; }
-.control-slot-title { font-weight: 600; font-size: 11px; color: var(--text-secondary); }
-
-/* Ensure range fills available width and doesn't overflow */
-.control-slot-sliders input[type="range"] {
-    width: 100%;
-    box-sizing: border-box;
-    height: 4px;
-    appearance: none;
-    -webkit-appearance: none;
-    background: var(--neutral-300);
-    border-radius: 999px;
-}
-
-/* Trendy slider thumb (smaller, pill track) */
-.control-slot-sliders input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px;
-    height: 12px;
-    background: var(--primary-400);
-    border: 2px solid var(--primary-500);
-    border-radius: 50%;
-    box-shadow: 0 0 0 2px rgba(0,0,0,0.15);
-    cursor: pointer;
-}
-.control-slot-sliders input[type="range"]::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
-    background: var(--primary-400);
-    border: 2px solid var(--primary-500);
-    border-radius: 50%;
-    box-shadow: 0 0 0 2px rgba(0,0,0,0.15);
-    cursor: pointer;
-}
-.control-slot-sliders input[type="range"]::-webkit-slider-runnable-track {
-    height: 4px;
-    background: linear-gradient(90deg, var(--primary-400) 0%, var(--primary-400) var(--value,0%), var(--neutral-300) var(--value,0%));
-    border-radius: 999px;
-}
-.control-slot-sliders input[type="range"]::-moz-range-track {
-    height: 4px;
-    background: var(--neutral-300);
-    border-radius: 999px;
-}
-
 /* Smaller sliders for LoRA section */
 .lora-row input[type="range"] {
     height: 4px;
 }
 .lora-row input[type="range"]::-webkit-slider-thumb { width: 12px; height: 12px; }
 .lora-row input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; }
-.control-slot-row {
-	display: grid;
-	grid-template-columns: 110px 1fr 100px;
-	align-items: center;
-	gap: 8px;
-	width: 100%;
-}
-.control-slot-row .badge {
-	min-width: 92px;
-	text-align: center;
-}
-.control-slot-sliders { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-.control-slot-sliders .slot-field { display: grid; grid-template-columns: 48px 1fr 64px; align-items: center; gap: 6px; }
-.control-slot-sliders .slot-label { width: 48px; text-align: right; color: var(--text-muted); }
-.control-slot-note { text-align: right; font-size: 11px; color: var(--text-muted); }
-
-@media (max-width: 960px) {
-	.control-slot-row {
-		grid-template-columns: 1fr;
-	}
-	.control-slot-row .badge {
-		justify-self: start;
-	}
-	.control-slot-note { text-align: left; }
-}
 /* Dark Theme Modern Form Components */
 
 /* Form Grid */
@@ -897,8 +777,9 @@
     height: var(--brand-banner-height, 80px);
     border-radius: 0;
     overflow: hidden;
-    background: var(--bg-card);
-    border: 1px solid var(--bg-surface);
+    /* 배너 이미지가 투명(PNG)인 경우, 주변 영역과 자연스럽게 섞이도록 */
+    background: transparent;
+    border: none;
     box-shadow: none;
 }
 .brand-banner::before {
@@ -2178,6 +2059,43 @@
     box-sizing: border-box;
 }
 
+#gallery-panel .gallery-grid.gallery-grid--grouped {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+#gallery-panel .gallery-date-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#gallery-panel .gallery-date-title {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--text-secondary);
+    padding: 2px 2px 0 2px;
+}
+
+#gallery-panel .gallery-date-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 128px));
+    gap: 10px;
+    align-content: start;
+    justify-content: start;
+    align-items: stretch;
+    justify-items: stretch;
+    grid-auto-rows: auto;
+    grid-auto-flow: row;
+    box-sizing: border-box;
+}
+
+#gallery-panel .gallery-date-group--skeleton .gallery-date-title {
+    display: none;
+}
+
 /* Stabilize items inside drawer grid to avoid overlap on hover */
 #gallery-panel .gallery-item { box-sizing: border-box; margin: 0; aspect-ratio: 1 / 1; }
 #gallery-panel .gallery-item:hover { transform: none; box-shadow: var(--shadow-sm); }
@@ -2479,6 +2397,26 @@
     margin-bottom: var(--space-sm);
 }
 
+/* 4개(예: Auto + 3 ratios)도 한 줄로 */
+.aspect-ratio-group.aspect-ratio-group--4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-sm);
+}
+
+.aspect-ratio-group.aspect-ratio-group--4 .aspect-ratio-btn {
+    min-height: 68px;
+    padding: var(--space-sm) var(--space-xs);
+}
+
+.aspect-ratio-group.aspect-ratio-group--4 .aspect-ratio-btn i {
+    font-size: 18px;
+    margin-bottom: 6px;
+}
+
+.aspect-ratio-group.aspect-ratio-group--4 .aspect-ratio-btn .label {
+    font-size: 0.82rem;
+}
+
 .aspect-ratio-btn {
     background-color: var(--bg-tertiary);
     border: 2px solid var(--bg-tertiary);
@@ -2527,6 +2465,30 @@
 /* Selected state content should be white for clarity */
 .aspect-ratio-btn.selected .label {
     color: #FFFFFF;
+}
+
+/* NanoBanana input multi grid tiles: keep trash clean */
+.nb-input-trash {
+    opacity: 0;
+    transform: scale(0.96);
+    pointer-events: none;
+    transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-input-tile:hover .nb-input-trash,
+.nb-input-tile:focus-within .nb-input-trash {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+/* Touch devices: show trash button always */
+@media (hover: none) {
+    .nb-input-trash {
+        opacity: 1;
+        transform: scale(1);
+        pointer-events: auto;
+    }
 }
 
 .aspect-ratio-btn .resolution { /* 해상도 숫자는 더 이상 표시되지 않으므로, 이 스타일은 더 이상 필요 없지만 만일을 위해 남겨둠 */

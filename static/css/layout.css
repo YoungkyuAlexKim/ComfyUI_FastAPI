@@ -43,7 +43,8 @@
     padding: var(--space-lg) var(--space-md);
     border-bottom: 1px solid var(--bg-surface);
     text-align: center;
-    background: var(--bg-card);
+    /* 로고 배너가 투명 PNG일 때도, 페이지 전체 배경과 동일하게 보이도록 통일 */
+    background: var(--bg-primary);
     position: sticky; top: 0; z-index: 21; /* 스크롤 시 상단 고정 */
 }
 
@@ -55,26 +56,9 @@
     background: transparent; /* 본문 영역 카드 제거 */
 }
 
-.workflow-section-header {
-    padding: var(--space-sm) var(--space-md) var(--space-sm);
-    /* 섹션 헤더 크기 고정 */
-    flex-shrink: 0;
-}
-
-.sidebar-title {
-    font-size: var(--font-size-lg);
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-sm);
-}
-
 .workflow-list {
     flex: 1;
-    padding: var(--space-sm) 0 var(--space-sm) 0; /* 헤더와 리스트 사이 여백 추가 */
+    padding: 0 0 var(--space-sm) 0;
     overflow-y: auto;
     min-height: 0; /* 남는 공간을 모두 사용하고, 내부 스크롤만 발생 */
     flex-shrink: 1;
@@ -241,100 +225,6 @@
     align-items: center;
     gap: var(--space-sm);
     margin-left: auto;
-}
-
-/* Dark Theme ControlNet Strip */
-.controlnet-strip {
-    display: block;
-    padding: var(--space-lg) 0;
-    background: transparent;
-    border-radius: 0;
-    margin-top: var(--space-lg);
-}
-
-#control-floating {
-    width: 80px;
-    height: 80px;
-    border-radius: var(--radius-xl);
-    border: 1px solid var(--secondary-500);
-    background: var(--bg-card);
-    backdrop-filter: blur(10px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all var(--transition-normal);
-    position: relative;
-}
-
-#control-floating:hover {
-    border-color: var(--lc-primary);
-    box-shadow: var(--shadow-glow);
-}
-
-#control-slot-inner {
-    width: 100%;
-    height: 100%;
-    border-radius: var(--radius-lg);
-    /* remove dashed hint for cleaner look */
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-#control-floating-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: none;
-    opacity: 0;
-    transition: opacity 0.4s ease-in-out;
-}
-
-#control-floating-img.show {
-    display: block;
-    opacity: 1;
-    animation: fadeIn 0.4s ease-in-out;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-#control-floating-empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    color: var(--text-muted);
-    font-size: var(--font-size-xl);
-}
-
-#control-clear {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 20px;
-    height: 20px;
-    border: none;
-    background: var(--error);
-    color: white;
-    border-radius: var(--radius-full);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 10px;
-    box-shadow: var(--shadow-sm);
 }
 
 /* Output Panel */
@@ -578,7 +468,6 @@
 .card-content { padding: var(--space-2xl); }
 /* Reduce only the bottom padding for the input card content to tighten empty area */
 .input-card .card-content { padding-bottom: 2px; }
-/* Slightly increase space between ControlNet strip and status text */
 .input-card .status-container { margin-top: 10px; }
 
 /* Dark Theme Placeholder Section */

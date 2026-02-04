@@ -37,20 +37,13 @@ from .services.media_store import (
     _date_partition_path,
     _build_web_path,
     _save_image_and_meta,
-    _control_base_dir,
-    _save_control_image_and_meta,
-    _gather_user_controls,
     _gather_user_images,
-    _locate_control_meta_path,
-    _locate_control_png_path,
-    _update_control_status,
     _locate_image_meta_path,
     _update_image_status,
 )
 from .routers.admin import router as admin_router
 from .routers.workflows import router as workflows_router
 from .routers.images import router as images_router
-from .routers.controls import router as controls_router
 from .routers.inputs import router as inputs_router
 from .routers.health import router as health_router
 from .routers.jobs import router as jobs_router
@@ -62,6 +55,7 @@ from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActive
 from .services.generation import run_generation_processor
 from .beta_access import beta_enabled, is_request_authed, beta_cookie_name, expected_cookie_value
 from .auth.user_management import _parse_bool as _parse_bool_cookie_secure
+from .rate_limiter import SlidingWindowRateLimiter
 
 logger = setup_logging()
 
@@ -71,7 +65,6 @@ app.include_router(admin_router)
 app.include_router(ws_router)
 app.include_router(workflows_router)
 app.include_router(images_router)
-app.include_router(controls_router)
 app.include_router(inputs_router)
 app.include_router(health_router)
 app.include_router(jobs_router)
@@ -177,17 +170,18 @@ class GenerateRequest(BaseModel):
     aspect_ratio: str  # 'width', 'height' 대신 'aspect_ratio' 사용
     workflow_id: str
     seed: Optional[int] = None
+    # Optional output image size (for supported providers/workflows, e.g. Google Nano Banana)
+    # Allowed examples: "1K", "2K"
+    image_size: Optional[str] = None
     # RMBG2 (Background Removal) params - only used when workflow supports it
     rmbg_mask_blur: Optional[int] = None
     rmbg_mask_offset: Optional[int] = None
-    # Direct image-to-image input (non-ControlNet)
-    input_image_id: Optional[str] = None  # 기존에 저장된 이미지/컨트롤의 id
+    # Direct image-to-image input
+    input_image_id: Optional[str] = None  # 기존에 저장된 이미지 id
+    # Optional multi-image input (used by specific providers/workflows; backward-compatible)
+    # 규칙: input_image_ids가 비어있지 않으면 우선 사용, 아니면 input_image_id 사용
+    input_image_ids: Optional[List[str]] = None
     input_image_filename: Optional[str] = None  # 이미 Comfy input에 업로드된 파일명(있으면 재업로드 생략)
-    # ControlNet options
-    control_enabled: Optional[bool] = None  # True => strength 1.0, False/None => 0.0
-    control_image_id: Optional[str] = None  # previously saved control image id
-    # Forward-compatible: optional multi-slot controls (ignored when not configured)
-    controls: Optional[List[dict]] = None
     # Optional LoRA strengths (per-slot) – forward-compatible
     # Example: [{"slot":"character","unet":1.0,"clip":1.0},{"slot":"style","unet":0.8,"clip":0.8}]
     loras: Optional[List[dict]] = None
@@ -214,6 +208,34 @@ try:
     app.state.feed_store = feed_store
 except Exception as e:
     logger.debug({"event": "app_state_init_failed", "error": str(e)})
+
+
+# --- Simple per-user rate limit for /api/v1/generate (optional; env-controlled) ---
+_gen_rate_limiter: SlidingWindowRateLimiter | None = None
+_gen_rate_limit_cached: int | None = None
+
+
+def _get_gen_rate_limiter() -> tuple[SlidingWindowRateLimiter | None, int]:
+    """
+    Returns (limiter_or_none, limit_per_min).
+    - When limit_per_min <= 0: disabled.
+    """
+    global _gen_rate_limiter, _gen_rate_limit_cached
+    try:
+        limit = int(os.getenv("GEN_RATE_LIMIT_PER_MIN", "0") or "0")
+    except Exception:
+        limit = 0
+    limit = max(0, int(limit))
+
+    if limit <= 0:
+        _gen_rate_limiter = None
+        _gen_rate_limit_cached = limit
+        return None, limit
+
+    if _gen_rate_limiter is None or _gen_rate_limit_cached != limit:
+        _gen_rate_limiter = SlidingWindowRateLimiter(max_per_window=limit, window_seconds=60)
+        _gen_rate_limit_cached = limit
+    return _gen_rate_limiter, limit
 
 
 def _admin_auth_enabled() -> bool:
@@ -332,7 +354,45 @@ async def create_page(request: Request):
             "default_recommended_prompt": default_values.get("recommended_prompt", ""),
             "workflows_sizes_json": json.dumps(default_values.get("workflows_sizes", {})),
             "workflow_default_prompts_json": json.dumps(default_values.get("workflow_default_prompts", {})),
-            "workflow_control_slots_json": json.dumps(default_values.get("workflow_control_slots", {})),
+            "workflow_prompt_templates_json": json.dumps(default_values.get("workflow_prompt_templates", {})),
+        },
+    )
+    _ensure_anon_id_cookie(request, response, anon_id)
+    return response
+
+
+@app.get("/newfeature", response_class=HTMLResponse, tags=["Page"])
+async def newfeature_page(request: Request):
+    """
+    내부 테스트/신기능 페이지.
+    - /create: 기본 워크플로우만 노출 (Google/NanoBanana 제외)
+    - /newfeature: Google/NanoBanana 워크플로우도 노출
+    """
+    default_values = get_default_values()
+    api_key_present = bool(os.getenv("GOOGLE_AI_STUDIO_API_KEY") or os.getenv("GEMINI_API_KEY"))
+    prompt_translate_enabled = _parse_bool_cookie_secure(
+        os.getenv("ENABLE_PROMPT_TRANSLATE"),
+        api_key_present,
+    )
+    prompt_translate_enabled = bool(prompt_translate_enabled and api_key_present)
+    existing = request.cookies.get(ANON_COOKIE_NAME)
+    if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
+        anon_id = existing
+    else:
+        anon_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
+    response = templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "anon_id": anon_id,
+            "current_page": "newfeature",
+            "prompt_translate_enabled": prompt_translate_enabled,
+            "default_user_prompt": "",
+            "default_style_prompt": default_values.get("style_prompt", ""),
+            "default_negative_prompt": default_values.get("negative_prompt", ""),
+            "default_recommended_prompt": default_values.get("recommended_prompt", ""),
+            "workflows_sizes_json": json.dumps(default_values.get("workflows_sizes", {})),
+            "workflow_default_prompts_json": json.dumps(default_values.get("workflow_default_prompts", {})),
             "workflow_prompt_templates_json": json.dumps(default_values.get("workflow_prompt_templates", {})),
         },
     )
@@ -475,6 +535,22 @@ def _processor_generate(job: Job, progress_cb):
 @app.post("/api/v1/generate", tags=["Image Generation"], response_model=EnqueueResponse)
 async def generate_image(request: GenerateRequest, http_request: Request):
     anon_id = _get_anon_id_from_request(http_request)
+    # Rate limit (per anon_id) - 1차 방어용
+    limiter, limit = _get_gen_rate_limiter()
+    if limiter is not None and limit > 0:
+        allowed, remaining, retry_after = limiter.take(anon_id)
+        if not allowed:
+            msg = f"요청이 너무 많습니다. 1분에 최대 {limit}회까지만 생성할 수 있습니다. {retry_after}초 후 다시 시도해 주세요."
+            logger.info(
+                {
+                    "event": "generate_rate_limited",
+                    "owner_id": anon_id,
+                    "limit_per_min": limit,
+                    "retry_after_sec": retry_after,
+                    "path": "/api/v1/generate",
+                }
+            )
+            raise HTTPException(status_code=429, detail=msg, headers={"Retry-After": str(retry_after)})
     try:
         job = job_manager.enqueue(anon_id, "generate", request.model_dump())
     except RuntimeError as e:

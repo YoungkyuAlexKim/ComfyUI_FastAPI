@@ -18,28 +18,14 @@ class PaginatedImages(BaseModel):
     total_pages: int
 
 
-class ControlItem(BaseModel):
-    id: str
-    url: str
-    thumb_url: Optional[str] = None
-    created_at: str
-    meta: Optional[Dict[str, Any]] = None
-
-
-class PaginatedControls(BaseModel):
-    items: List[ControlItem]
-    page: int
-    size: int
-    total: int
-    total_pages: int
-
-
 class WorkflowItem(BaseModel):
     id: str
     name: str
     description: str
     node_count: int
     hidden: Optional[bool] = None
+    # Workflow provider routing hint (e.g., "comfyui" or "google")
+    provider: Optional[str] = None
     style_prompt: str
     negative_prompt: str
     recommended_prompt: str
@@ -47,7 +33,6 @@ class WorkflowItem(BaseModel):
     ui: Optional[Dict[str, Any]] = None
     sizes: Optional[Dict[str, Any]] = None
     image_input: Optional[Dict[str, Any]] = None
-    control_slots: Optional[Dict[str, Any]] = None
     # Optional: LoRA slots metadata for UI (e.g., character/style)
     lora_slots: Optional[Dict[str, Any]] = None
     lora_hint: Optional[Dict[str, Any]] = None
@@ -61,7 +46,7 @@ class OkResponse(BaseModel):
     ok: bool
 
 
-class UploadControlResponse(BaseModel):
+class UploadMediaResponse(BaseModel):
     ok: bool
     id: str
     url: str
