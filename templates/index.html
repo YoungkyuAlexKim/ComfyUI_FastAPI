@@ -106,6 +106,11 @@
         let selectedInputImageId = null;
         // Multi input selection (runtime state). Order matters: UI order == payload order.
         let selectedInputImageIds = null;
+        // Page reload should start with an empty img2img slot (avoid stale selection persistence).
+        (function () {
+            try { localStorage.removeItem('inputImageIds'); } catch (_) {}
+            try { localStorage.removeItem('inputImageId'); } catch (_) {}
+        })();
         let wsRetry = 0;
         function connectWS(){
             try {
@@ -332,13 +337,38 @@
                 const iconName = (rawIcon || '').trim() || 'project-diagram';
                 // Defensive: allow only common FontAwesome name characters
                 const safeIcon = iconName.replace(/[^a-z0-9-]/gi, '') || 'project-diagram';
+                const safeName = escapeHtml((wf && wf.name) ? wf.name : '');
+                const safeDesc = escapeHtml((wf && wf.description) ? wf.description : '');
+                const badgesRaw = (uiSchema && Array.isArray(uiSchema.badges)) ? uiSchema.badges : [];
+                const badgeHtml = (function () {
+                    try {
+                        return (badgesRaw || [])
+                            .map((b) => {
+                                const raw = String(b || '').trim().toUpperCase();
+                                const label = raw.replace(/[^A-Z0-9_-]/g, '').slice(0, 10);
+                                if (!label) return '';
+                                const isExp = label === 'EXP' || label === 'EXPERIMENTAL';
+                                const cls = isExp ? 'wf-badge wf-badge--exp' : 'wf-badge';
+                                const title = isExp ? '실험적 기능' : '';
+                                const text = (label === 'EXPERIMENTAL') ? 'EXP' : label;
+                                return `<span class="${cls}"${title ? ` title="${title}"` : ''}>${text}</span>`;
+                            })
+                            .filter(Boolean)
+                            .join('');
+                    } catch (_) {
+                        return '';
+                    }
+                })();
                 return `
                 <div class="workflow-item" data-workflow-id="${wf.id}">
                     <div class="workflow-item-header">
                         <div class="workflow-icon"><i class="fas fa-${safeIcon}"></i></div>
                         <div class="workflow-item-info">
-                            <div class="workflow-name">${wf.name}</div>
-                            <div class="workflow-description">${wf.description}</div>
+                            <div class="workflow-name-row">
+                                <div class="workflow-name" title="${safeName}">${safeName}</div>
+                                ${badgeHtml ? `<div class="workflow-badges">${badgeHtml}</div>` : ''}
+                            </div>
+                            <div class="workflow-description" title="${safeDesc}">${safeDesc}</div>
                         </div>
                     </div>
                 </div>`;
@@ -663,7 +693,9 @@
             try {
                 const targetWf = getTargetWorkflowForMode();
                 const uiSchema = (targetWf && targetWf.ui) || {};
-                const disableAspect = !!uiSchema.disableAspect && (isImg2ImgMode() || !!(targetWf && targetWf.image_input));
+                // Some NanoBanana tools lock aspect even in txt2img (single output sheet).
+                const forceDisable = !!(targetWf && targetWf.id === 'NanoBanana_ChainsawJuiceKingCharacter');
+                const disableAspect = forceDisable || (!!uiSchema.disableAspect && (isImg2ImgMode() || !!(targetWf && targetWf.image_input)));
                 // Hide entire aspect group when disabled
                 if (ui.aspectRatioGroup) ui.aspectRatioGroup.style.display = disableAspect ? 'none' : '';
                 const allowed = disableAspect ? [] : (Array.isArray(uiSchema.aspectOptions) ? uiSchema.aspectOptions : ['square','landscape','portrait']);
@@ -697,8 +729,11 @@
             try {
                 const targetWf = getTargetWorkflowForMode();
                 const uiSchema = (targetWf && targetWf.ui) || {};
+                const provider = String((targetWf && targetWf.provider) ? targetWf.provider : '').trim().toLowerCase();
+                // Google(NanoBanana) workflows do not support deterministic seed in our current integration.
+                const hideSeed = (provider === 'google') || !!uiSchema.hideSeed;
                 const row = document.getElementById('seed-row');
-                if (row) row.style.display = uiSchema.hideSeed ? 'none' : 'flex';
+                if (row) row.style.display = hideSeed ? 'none' : 'flex';
             } catch(_) {}
         }
 
@@ -2205,11 +2240,39 @@
             document.querySelectorAll('.workflow-item').forEach(item => {
                 item.classList.toggle('selected', item.dataset.workflowId === workflow.id);
             });
+            const applyBadgesInline = (el, wf) => {
+                try {
+                    if (!el) return;
+                    // Remove prior badges
+                    try { el.querySelectorAll('.wf-badges-inline').forEach((n) => n.remove()); } catch (_) {}
+                    const uiSchema = (wf && wf.ui) || {};
+                    const raw = (uiSchema && Array.isArray(uiSchema.badges)) ? uiSchema.badges : [];
+                    const labels = (raw || [])
+                        .map((b) => String(b || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 10))
+                        .filter(Boolean);
+                    if (!labels.length) return;
+                    const wrap = document.createElement('span');
+                    wrap.className = 'wf-badges-inline';
+                    labels.forEach((label) => {
+                        const isExp = label === 'EXP' || label === 'EXPERIMENTAL';
+                        const s = document.createElement('span');
+                        s.className = isExp ? 'wf-badge wf-badge--exp' : 'wf-badge';
+                        s.textContent = (label === 'EXPERIMENTAL') ? 'EXP' : label;
+                        if (isExp) s.title = '실험적 기능';
+                        wrap.appendChild(s);
+                    });
+                    el.appendChild(document.createTextNode(' '));
+                    el.appendChild(wrap);
+                } catch (_) {}
+            };
+
             ui.selectedWorkflowName.textContent = workflow.name;
+            applyBadgesInline(ui.selectedWorkflowName, workflow);
             try { localStorage.setItem('selectedWorkflowId', workflow.id); } catch(_) {}
 
             // 메인 헤더 + 배너 업데이트
             ui.workflowNameDisplay.textContent = workflow.name;
+            applyBadgesInline(ui.workflowNameDisplay, workflow);
             ui.workflowNameDisplay.classList.add('selected');
             ui.workflowDescriptionDisplay.textContent = workflow.description || '선택된 워크플로우로 고품질 이미지를 생성하세요';
             try {
@@ -3423,6 +3486,22 @@
                         '- layout: grid, panels edge-to-edge, border=0, gutter=0, padding=0, margin=0',
                         '- text: absent',
                         '- branding: absent',
+                    ].join('\n');
+                }
+            } catch (_) {}
+            // Tool-specific prompt augmentation (NanoBanana ChainsawJuiceKing Character)
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                if (targetWf && targetWf.id === 'NanoBanana_ChainsawJuiceKingCharacter') {
+                    // Always produce a square 8x8 sheet.
+                    requestData.aspect_ratio = 'square';
+                    const conceptRaw = String(requestData.user_prompt || '').trim();
+                    // If user leaves it empty, fall back to a safe default concept.
+                    const concept = conceptRaw || '일상 캐주얼 스타일';
+                    // Build a clean Korean prompt block: goal / concept / output.
+                    requestData.user_prompt = [
+                        `컨셉 : ${concept}`,
+                        '아웃풋 : 총 64가지 버전을 만들고 8x8 격자로 배열하여 최종 이미지를 완성하세요.',
                     ].join('\n');
                 }
             } catch (_) {}

@@ -900,6 +900,43 @@
     min-width: 0;
 }
 
+.workflow-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.workflow-badges,
+.wf-badges-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.wf-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 14px;
+    padding: 0 6px;
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(148, 163, 184, 0.10);
+    color: rgba(229, 231, 235, 0.88);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    user-select: none;
+}
+
+.wf-badge--exp {
+    border-color: rgba(216, 121, 58, 0.55);
+    background: var(--warning-light);
+    color: var(--warning);
+}
+
 .workflow-name {
     font-weight: 500;
     font-size: var(--font-size-sm);
@@ -910,6 +947,7 @@
     text-overflow: ellipsis;
     line-height: 1.4;
     transition: all var(--transition-fast);
+    min-width: 0;
 }
 
 .workflow-item:hover .workflow-name {

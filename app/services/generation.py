@@ -317,6 +317,67 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             except Exception:
                 raise RuntimeError(f"{ordinal}번째 레퍼런스 파일을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
 
+        def _load_image_file_as_png_bytes(path_like: str, ordinal: int) -> bytes:
+            """
+            Load an image from disk and return PNG bytes.
+            - Accepts absolute path or repo-root-relative path
+            - Best-effort EXIF transpose
+            """
+            try:
+                raw = str(path_like or "").strip()
+            except Exception:
+                raw = ""
+            if not raw:
+                raise RuntimeError(f"{ordinal}번째 숨김 레퍼런스 이미지 경로가 비어 있습니다.")
+
+            abs_path = raw
+            try:
+                if not os.path.isabs(abs_path):
+                    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+                    abs_path = os.path.join(repo_root, raw.replace("/", os.sep))
+            except Exception:
+                abs_path = raw
+
+            if not abs_path or not os.path.exists(abs_path):
+                raise RuntimeError(
+                    "숨김 레퍼런스 이미지를 찾지 못했습니다. "
+                    f"파일을 준비해 주세요: {raw}"
+                )
+            try:
+                from io import BytesIO
+                from PIL import Image
+            except Exception:
+                # Pillow should be installed, but keep a clear message if not.
+                raise RuntimeError("서버에서 이미지 처리(Pillow) 기능이 준비되지 않았습니다.")
+            try:
+                from PIL import ImageOps
+            except Exception:
+                ImageOps = None
+
+            try:
+                with Image.open(abs_path) as im0:
+                    im = im0
+                    try:
+                        if ImageOps is not None:
+                            im = ImageOps.exif_transpose(im)
+                    except Exception:
+                        pass
+                    try:
+                        has_alpha = (
+                            im.mode in ("RGBA", "LA")
+                            or (im.mode == "P" and "transparency" in (im.info or {}))
+                        )
+                    except Exception:
+                        has_alpha = False
+                    im = im.convert("RGBA" if has_alpha else "RGB")
+                    out = BytesIO()
+                    im.save(out, format="PNG")
+                    return out.getvalue()
+            except RuntimeError:
+                raise
+            except Exception:
+                raise RuntimeError(f"{ordinal}번째 숨김 레퍼런스 이미지를 읽지 못했습니다. 파일 형식을 확인해 주세요.")
+
         # --- Character mentions (@Name) => auto-switch to Google image-edit with reference sheets (txt2img only) ---
         ref_sheet_bytes_list: list[bytes] | None = None
         mention_names: list[str] = []
@@ -441,6 +502,30 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                 except Exception:
                     pass
 
+        # --- Hidden reference images (tool workflows): auto-switch to image-edit even on txt2img ---
+        hidden_ref_bytes_list: list[bytes] | None = None
+        try:
+            hidden_paths = wf_cfg.get("google_hidden_reference_images") if isinstance(wf_cfg, dict) else None
+        except Exception:
+            hidden_paths = None
+        try:
+            if is_txt2img and (not ref_sheet_bytes_list) and isinstance(hidden_paths, list) and hidden_paths:
+                out_hidden: list[bytes] = []
+                for i, p in enumerate(hidden_paths[:4]):  # safety cap
+                    if cancel_event.is_set():
+                        raise RuntimeError("생성이 취소되었습니다.")
+                    out_hidden.append(_load_image_file_as_png_bytes(str(p or ""), i + 1))
+                if out_hidden:
+                    hidden_ref_bytes_list = out_hidden
+                    try:
+                        request.google_hidden_reference_images = [str(x or "") for x in hidden_paths[:4]]
+                    except Exception:
+                        pass
+        except RuntimeError:
+            raise
+        except Exception:
+            hidden_ref_bytes_list = None
+
         final_prompt = build_google_prompt(request, wf_cfg)
 
         progress_cb(45)
@@ -468,12 +553,14 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             else:
                 google_aspect = "1:1"
 
-            if ref_sheet_bytes_list:
-                # Auto-switch to image-edit with reference sheets (no user-provided base image)
+            if ref_sheet_bytes_list or hidden_ref_bytes_list:
+                # Auto-switch to image-edit when we have any attached reference images.
+                # IMPORTANT: do not mix "hidden refs" with character mention sheets; it would break sheet ordering.
+                images_for_edit = ref_sheet_bytes_list if ref_sheet_bytes_list else hidden_ref_bytes_list
                 image_bytes = generate_image_edit(
                     model=chosen_model,
                     prompt=final_prompt,
-                    images=ref_sheet_bytes_list,
+                    images=images_for_edit,
                     aspect_ratio=google_aspect,
                     image_size=req_size,
                     timeout=(5.0, 90.0),

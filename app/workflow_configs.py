@@ -45,7 +45,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "description": "Google Gemini 기반 자연어 프롬프트로 이미지를 생성합니다.",
         "hidden": False,
 
-        "default_user_prompt": "A cozy cafe interior, warm lighting, cinematic, highly detailed",
+        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
+        "default_user_prompt": "",
         "style_prompt": "",
         "negative_prompt": "",
 
@@ -62,6 +63,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "characterMentions": True,
             "showLora": False,
             "showPromptTranslate": True,
+            "userPromptPlaceholder": "무엇을 만들고 싶으신가요? 간단히 적어주세요.. (예: 한복을 입은 소녀, 비 오는 밤의 네온 거리)",
             "related": {"img2img": "NanoBanana_Img2Img"},
             "modeTabLabels": {"txt2img": "생성", "img2img": "편집"},
         },
@@ -535,14 +537,58 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         },
     },
 
+    "NanoBanana_ChainsawJuiceKingCharacter": {
+        "display_name": "체인소주스킹 캐릭터생성",
+        "description": "컨셉 한 줄을 입력하면, 숨겨진 레퍼런스 이미지를 바탕으로 64가지 의상 버전을 8×8 그리드 한 장으로 만들어줍니다.",
+        "hidden": False,
+
+        # 사용자는 '컨셉'만 짧게 입력하도록 유도합니다.
+        "default_user_prompt": "",
+        "style_prompt_position": "prepend",
+        "style_prompt": (
+            "작업목표 : 참고 이미지의 빈 공간에 팔이 없고 다리가 짧은 둥근 공 모양의 캐릭터를 배치하고, 그 위에 다양한 의상을 입히세요.\n"
+            "중요 : 모든 의상은 팔 부분이 없어야 합니다. (팔/소매 금지)\n"
+            "\n"
+            "추가 규칙 :\n"
+            "- 참고 이미지(레퍼런스)의 구도/배경은 유지하고, 캐릭터와 의상만 추가하세요.\n"
+            "- 같은 캐릭터(정체성 유지)로 의상만 다양하게 바꿔주세요.\n"
+            "- 텍스트/로고/워터마크는 넣지 마세요.\n"
+        ),
+        "negative_prompt": "",
+
+        "provider": "google",
+        # Internally we will attach a hidden reference image and call image-edit.
+        # Keep this workflow as txt2img from the UI perspective.
+        "google": {"model": "gemini-3-pro-image-preview", "mode": "text-to-image"},
+
+        # Hidden reference image(s) that are automatically attached server-side.
+        # Path is relative to repo root unless absolute.
+        # NOTE: 이 파일은 브라우저에서 직접 접근되지 않는 "서버 전용" 경로에 둡니다.
+        "google_hidden_reference_images": ["app/resources/refs/chainsaw_juice_king_reference.png"],
+
+        "ui": {
+            "icon": "crown",
+            "templateMode": "nanobanana",
+            # 실험적/임시 성격의 워크플로우 표시용 뱃지
+            "badges": ["EXP"],
+            "showLora": False,
+            # 이 워크플로우는 한글 컨셉 입력이 더 잘 먹히는 경우가 있어 기본은 번역 버튼을 숨깁니다.
+            "showPromptTranslate": False,
+            "generateLabel": "캐릭터 시트 만들기",
+            "userPromptPlaceholder": "어떤 컨셉인가요? (예: 일본애니 판타지 컨셉, 인어공주 동화 스타일) — 비워두면 기본: 일상 캐주얼 스타일",
+            # Aspect ratio will be forced to square in frontend for this tool.
+            "disableAspect": True,
+        },
+    },
+
     "BasicWorkFlow_PixelArt": {
         "display_name": "픽셀 아트",
         "description": "레트로 감성의 픽셀 아트 스타일 이미지를 생성합니다",
         # 테스트 동안 워크플로우 목록에서 숨김 처리
         "hidden": True,
 
-        # 기본 사용자 프롬프트 (워크플로우별 고유)
-        "default_user_prompt": "1girl, solo, hanbok",
+        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
+        "default_user_prompt": "",
 
         # 노드 ID
         "prompt_node": "6",
@@ -566,6 +612,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         # UI schema
         "ui": {
             "icon": "th",
+            "userPromptPlaceholder": "무엇을 만들고 싶으신가요? 태그를 콤마(,)로 입력해 주세요. (예: 1girl, solo, hanbok)",
             # 추천 프롬프트 템플릿(초보자용 클릭 추가)
             # 프론트에서 chips 형태로 노출되며 클릭 시 사용자 프롬프트에 병합됩니다.
             "promptTemplates": [
@@ -658,14 +705,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "CJK 아트생성",
         "description": "CJK 아트 생성 워크플로우입니다. 상단 탭에서 캐릭터/펫을 전환할 수 있습니다.",
 
-        # 기본 사용자 프롬프트: 자연어(영문) 예시.
-        # (한국어로 작성했다면 '프롬프트 변환' 버튼으로 영어로 바꾼 뒤 생성하는 것을 권장합니다.)
-        "default_user_prompt": (
-            "school girl with serahuku. blue sailor collar,\n\n"
-            "light_green hair with blunt_bang. side-twintail hair. star-shaped golden hair ornament. pinky cheek.\n\n"
-            "a single brown school bag is positioned next to her.\n\n"
-            "featured in simple gray background."
-        ),
+        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
+        "default_user_prompt": "",
 
         # 프롬프트: CLIPTextEncode(107).inputs.text
         "prompt_node": "107",
@@ -723,6 +764,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showStyleLora": True,
             "showCharacterLora": False,
             "showPromptTranslate": True,
+            "userPromptPlaceholder": "원하는 캐릭터를 간단히 설명해 주세요. (예: 세라복을 입은 학교 소녀, 연두색 머리, 별 모양 머리장식)",
             "templateMode": "natural",
             # 내부 뎁스(탭) 분기:
             # - 기본(Txt2Img) 탭: 캐릭터 생성
@@ -739,8 +781,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "CJK 아트생성 (펫)",
         "description": "Klein(Flux2) 기반 CJK 펫 아트 생성 워크플로우입니다. 메인(펫) LoRA + 서브(톤 맞춤) LoRA를 함께 사용합니다.",
 
-        # 기본 사용자 프롬프트(간단 예시)
-        "default_user_prompt": "a small dog pet with single horn. two-tone fur.\n\nsimple gray background",
+        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
+        "default_user_prompt": "",
 
         # 프롬프트: CLIPTextEncode(94).inputs.text
         "prompt_node": "94",
@@ -802,6 +844,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showStyleLora": True,
             "showCharacterLora": True,
             "showPromptTranslate": True,
+            "userPromptPlaceholder": "원하는 펫을 간단히 설명해 주세요. (예: 작은 강아지, 뿔 1개, 두 톤 털색, 단순한 배경)",
             "templateMode": "natural",
             # LoRA 라벨 커스텀(기존 CSS/DOM 구조 유지)
             "loraLabels": {
@@ -823,8 +866,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "CJK 아트생성 (아이템)",
         "description": "Klein(Flux2) 기반 CJK 아이템/오브젝트 어셋 생성 워크플로우입니다. 메인(아이템) LoRA + 서브(톤 맞춤) LoRA를 함께 사용합니다.",
 
-        # 기본 사용자 프롬프트(간단 예시)
-        "default_user_prompt": "a single game item asset, featured in simple gray background.",
+        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
+        "default_user_prompt": "",
 
         # 프롬프트: CLIPTextEncode(94).inputs.text
         "prompt_node": "94",
@@ -882,6 +925,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showStyleLora": True,
             "showCharacterLora": True,
             "showPromptTranslate": True,
+            "userPromptPlaceholder": "원하는 아이템/오브젝트를 간단히 설명해 주세요. (예: 보석이 박힌 검, 포션 병, 황금 열쇠)",
             "templateMode": "natural",
             # 라벨 커스텀(기존 CSS/DOM 구조 유지)
             "loraLabels": {
@@ -902,8 +946,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "LOS 스타일",
         "description": "Qwen 이미지 베이스 + Lightning LoRA 고정, 스타일 LoRA 조절형(컨트롤넷 없음)",
 
-        # 사용자 프롬프트: 자연어(한국어) 기본값
-        "default_user_prompt": "짧은 갈색 머리에 노란 코트를 입은 귀엽고 스타일화된 소녀가 어두운 아늑한 도서관에서 커다랗고 미소 짓는 파란 슬라임을 안고 있는 장면. 오래된 책들로 가득한 높은 나무 책장과 타일 바닥이 보이는 실내 일러스트로, 캐릭터와 마스코트의 친밀한 분위기를 강조해 주세요. 카메라는 위쪽에서 내려다보는 시점입니다.",
+        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
+        "default_user_prompt": "",
 
         # 노드 ID 매핑
         "prompt_node": "6",
@@ -932,6 +976,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showCharacterLora": False,
             # LOS 스타일: 한국어 자연어 → 이미지 생성용 영어 프롬프트 변환 버튼 사용
             "showPromptTranslate": True,
+            "userPromptPlaceholder": "어떤 장면을 만들고 싶으신가요? 한 문장으로 적어주세요. (예: 도서관에서 슬라임을 안고 있는 소녀, 따뜻한 조명)",
             # 자연어 템플릿 모드 표시(프론트의 중복 병합 로직에 사용)
             "templateMode": "natural",
             # 편집(img2img) 관련 워크플로우 링크(목록 비노출 전용)
@@ -983,8 +1028,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         # Negative prompt node 없음(워크플로우 구조상 별도 네거티브 텍스트 인코딩을 쓰지 않음)
         # "negative_prompt_node": 없음
 
-        # Img2Img 기본 사용자 프롬프트
-        "default_user_prompt": "이미지에서 파란 슬라임을 제거하고, 강아지로 교체해 주세요.",
+        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
+        "default_user_prompt": "",
 
         # 워크플로우 기본 스타일 토큰 (유저 프롬프트와 함께 positive 텍스트로 들어감)
         # (학습 캡션 형태와 맞추기 위해 콤마 형태 사용)
@@ -1025,6 +1070,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showPromptTranslate": True,
             "templateMode": "natural",
             "disableAspect": True,
+            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요? (예: 슬라임을 제거하고 강아지로 교체해 주세요)",
         },
     },
 
@@ -1032,8 +1078,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "OHD 스타일",
         "description": "Qwen 이미지 베이스 + Lightning LoRA 고정, 스타일 LoRA 조절형(컨트롤넷 없음)",
 
-        # 사용자 프롬프트: 자연어(한국어) 기본값
-        "default_user_prompt": "짧은 갈색 머리에 노란 코트를 입은 귀엽고 스타일화된 소녀가 어두운 아늑한 도서관에서 커다랗고 미소 짓는 파란 슬라임을 안고 있는 장면. 오래된 책들로 가득한 높은 나무 책장과 타일 바닥이 보이는 실내 일러스트로, 캐릭터와 마스코트의 친밀한 분위기를 강조해 주세요. 카메라는 위쪽에서 내려다보는 시점입니다.",
+        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
+        "default_user_prompt": "",
 
         # 노드 ID 매핑 (OHDstyle_Qwen.json 기준)
         "prompt_node": "6",
@@ -1060,6 +1106,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showCharacterLora": False,
             # OHD 스타일: 한국어 자연어 → 이미지 생성용 영어 프롬프트 변환 버튼 사용
             "showPromptTranslate": True,
+            "userPromptPlaceholder": "어떤 장면을 만들고 싶으신가요? 한 문장으로 적어주세요. (예: 따뜻한 실내, 귀여운 캐릭터, 파스텔 톤)",
             "templateMode": "natural",
             # Img2Img는 Klein 워크플로우로 연결
             "related": {"img2img": "OHDStyle_Klein_Img2Img"},
@@ -1109,8 +1156,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         # Negative prompt node 없음(워크플로우 구조상 별도 네거티브 텍스트 인코딩을 쓰지 않음)
         # "negative_prompt_node": 없음
 
-        # Img2Img 기본 사용자 프롬프트
-        "default_user_prompt": "이미지에서 파란 슬라임을 제거하고, 강아지로 교체해 주세요.",
+        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
+        "default_user_prompt": "",
 
         # 워크플로우 기본 스타일 토큰 (유저 프롬프트와 함께 positive 텍스트로 들어감)
         "style_prompt": "OHDart.",
@@ -1150,6 +1197,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showPromptTranslate": True,
             "templateMode": "natural",
             "disableAspect": True,
+            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요? (예: 파란 슬라임을 제거하고 다른 동물로 바꿔 주세요)",
         },
     },
 }

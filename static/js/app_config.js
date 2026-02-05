@@ -127,6 +127,12 @@
         showTitle: false,
         showDescription: false,
       },
+      NanoBanana_ChainsawJuiceKingCharacter: {
+        // TODO: 선생님이 추가하실 전용 배너 이미지로 교체 예정
+        url: '/static/img/banner/img_banner_Banana_CJKCharacterSheet.png',
+        showTitle: false,
+        showDescription: false,
+      },
       'BasicWorkFlow_PixelArt': {
         url: '/static/img/banner/img_banner_workflow_pixelart.png',
         // 예: 이미지에 텍스트가 내장된 경우 아래를 false로 설정
