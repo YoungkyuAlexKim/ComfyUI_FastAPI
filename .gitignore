@@ -117,7 +117,7 @@ dmypy.json
 models/
 # Generated outputs are usually too large to commit.
 # Exception: shared/global character assets are allowed to be committed.
-outputs/
+outputs/*
 !outputs/global/
 outputs/global/*
 !outputs/global/characters/
