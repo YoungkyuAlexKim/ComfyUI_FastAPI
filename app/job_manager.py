@@ -27,22 +27,24 @@ class Job:
 
 
 class JobManager:
-    def __init__(self):
+    def __init__(self, worker_count: int = 1):
         self._lock = threading.RLock()
         self._jobs: Dict[str, Job] = {}
         self._user_queues: Dict[str, Deque[str]] = defaultdict(deque)
         self._users_rr: Deque[str] = deque()
         self._stop_event = threading.Event()
-        self._worker_thread: Optional[threading.Thread] = None
+        self._worker_threads: list[threading.Thread] = []
+        try:
+            self.worker_count: int = max(1, int(worker_count))
+        except Exception:
+            self.worker_count = 1
 
         # Injected processing callbacks per job type
         # signature: (job: Job, progress_cb: Callable[[float], None]) -> None
         self._processors: Dict[str, Callable[[Job, Callable[[float], None]], None]] = {}
 
-        # Active job context (single worker for now)
-        self._active_job_id: Optional[str] = None
-        # Comfy client cancel handle: Callable[[], bool]
-        self._active_cancel_handle: Optional[Callable[[], bool]] = None
+        # Cancel handles for running jobs: job_id -> cancel() (best-effort)
+        self._cancel_handles: Dict[str, Callable[[], bool]] = {}
         # Cancel requests for running jobs
         self._cancel_requests: set[str] = set()
 
@@ -125,8 +127,8 @@ class JobManager:
                     self._notify(job.owner_id, {"status": "cancelled", "job_id": job.id})
                 return True
             if job.status == "running":
-                # Try active cancel handle
-                cancel = self._active_cancel_handle
+                # Try cancel handle for this job (multi-worker safe)
+                cancel = self._cancel_handles.get(job_id)
                 # Mark desire to cancel; processor should honor
                 if cancel:
                     try:
@@ -140,16 +142,27 @@ class JobManager:
 
     # ---- Worker Loop ----
     def start(self):
-        if self._worker_thread and self._worker_thread.is_alive():
+        if any(t.is_alive() for t in (self._worker_threads or [])):
             return
         self._stop_event.clear()
-        self._worker_thread = threading.Thread(target=self._run_loop, name="JobWorker", daemon=True)
-        self._worker_thread.start()
+        self._worker_threads = []
+        count = 1
+        try:
+            count = max(1, int(self.worker_count or 1))
+        except Exception:
+            count = 1
+        for i in range(count):
+            t = threading.Thread(target=self._run_loop, name=f"JobWorker-{i+1}", daemon=True)
+            self._worker_threads.append(t)
+            t.start()
 
     def stop(self):
         self._stop_event.set()
-        if self._worker_thread:
-            self._worker_thread.join(timeout=2)
+        for t in list(self._worker_threads or []):
+            try:
+                t.join(timeout=2)
+            except Exception:
+                continue
 
     def _run_loop(self):
         while not self._stop_event.is_set():
@@ -207,7 +220,6 @@ class JobManager:
                         self._logger.info(payload)
 
             with self._lock:
-                self._active_job_id = job.id
                 job.status = "running"
                 job.started_at = time.time()
             if self._notify:
@@ -217,18 +229,19 @@ class JobManager:
             except Exception:
                 pass
 
-            # The processor may set a cancel handle via set_active_cancel_handle
-            self._active_cancel_handle = None
+            # The processor may set a cancel handle via set_cancel_handle(job_id, handle)
+            with self._lock:
+                self._cancel_handles.pop(job.id, None)
             # Timeout watchdog
             timeout_timer = None
             if isinstance(self.job_timeout_seconds, (int, float)) and self.job_timeout_seconds and self.job_timeout_seconds > 0:
                 def _timeout_job():
                     try:
                         with self._lock:
-                            still_active = (self._active_job_id == job.id and job.status == "running")
-                            if still_active:
+                            still_running = (job.status == "running")
+                            if still_running:
                                 self._cancel_requests.add(job.id)
-                                cancel = self._active_cancel_handle
+                                cancel = self._cancel_handles.get(job.id)
                             else:
                                 cancel = None
                         if cancel:
@@ -270,8 +283,7 @@ class JobManager:
                     except Exception:
                         pass
                 with self._lock:
-                    self._active_job_id = None
-                    self._active_cancel_handle = None
+                    self._cancel_handles.pop(job.id, None)
                     self._cancel_requests.discard(job.id)
                     try:
                         self._logger.info({"event": "job_end", "job_id": job.id, "owner_id": job.owner_id, "status": job.status})
@@ -284,9 +296,33 @@ class JobManager:
                     except Exception:
                         pass
 
+    def set_cancel_handle(self, job_id: str, handle: Optional[Callable[[], bool]]):
+        """
+        Register a cancel handle for a running job.
+        - job_id: running job id
+        - handle: callable that attempts to cancel underlying provider (best-effort)
+        """
+        try:
+            jid = str(job_id or "").strip()
+        except Exception:
+            jid = ""
+        if not jid:
+            return
+        with self._lock:
+            if handle is None:
+                self._cancel_handles.pop(jid, None)
+            else:
+                self._cancel_handles[jid] = handle
+
+    # Backward-compatible alias (older processors may call this without job_id).
     def set_active_cancel_handle(self, handle: Optional[Callable[[], bool]]):
         with self._lock:
-            self._active_cancel_handle = handle
+            running = [j.id for j in self._jobs.values() if getattr(j, "status", None) == "running"]
+            if len(running) == 1 and running[0]:
+                if handle is None:
+                    self._cancel_handles.pop(running[0], None)
+                else:
+                    self._cancel_handles[running[0]] = handle
 
     # ---- Helpers ----
     def _next_job_round_robin(self) -> Optional[Job]:
@@ -347,11 +383,12 @@ class JobManager:
 
     def get_active_for_owner(self, owner_id: str) -> Optional[Job]:
         with self._lock:
-            if self._active_job_id is None:
-                return None
-            j = self._jobs.get(self._active_job_id)
-            if j and j.owner_id == owner_id and j.status == "running":
-                return j
+            for j in self._jobs.values():
+                try:
+                    if j.owner_id == owner_id and j.status == "running":
+                        return j
+                except Exception:
+                    continue
             return None
 
     def get_recent_averages(self, limit: int = 100) -> Dict[str, Any]:
@@ -378,6 +415,173 @@ class JobManager:
                     wf = j.payload.get("workflow_id")
                 if (j.started_at and j.ended_at and wf):
                     per.setdefault(wf, []).append(j.ended_at - j.started_at)
+            except Exception:
+                continue
+        per_avg = {wf: (sum(vals) / len(vals)) for wf, vals in per.items() if vals}
+        return {"overall_avg_sec": overall, "per_workflow_avg_sec": per_avg, "count": len(durations)}
+
+
+class RoutingJobManager:
+    """
+    Route jobs to separate managers (e.g., ComfyUI vs NanoBanana/Google).
+
+    Motivation:
+    - ComfyUI is effectively single-lane on one machine; queue must be managed strictly.
+    - NanoBanana (provider=google) can run concurrently; we cap concurrent workers and keep a separate queue
+      to avoid interleaving/queue confusion with ComfyUI jobs.
+    """
+
+    def __init__(self, comfy: JobManager, nanobanana: JobManager, workflow_configs: Dict[str, Dict[str, Any]]):
+        self._comfy = comfy
+        self._nano = nanobanana
+        self._wf = workflow_configs or {}
+
+    def _is_google_workflow(self, workflow_id: str) -> bool:
+        try:
+            cfg = self._wf.get(workflow_id) if isinstance(self._wf, dict) else None
+            provider = str((cfg or {}).get("provider", "comfyui") or "comfyui").strip().lower()
+            return provider == "google"
+        except Exception:
+            return False
+
+    def _pick_manager_for_payload(self, payload: Dict[str, Any]) -> JobManager:
+        try:
+            wf_id = payload.get("workflow_id") if isinstance(payload, dict) else None
+            wf_id = str(wf_id or "").strip()
+        except Exception:
+            wf_id = ""
+        if wf_id and self._is_google_workflow(wf_id):
+            return self._nano
+        return self._comfy
+
+    # ---- registration / lifecycle ----
+    def register_processor(self, job_type: str, processor: Callable[[Job, Callable[[float], None]], None]):
+        self._comfy.register_processor(job_type, processor)
+        self._nano.register_processor(job_type, processor)
+
+    def set_notifier(self, notify: Callable[[str, Dict[str, Any]], None]):
+        self._comfy.set_notifier(notify)
+        self._nano.set_notifier(notify)
+
+    def start(self):
+        self._comfy.start()
+        self._nano.start()
+
+    def stop(self):
+        try:
+            self._comfy.stop()
+        finally:
+            self._nano.stop()
+
+    # ---- enqueue / status / cancel ----
+    def enqueue(self, owner_id: str, job_type: str, payload: Dict[str, Any]) -> Job:
+        mgr = self._pick_manager_for_payload(payload)
+        return mgr.enqueue(owner_id, job_type, payload)
+
+    def get(self, job_id: str) -> Optional[Job]:
+        j = self._comfy.get(job_id)
+        if j:
+            return j
+        return self._nano.get(job_id)
+
+    def get_position(self, job_id: str) -> Optional[int]:
+        j = self._comfy.get(job_id)
+        if j:
+            return self._comfy.get_position(job_id)
+        j2 = self._nano.get(job_id)
+        if j2:
+            return self._nano.get_position(job_id)
+        return None
+
+    def list_jobs(self, limit: int = 100) -> list[dict]:
+        a = self._comfy.list_jobs(limit=limit)
+        b = self._nano.list_jobs(limit=limit)
+        merged = (a or []) + (b or [])
+        try:
+            merged.sort(key=lambda j: j.get("created_at", 0) or 0, reverse=True)
+        except Exception:
+            pass
+        return merged[: max(0, int(limit))]
+
+    def cancel(self, job_id: str) -> bool:
+        if self._comfy.get(job_id):
+            return self._comfy.cancel(job_id)
+        if self._nano.get(job_id):
+            return self._nano.cancel(job_id)
+        return False
+
+    def set_cancel_handle(self, job_id: str, handle: Optional[Callable[[], bool]]):
+        if self._comfy.get(job_id):
+            return self._comfy.set_cancel_handle(job_id, handle)
+        if self._nano.get(job_id):
+            return self._nano.set_cancel_handle(job_id, handle)
+        return None
+
+    # Backward-compatible passthrough
+    def set_active_cancel_handle(self, handle: Optional[Callable[[], bool]]):
+        # Prefer comfy (single worker), otherwise nano.
+        try:
+            self._comfy.set_active_cancel_handle(handle)
+        except Exception:
+            pass
+        try:
+            self._nano.set_active_cancel_handle(handle)
+        except Exception:
+            pass
+
+    def is_cancel_requested(self, job_id: str) -> bool:
+        if self._comfy.get(job_id):
+            return self._comfy.is_cancel_requested(job_id)
+        if self._nano.get(job_id):
+            return self._nano.is_cancel_requested(job_id)
+        return False
+
+    def get_active_for_owner(self, owner_id: str) -> Optional[Job]:
+        # If both exist (rare), prefer the most recently started.
+        c = self._comfy.get_active_for_owner(owner_id)
+        n = self._nano.get_active_for_owner(owner_id)
+        if c and n:
+            try:
+                cs = float(c.started_at or 0)
+            except Exception:
+                cs = 0
+            try:
+                ns = float(n.started_at or 0)
+            except Exception:
+                ns = 0
+            return n if ns >= cs else c
+        return n or c
+
+    def get_recent_averages(self, limit: int = 100) -> Dict[str, Any]:
+        # Combine jobs from both managers and reuse the same computation pattern.
+        try:
+            lim = max(0, int(limit))
+        except Exception:
+            lim = 100
+        jobs: list[Job] = []
+        try:
+            jobs.extend(list(getattr(self._comfy, "_jobs", {}).values()))
+        except Exception:
+            pass
+        try:
+            jobs.extend(list(getattr(self._nano, "_jobs", {}).values()))
+        except Exception:
+            pass
+        completed = [j for j in jobs if j.status == "complete" and j.started_at and j.ended_at]
+        completed.sort(key=lambda j: j.ended_at or 0, reverse=True)
+        window = completed[:lim]
+        if not window:
+            return {"overall_avg_sec": None, "per_workflow_avg_sec": {}, "count": 0}
+        durations = [(j.ended_at - j.started_at) for j in window if j.started_at and j.ended_at]
+        overall = (sum(durations) / len(durations)) if durations else None
+        per: Dict[str, list[float]] = {}
+        for j in window:
+            try:
+                wf = None
+                if isinstance(j.payload, dict):
+                    wf = j.payload.get("workflow_id")
+                if (j.started_at and j.ended_at and wf):
+                    per.setdefault(str(wf), []).append(j.ended_at - j.started_at)
             except Exception:
                 continue
         per_avg = {wf: (sum(vals) / len(vals)) for wf, vals in per.items() if vals}

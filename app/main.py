@@ -27,7 +27,7 @@ from .config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, get_d
 from .config import QUEUE_CONFIG, JOB_DB_PATH
 from .config import HEALTHZ_CONFIG
 from .config import COMFY_INPUT_DIR
-from .job_manager import JobManager, Job
+from .job_manager import JobManager, RoutingJobManager, Job
 from .job_store import JobStore
 from .logging_utils import setup_logging
 from .config import UPLOAD_CONFIG
@@ -201,7 +201,9 @@ Filesystem helpers were extracted to app/services/media_store.py.
 Imports above wire them in; local duplicates removed to reduce main.py size.
 """
 
-job_manager = JobManager()
+_comfy_job_manager = JobManager(worker_count=1)
+_nano_job_manager = JobManager(worker_count=4)  # env에서 startup 시 재설정
+job_manager = RoutingJobManager(_comfy_job_manager, _nano_job_manager, WORKFLOW_CONFIGS)
 job_store = JobStore(JOB_DB_PATH)
 from .feed_store import FeedStore
 feed_store = FeedStore(JOB_DB_PATH)
@@ -531,7 +533,8 @@ async def beta_login_submit(request: Request):
 def _processor_generate(job: Job, progress_cb):
     def _set_cancel_handle(handle):
         try:
-            job_manager.set_active_cancel_handle(handle)
+            # 멀티 워커(나노바나나 동시 실행)에서도 안전하도록 job_id 단위로 cancel handle을 등록합니다.
+            job_manager.set_cancel_handle(job.id, handle)
         except Exception:
             pass
     run_generation_processor(job, progress_cb, _set_cancel_handle)
@@ -837,9 +840,26 @@ async def on_startup():
     job_manager.set_notifier(notifier)
     # Apply queue/timeouts from env
     try:
-        job_manager.max_per_user_queue = int(QUEUE_CONFIG.get("max_per_user_queue", 5))
-        job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
-        job_manager.job_timeout_seconds = float(QUEUE_CONFIG.get("job_timeout_seconds", 180))
+        # ComfyUI lane: 기존 설정 유지
+        _comfy_job_manager.max_per_user_queue = int(QUEUE_CONFIG.get("max_per_user_queue", 5))
+        _comfy_job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
+        _comfy_job_manager.job_timeout_seconds = float(QUEUE_CONFIG.get("job_timeout_seconds", 180))
+
+        # NanoBanana lane: 동시 실행(풀) + 사용자 대기열 길이만 별도 env로 제어
+        try:
+            nano_workers = int(os.getenv("NANOBANANA_MAX_CONCURRENT", "4") or "4")
+        except Exception:
+            nano_workers = 4
+        nano_workers = max(1, min(32, int(nano_workers)))
+        _nano_job_manager.worker_count = nano_workers
+        try:
+            nano_q = int(os.getenv("NANOBANANA_MAX_PER_USER_QUEUE", "5") or "5")
+        except Exception:
+            nano_q = 5
+        _nano_job_manager.max_per_user_queue = max(0, min(50, int(nano_q)))
+        # Per-user concurrent stays aligned with existing policy (default 1)
+        _nano_job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
+        _nano_job_manager.job_timeout_seconds = float(QUEUE_CONFIG.get("job_timeout_seconds", 180))
     except Exception as e:
         logger.debug({"event": "job_manager_env_apply_failed", "error": str(e)})
     job_manager.start()

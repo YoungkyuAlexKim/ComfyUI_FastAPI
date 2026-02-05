@@ -247,7 +247,24 @@
 
         // Track the latest job started by this client
         let currentJobId = null;
+        // Provider hint for the current job (used to customize queue messages)
+        // - 'nanobanana': Google(provider=google) workflows
+        // - 'comfyui': ComfyUI(local) workflows
+        let currentJobQueueKind = null;
         let queueTimer = null;
+        function inferQueueKindFromWorkflow(wf){
+            try {
+                const provider = String((wf && wf.provider) ? wf.provider : '').trim().toLowerCase();
+                return provider === 'google' ? 'nanobanana' : 'comfyui';
+            } catch (_) {
+                return null;
+            }
+        }
+        function formatQueuedMessage(pos, kind){
+            const k = kind || currentJobQueueKind || null;
+            const prefix = (k === 'nanobanana') ? '나노바나나 ' : '';
+            return pos ? `${prefix}대기중... (${pos}번째)` : `${prefix}대기중...`;
+        }
         async function headOk(url){
             try {
                 const res = await fetch(url, { method:'HEAD', cache:'no-store' });
@@ -3275,7 +3292,7 @@
             if (data.status === 'queued') {
                 // Show queued info (position if present)
                 const pos = (typeof data.position === 'number') ? data.position + 1 : null;
-                const msg = pos ? `대기중... (${pos}번째)` : '대기중...';
+                const msg = formatQueuedMessage(pos, currentJobQueueKind);
                 showStatus(msg, 'info');
                 setGenerationState(true, '대기중...');
                 updateProgress(0);
@@ -3306,6 +3323,7 @@
                 // Immediate safety unlock in case late events re-toggle state
                 setGenerationState(false, '이미지 생성하기');
                 currentJobId = null;
+                currentJobQueueKind = null;
                 // Final watchdog to ensure overlay/buttons reset
                 setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, '이미지 생성하기'); }, 2500);
                 hideQueueInfo();
@@ -3322,6 +3340,7 @@
                 hidePreviewOverlay();
                 setGenerationState(false, '이미지 생성하기');
                 currentJobId = null;
+                currentJobQueueKind = null;
                 setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, '이미지 생성하기'); }, 1500);
                 hideQueueInfo();
                 stopQueuePolling();
@@ -3332,6 +3351,7 @@
                 updateProgress(0); // 에러 발생 시에도 진행률을 0%로 리셋
                 hidePreviewOverlay();
                 currentJobId = null;
+                currentJobQueueKind = null;
                 setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, '이미지 생성하기'); }, 1500);
                 hideQueueInfo();
                 stopQueuePolling();
@@ -3709,6 +3729,11 @@
                         createdAt: Math.floor(Date.now() / 1000)
                     };
                 } catch(_) {}
+                // Capture provider hint for this job so queue messages remain correct
+                try {
+                    const wf = getTargetWorkflowForMode();
+                    currentJobQueueKind = inferQueueKindFromWorkflow(wf);
+                } catch (_) { currentJobQueueKind = null; }
                 const response = await fetch('/api/v1/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -3730,7 +3755,7 @@
                 try { console.debug('ENQUEUED job_id', currentJobId); } catch(_) {}
                 if (currentJobId) {
                     const pos = (typeof result.position === 'number') ? result.position + 1 : null;
-                    const msg = pos ? `대기중... (${pos}번째)` : '대기중...';
+                    const msg = formatQueuedMessage(pos, currentJobQueueKind);
                     showStatus(msg, 'info');
                     setGenerationState(true, '대기중...');
                     updateProgress(0);
@@ -3738,12 +3763,14 @@
                     startQueuePolling();
                 } else {
                     showStatus('요청이 접수되었습니다.', 'info');
+                    currentJobQueueKind = null;
                 }
             } catch (error) {
                 showStatus(`❌ 요청 실패: ${error.message}`, 'error');
                 setGenerationState(false, '이미지 생성하기');
                 updateProgress(0); // 요청 실패 시에도 진행률을 0%로 리셋
                 hidePreviewOverlay();
+                currentJobQueueKind = null;
             }
         }
 
@@ -3753,7 +3780,12 @@
             const posEl = document.getElementById('queue-position');
             const etaEl = document.getElementById('queue-eta');
             if (box) box.style.display = 'block';
-            if (posEl) posEl.textContent = (typeof position === 'number') ? `대기 ${position}번째` : '대기중';
+            try {
+                const prefix = (currentJobQueueKind === 'nanobanana') ? '나노바나나 ' : '';
+                if (posEl) posEl.textContent = (typeof position === 'number') ? `${prefix}대기 ${position}번째` : `${prefix}대기중`;
+            } catch (_) {
+                if (posEl) posEl.textContent = (typeof position === 'number') ? `대기 ${position}번째` : '대기중';
+            }
             if (etaEl) etaEl.textContent = '';
         }
         function hideQueueInfo(){
