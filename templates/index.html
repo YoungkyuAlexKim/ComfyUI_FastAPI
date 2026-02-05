@@ -1804,7 +1804,10 @@
                 if (!mine.length && !global.length) {
                     wrap.innerHTML = `
                         <div class="global-character-row" style="margin-top:0;">
-                            <div class="global-character-row__items">${addCardHtml}</div>
+                            <div class="global-character-row__wrap">
+                                <div class="global-character-row__dock">${addCardHtml}</div>
+                                <div class="global-character-row__items"></div>
+                            </div>
                         </div>
                         <span class="hint" style="color:var(--text-muted); font-size:12px;">공용 캐릭터 폴더에 등록하면 여기에 표시됩니다.</span>
                     `;
@@ -1812,12 +1815,17 @@
                     wrap.innerHTML = `
                         <div class="global-character-row" style="margin-top:0;">
                             <div class="global-character-row__label">${global.length ? '추천(공용)' : '캐릭터'}</div>
-                            <div class="global-character-row__items">${addCardHtml}${globalCardsHtml}</div>
+                            <div class="global-character-row__wrap">
+                                <div class="global-character-row__dock">${addCardHtml}</div>
+                                <div class="global-character-row__items">${globalCardsHtml}</div>
+                            </div>
                         </div>
                         ${mine.length ? `
                             <div class="global-character-row" style="margin-top:0;">
                                 <div class="global-character-row__label">내 캐릭터</div>
-                                <div class="global-character-row__items">${mineCardsHtml}</div>
+                                <div class="global-character-row__wrap">
+                                    <div class="global-character-row__items">${mineCardsHtml}</div>
+                                </div>
                             </div>
                         ` : ''}
                     `;

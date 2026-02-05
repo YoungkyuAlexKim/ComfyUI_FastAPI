@@ -1893,12 +1893,47 @@
 .chip-btn--danger.icon-only i { font-size: 15px; }
 
 /* Global character thumbnails (public registry) */
+.input-card {
+    /* Prevent any horizontal bleed from inner widgets (character strip, chips, etc.). */
+    overflow-x: hidden;
+}
+
+#character-mentions-wrap,
+#character-quick-list {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden; /* clip overflowing rows instead of widening layout */
+}
+
+#character-quick-list .global-character-row {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
 .global-character-row {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-top: 10px;
     width: 100%;
+    min-width: 0; /* important inside flex layouts */
+}
+
+.global-character-row__wrap {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0; /* allow scroller to shrink instead of pushing layout */
+    overflow: hidden; /* clip any overflow from cards */
+}
+
+.global-character-row__dock {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-start;
 }
 
 .global-character-row__label {
@@ -1920,10 +1955,14 @@
     scrollbar-width: none; /* Firefox */
     cursor: grab;
     user-select: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .global-character-row__items::-webkit-scrollbar { display: none; }
 .global-character-row__items.is-dragging { cursor: grabbing; }
+.global-character-row__items:empty { display: none; }
 
 .global-character-card {
     border: 1px solid var(--bg-surface);
@@ -1932,6 +1971,7 @@
     border-radius: 14px;
     padding: 8px 8px 6px;
     min-width: 72px;
+    flex: 0 0 auto; /* never stretch/wrap; keeps scroll stable */
     cursor: pointer;
     display: flex;
     flex-direction: column;
