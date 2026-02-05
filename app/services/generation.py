@@ -667,14 +667,75 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         progress_cb(100)
         return
 
-    workflow_path = os.path.join(WORKFLOW_DIR, f"{request.workflow_id}.json")
+    # --- ComfyUI workflow selection (supports wrapper -> variant mapping) ---
+    ui_workflow_id = getattr(request, "workflow_id", None)
+    ui_workflow_id = str(ui_workflow_id or "").strip()
+    wf_cfg_ui = WORKFLOW_CONFIGS.get(ui_workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
+
+    effective_workflow_id = ui_workflow_id
+    wf_cfg_effective = wf_cfg_ui
+    try:
+        variants = wf_cfg_ui.get("comfy_variants_by_input_count") if isinstance(wf_cfg_ui, dict) else None
+    except Exception:
+        variants = None
+    try:
+        if isinstance(variants, dict) and variants:
+            # Count selected input images (multi preferred; legacy single fallback)
+            ids: list[str] = []
+            try:
+                raw_ids = getattr(request, "input_image_ids", None)
+                if isinstance(raw_ids, list):
+                    for x in raw_ids:
+                        try:
+                            s = str(x or "").strip()
+                        except Exception:
+                            s = ""
+                        if s:
+                            ids.append(s)
+            except Exception:
+                ids = []
+            if not ids:
+                try:
+                    one = getattr(request, "input_image_id", None)
+                except Exception:
+                    one = None
+                if isinstance(one, str) and one.strip():
+                    ids = [one.strip()]
+
+            # Also treat a preuploaded Comfy input filename as a single image selection.
+            if not ids:
+                try:
+                    pre = getattr(request, "input_image_filename", None)
+                except Exception:
+                    pre = None
+                if isinstance(pre, str) and pre.strip():
+                    ids = ["__preuploaded__"]
+
+            # This feature is intended for 1 vs 2 images. Clamp: 0/1/2.
+            n = len(ids)
+            count_key = 2 if n >= 2 else (1 if n == 1 else 0)
+            cand = variants.get(count_key)
+            if not cand:
+                cand = variants.get(str(count_key))
+            if isinstance(cand, str) and cand.strip():
+                effective_workflow_id = cand.strip()
+                wf_cfg_effective = WORKFLOW_CONFIGS.get(effective_workflow_id, wf_cfg_ui) if isinstance(WORKFLOW_CONFIGS, dict) else wf_cfg_ui
+                try:
+                    request.comfy_effective_workflow_id = effective_workflow_id
+                except Exception:
+                    pass
+    except Exception:
+        # Fail-safe: ignore variant selection errors
+        effective_workflow_id = ui_workflow_id
+        wf_cfg_effective = wf_cfg_ui
+
+    workflow_path = os.path.join(WORKFLOW_DIR, f"{effective_workflow_id}.json")
     # Some workflows rely on a hidden reference image already present in ComfyUI's input directory.
     # Example: a fixed LoadImage node used as a style/character reference (user does not upload it).
     # If that file is missing, ComfyUI will fail with a confusing error. We preflight-check and
     # return a user-friendly message instead.
     try:
-        wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
-        required_inputs = wf_cfg.get("required_comfy_inputs") if isinstance(wf_cfg, dict) else None
+        required_inputs = wf_cfg_effective.get("required_comfy_inputs") if isinstance(wf_cfg_effective, dict) else None
         if isinstance(required_inputs, list) and required_inputs:
             if not isinstance(COMFY_INPUT_DIR, str) or not COMFY_INPUT_DIR:
                 raise RuntimeError(
@@ -702,26 +763,26 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     except Exception:
         # Fail-safe: do not block generation due to preflight-check errors.
         pass
-    uploaded_image_input_filename: Optional[str] = None  # image_input single
-    uploaded_image_input_requested_name: Optional[str] = None
+    # Track any uploaded/temporary images in ComfyUI input for cleanup.
+    uploaded_image_input_filenames: list[str] = []
+    uploaded_image_input_requested_names: list[str] = []
 
     prompt_overrides = get_prompt_overrides(
         user_prompt=getattr(request, "user_prompt", ""),
         aspect_ratio=getattr(request, "aspect_ratio", "square"),
-        workflow_name=getattr(request, "workflow_id", "BasicWorkFlow_PixelArt"),
+        workflow_name=effective_workflow_id or getattr(request, "workflow_id", "BasicWorkFlow_PixelArt"),
         seed=getattr(request, "seed", None),
     )
 
     # --- Optional: RMBG2 parameter overrides (mask_blur / mask_offset) ---
     try:
-        wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
-        rmbg_cfg = wf_cfg.get("rmbg") if isinstance(wf_cfg, dict) else None
+        rmbg_cfg = wf_cfg_effective.get("rmbg") if isinstance(wf_cfg_effective, dict) else None
         rmbg_node = None
         try:
             rmbg_node = (rmbg_cfg or {}).get("node") if isinstance(rmbg_cfg, dict) else None
         except Exception:
             rmbg_node = None
-        if not rmbg_node and request.workflow_id == "RMBG2":
+        if not rmbg_node and effective_workflow_id == "RMBG2":
             rmbg_node = "11"
 
         def _clamp_int(v, lo, hi):
@@ -747,7 +808,8 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                     "event": "rmbg_params_override",
                     "job_id": job.id,
                     "owner_id": job.owner_id,
-                    "workflow_id": request.workflow_id,
+                    "workflow_id": getattr(request, "workflow_id", None),
+                    "effective_workflow_id": effective_workflow_id,
                     "node": rmbg_node,
                     "mask_blur": mb,
                     "mask_offset": mo,
@@ -761,8 +823,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     try:
         loras_req = req_dict.get("loras") if isinstance(req_dict, dict) else None
         if isinstance(loras_req, list) and loras_req:
-            wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
-            lora_map = wf_cfg.get("loras") if isinstance(wf_cfg, dict) else None
+            lora_map = wf_cfg_effective.get("loras") if isinstance(wf_cfg_effective, dict) else None
             if isinstance(lora_map, dict):
                 for item in loras_req:
                     if not isinstance(item, dict):
@@ -805,121 +866,175 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         pass
 
     try:
-        # --- Optional: image-to-image workflow handling ---
-        wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
-        io_cfg = wf_cfg.get("image_input") if isinstance(wf_cfg, dict) else None
-        # image_input: { image_node: str (node_id), input_field: str (default 'image') }
-        # Support: request.input_image_id (사용자 입력/생성 보관함에 저장된 PNG) 또는 request.input_image_filename (이미 Comfy input에 업로드된 파일명)
-        if io_cfg and isinstance(io_cfg, dict):
-            image_node = io_cfg.get("image_node")
-            input_field = io_cfg.get("input_field", "image")
+        # --- Optional: image-to-image workflow handling (single or multi input) ---
+        io_cfg_single = wf_cfg_effective.get("image_input") if isinstance(wf_cfg_effective, dict) else None
+        io_cfg_multi = wf_cfg_effective.get("image_inputs") if isinstance(wf_cfg_effective, dict) else None
+
+        # Normalize to a list of mappings:
+        # - image_input: { image_node, input_field }
+        # - image_inputs: [ { image_node, input_field, ordinal } ... ]
+        io_mappings: list[dict] = []
+        if isinstance(io_cfg_multi, list) and io_cfg_multi:
+            io_mappings = [x for x in io_cfg_multi if isinstance(x, dict)]
+        elif isinstance(io_cfg_single, dict) and io_cfg_single:
+            io_mappings = [dict(io_cfg_single, ordinal=1)]
+
+        # Support: request.input_image_ids (preferred) or request.input_image_id (legacy single)
+        input_ids: list[str] = []
+        try:
+            raw_ids = getattr(request, "input_image_ids", None)
+            if isinstance(raw_ids, list):
+                for x in raw_ids:
+                    try:
+                        s = str(x or "").strip()
+                    except Exception:
+                        s = ""
+                    if s:
+                        input_ids.append(s)
+        except Exception:
+            input_ids = []
+        if not input_ids:
+            try:
+                one = getattr(request, "input_image_id", None)
+            except Exception:
+                one = None
+            if isinstance(one, str) and one.strip():
+                input_ids = [one.strip()]
+
+        downscale_meta_items: list[dict] = []
+
+        def _resolve_and_upload_to_comfy_input(img_id: str, ordinal: int) -> Optional[str]:
+            """
+            Resolve an input image id to a ComfyUI input filename.
+            - Prefer local inputs/gallery PNG by id and upload it.
+            - Fallback: treat 'xxx.png' as a filename already in Comfy input.
+            - If source is already in Comfy input, optionally downscale by re-uploading a temp job file.
+            Returns the Comfy input filename (stored) or None.
+            """
             image_filename = None
             resolve_source = None
-            # If request has input_image_filename already uploaded to Comfy input, use it
-            try:
-                image_filename = getattr(request, "input_image_filename", None)
-            except Exception:
-                image_filename = None
-            if image_filename:
-                resolve_source = "preuploaded"
-            # Else, if request.input_image_id refers to user input/gallery PNG, upload it
-            if not image_filename:
+
+            # 0) If request has an explicit preuploaded filename, only apply it for the first image.
+            if ordinal == 1:
                 try:
-                    img_id = getattr(request, "input_image_id", None)
+                    pre = getattr(request, "input_image_filename", None)
                 except Exception:
-                    img_id = None
-                if isinstance(img_id, str) and img_id:
+                    pre = None
+                if isinstance(pre, str) and pre.strip():
+                    image_filename = pre.strip()
+                    resolve_source = "preuploaded"
+
+            # 1) Resolve by stored PNG id and upload to Comfy input
+            if not image_filename:
+                local_png = None
+                # 1) inputs store
+                try:
+                    from .media_store import _locate_input_png_path
+
+                    local_png = _locate_input_png_path(job.owner_id, img_id)
+                    if local_png:
+                        resolve_source = "inputs"
+                except Exception:
                     local_png = None
-                    # 1) inputs store
-                    try:
-                        from .media_store import _locate_input_png_path
-                        local_png = _locate_input_png_path(job.owner_id, img_id)
-                        if local_png:
-                            resolve_source = "inputs"
-                    except Exception:
-                        local_png = None
-                    # 2) generated images (gallery)
-                    try:
-                        from .media_store import _locate_image_meta_path
-                        meta_path = _locate_image_meta_path(job.owner_id, img_id)
-                        if meta_path and os.path.exists(meta_path):
-                            base_dir = os.path.dirname(meta_path)
-                            cand = os.path.join(base_dir, f"{img_id}.png")
-                            if os.path.exists(cand):
-                                local_png = cand
-                                resolve_source = "images"
-                    except Exception:
-                        pass
-                    # 3) legacy controls store removed (no longer supported)
-                    try:
-                        logger.info({
+                # 2) generated images (gallery)
+                try:
+                    from .media_store import _locate_image_meta_path
+
+                    meta_path = _locate_image_meta_path(job.owner_id, img_id)
+                    if meta_path and os.path.exists(meta_path):
+                        base_dir = os.path.dirname(meta_path)
+                        cand = os.path.join(base_dir, f"{img_id}.png")
+                        if os.path.exists(cand):
+                            local_png = cand
+                            resolve_source = "images"
+                except Exception:
+                    pass
+
+                try:
+                    logger.info(
+                        {
                             "event": "image_input_resolved",
                             "job_id": job.id,
                             "owner_id": job.owner_id,
                             "input_image_id": img_id,
+                            "ordinal": ordinal,
                             "local_png": local_png,
                             "source": resolve_source,
-                        })
-                    except Exception:
-                        pass
-                    if local_png and os.path.exists(local_png):
+                        }
+                    )
+                except Exception:
+                    pass
+
+                if local_png and os.path.exists(local_png):
+                    try:
+                        with open(local_png, "rb") as f:
+                            data = f.read()
+                        data_for_upload = data
+                        downscale_meta = None
                         try:
-                            with open(local_png, "rb") as f:
-                                data = f.read()
+                            data_for_upload, downscale_meta = _maybe_downscale_img2img_input_for_comfy(data, max_side=1536)
+                        except Exception:
                             data_for_upload = data
                             downscale_meta = None
-                            try:
-                                data_for_upload, downscale_meta = _maybe_downscale_img2img_input_for_comfy(
-                                    data, max_side=1536
-                                )
-                            except Exception:
-                                data_for_upload = data
-                                downscale_meta = None
-                            try:
-                                if downscale_meta:
-                                    request.comfy_img2img_input_downscale = downscale_meta
-                            except Exception:
-                                pass
-                            req_name = f"{img_id}_{job.id}.png"
-                            uploaded_image_input_requested_name = req_name
-                            stored = client.upload_image_to_input(req_name, data_for_upload, "image/png")
-                            if isinstance(stored, str) and stored:
-                                try:
-                                    _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
-                                except Exception:
-                                    pass
-                                image_filename = stored
-                                uploaded_image_input_filename = stored
-                                try:
-                                    logger.info({
-                                        "event": "image_input_uploaded",
-                                        "job_id": job.id,
-                                        "owner_id": job.owner_id,
-                                        "stored": stored,
-                                        "source": resolve_source,
-                                        "downscale": downscale_meta,
-                                    })
-                                except Exception:
-                                    pass
-                                try:
-                                    time.sleep(0.1)
-                                except Exception:
-                                    pass
-                        except Exception as e:
-                            try:
-                                logger.info({"event": "image_input_upload_failed", "job_id": job.id, "owner_id": job.owner_id, "error": str(e)})
-                            except Exception:
-                                pass
-                    else:
-                        # As a fallback, if id looks like a filename already in Comfy input, pass-through
                         try:
-                            if (not local_png) and ("/" not in img_id) and ("\\" not in img_id) and img_id.lower().endswith('.png'):
-                                image_filename = img_id
-                                resolve_source = "filename_passthrough"
+                            if isinstance(downscale_meta, dict):
+                                downscale_meta["ordinal"] = int(ordinal)
+                                downscale_meta["source"] = resolve_source
+                                downscale_meta_items.append(downscale_meta)
                         except Exception:
                             pass
 
-            # If the image is already in ComfyUI input (preuploaded / filename passthrough),
+                        req_name = f"{img_id}_{job.id}_{ordinal}.png"
+                        uploaded_image_input_requested_names.append(req_name)
+                        stored = client.upload_image_to_input(req_name, data_for_upload, "image/png")
+                        if isinstance(stored, str) and stored:
+                            try:
+                                _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
+                            except Exception:
+                                pass
+                            image_filename = stored
+                            uploaded_image_input_filenames.append(stored)
+                            try:
+                                logger.info(
+                                    {
+                                        "event": "image_input_uploaded",
+                                        "job_id": job.id,
+                                        "owner_id": job.owner_id,
+                                        "ordinal": ordinal,
+                                        "stored": stored,
+                                        "source": resolve_source,
+                                        "downscale": downscale_meta,
+                                    }
+                                )
+                            except Exception:
+                                pass
+                            try:
+                                time.sleep(0.1)
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        try:
+                            logger.info(
+                                {
+                                    "event": "image_input_upload_failed",
+                                    "job_id": job.id,
+                                    "owner_id": job.owner_id,
+                                    "ordinal": ordinal,
+                                    "error": str(e),
+                                }
+                            )
+                        except Exception:
+                            pass
+                else:
+                    # Fallback: if id looks like a filename already in Comfy input, pass-through
+                    try:
+                        if (not local_png) and ("/" not in img_id) and ("\\" not in img_id) and img_id.lower().endswith(".png"):
+                            image_filename = img_id
+                            resolve_source = "filename_passthrough"
+                    except Exception:
+                        pass
+
+            # 2) If the image is already in ComfyUI input (preuploaded / filename passthrough),
             # we can still downscale it by loading bytes, resizing in memory, and re-uploading
             # a temporary PNG for this job only.
             try:
@@ -958,10 +1073,11 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
 
                         # Record meta even if no resize happened (helps debugging).
                         try:
-                            if ds_meta:
+                            if isinstance(ds_meta, dict):
                                 ds_meta["source"] = resolve_source
                                 ds_meta["input_filename"] = orig_name
-                                request.comfy_img2img_input_downscale = ds_meta
+                                ds_meta["ordinal"] = int(ordinal)
+                                downscale_meta_items.append(ds_meta)
                         except Exception:
                             pass
 
@@ -979,8 +1095,8 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                                 base = "input"
                             if not base:
                                 base = "input"
-                            req_name = f"{base}_{job.id}_ds1536.png"
-                            uploaded_image_input_requested_name = req_name
+                            req_name = f"{base}_{job.id}_ds1536_{ordinal}.png"
+                            uploaded_image_input_requested_names.append(req_name)
                             stored = client.upload_image_to_input(req_name, ds_bytes, "image/png")
                             if isinstance(stored, str) and stored:
                                 try:
@@ -988,13 +1104,14 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                                 except Exception:
                                     pass
                                 image_filename = stored
-                                uploaded_image_input_filename = stored
+                                uploaded_image_input_filenames.append(stored)
                                 try:
                                     logger.info(
                                         {
                                             "event": "image_input_preuploaded_downscaled",
                                             "job_id": job.id,
                                             "owner_id": job.owner_id,
+                                            "ordinal": ordinal,
                                             "original": orig_name,
                                             "stored": stored,
                                             "downscale": ds_meta,
@@ -1004,43 +1121,86 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                                     pass
             except Exception:
                 pass
-            # Hard gate: when image input is configured, an image must be resolved
-            if not image_filename:
+
+            return image_filename
+
+        if io_mappings:
+            # Hard gate: when image input is configured, required image ids must exist.
+            if not input_ids:
                 try:
-                    logger.info({
-                        "event": "image_input_gate_error",
-                        "job_id": job.id,
-                        "owner_id": job.owner_id,
-                        "workflow_id": getattr(request, "workflow_id", None),
-                        "reason": "missing_input_image",
-                    })
+                    logger.info(
+                        {
+                            "event": "image_input_gate_error",
+                            "job_id": job.id,
+                            "owner_id": job.owner_id,
+                            "workflow_id": getattr(request, "workflow_id", None),
+                            "reason": "missing_input_image",
+                        }
+                    )
                 except Exception:
                     pass
                 raise RuntimeError("입력 이미지가 준비되지 않았습니다. 입력 이미지를 선택/업로드 후 다시 시도해 주세요.")
 
-            if image_node and image_filename:
-                prompt_overrides[image_node] = {"inputs": {input_field: image_filename}}
+            # Resolve and apply overrides for each mapping
+            for m in io_mappings:
+                image_node = m.get("image_node")
+                input_field = m.get("input_field", "image")
                 try:
-                    logger.info({
-                        "event": "image_input_override_set",
-                        "job_id": job.id,
-                        "owner_id": job.owner_id,
-                        "image_node": image_node,
-                        "input_field": input_field,
-                        "image_filename": image_filename,
-                    })
+                    ordinal = int(m.get("ordinal", 1))
                 except Exception:
-                    pass
+                    ordinal = 1
+                if ordinal < 1:
+                    ordinal = 1
+
+                if len(input_ids) < ordinal:
+                    raise RuntimeError(
+                        f"이 워크플로우는 입력 이미지가 {ordinal}장 필요합니다. "
+                        "입력 이미지를 더 선택해 주세요."
+                    )
+
+                img_id = input_ids[ordinal - 1]
+                image_filename = _resolve_and_upload_to_comfy_input(img_id, ordinal=ordinal)
+                if not image_filename:
+                    raise RuntimeError(
+                        f"{ordinal}번째 입력 이미지가 준비되지 않았습니다. "
+                        "입력 이미지를 다시 선택/업로드 후 다시 시도해 주세요."
+                    )
+
+                if image_node and image_filename:
+                    prompt_overrides[str(image_node)] = {"inputs": {str(input_field): image_filename}}
+                    try:
+                        logger.info(
+                            {
+                                "event": "image_input_override_set",
+                                "job_id": job.id,
+                                "owner_id": job.owner_id,
+                                "ordinal": ordinal,
+                                "image_node": image_node,
+                                "input_field": input_field,
+                                "image_filename": image_filename,
+                            }
+                        )
+                    except Exception:
+                        pass
+
+            # Persist downscale meta (single dict for single-image, list for multi)
+            try:
+                if downscale_meta_items:
+                    if len(io_mappings) <= 1 and len(downscale_meta_items) == 1:
+                        request.comfy_img2img_input_downscale = downscale_meta_items[0]
+                    else:
+                        request.comfy_img2img_input_downscale = downscale_meta_items
+            except Exception:
+                pass
 
         # Merge additional prompt into target text node if configured (e.g., node 63 for ILXL)
         try:
-            wf_cfg2 = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
-            ui_cfg = wf_cfg2.get("ui") if isinstance(wf_cfg2, dict) else None
+            ui_cfg = wf_cfg_effective.get("ui") if isinstance(wf_cfg_effective, dict) else None
             target_node = ui_cfg.get("additionalPromptTargetNode") if isinstance(ui_cfg, dict) else None
             if target_node and isinstance(target_node, str) and len(target_node) > 0:
                 base_text = ""
                 try:
-                    base_text = wf_cfg2.get("style_prompt", "") or ""
+                    base_text = wf_cfg_effective.get("style_prompt", "") or ""
                 except Exception:
                     base_text = ""
                 add_text = getattr(request, "user_prompt", "") or ""
@@ -1128,10 +1288,10 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                         if ok:
                             break
 
-                if uploaded_image_input_filename:
-                    _try_delete(uploaded_image_input_filename, "img2img_single")
-                if uploaded_image_input_requested_name:
-                    _try_delete(uploaded_image_input_requested_name, "img2img_single_requested")
+                for n in uploaded_image_input_filenames:
+                    _try_delete(n, "img2img_input")
+                for n in uploaded_image_input_requested_names:
+                    _try_delete(n, "img2img_input_requested")
 
                 # 마지막 안전장치:
                 # ComfyUI가 업로드 파일명에 (1) 같은 접미사를 붙이거나, 반환값 파싱이 어긋나는 경우가 있습니다.

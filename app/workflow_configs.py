@@ -1200,6 +1200,120 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요? (예: 파란 슬라임을 제거하고 다른 동물로 바꿔 주세요)",
         },
     },
+
+    # --- Flux2 Klein: 기본 이미지 편집(Img2Img) ---
+    #
+    # 목적:
+    # - LoRA 없이 Klein(Flux2) 모델만으로 "이미지 편집" 도구를 제공
+    # - 입력 이미지 1장/2장에 따라 내부적으로 서로 다른 ComfyUI 워크플로우(JSON)를 로드
+    #
+    # UI는 wrapper(workflow id: Flux2Klein_ImageEdit)만 노출하고,
+    # 서버는 input_image_ids 개수에 따라 아래 variant로 자동 라우팅합니다:
+    # - 1장 => Flux2Klein_i2i_singleInput.json
+    # - 2장 => Flux2Klein_i2i_dualInput.json
+    "Flux2Klein_ImageEdit": {
+        "display_name": "간단 이미지 편집",
+        "description": "이미지 1장(또는 2장)을 넣고, 원하는 변경을 글로 적으면 Klein(Flux2)로 편집합니다.",
+        "hidden": False,
+
+        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
+        "default_user_prompt": "",
+        "style_prompt": "",
+        "negative_prompt": "",
+
+        # Wrapper routing: pick an internal ComfyUI workflow by input image count.
+        # NOTE: generation.py에서 이 키를 읽어 workflow_path를 바꿉니다.
+        "comfy_variants_by_input_count": {
+            1: "Flux2Klein_i2i_singleInput",
+            2: "Flux2Klein_i2i_dualInput",
+        },
+
+        # UI gate only: 존재만으로 "입력 이미지 필요"를 인지하게 합니다.
+        # 실제 LoadImage 노드 주입은 variant config에서 처리됩니다.
+        "image_input": {"image_node": "102", "input_field": "image"},
+
+        "ui": {
+            "icon": "edit",
+            "templateMode": "utility",
+            "showLora": False,
+            "showPromptTranslate": True,
+            # Img2Img는 입력 비율을 따르는 것이 자연스럽습니다.
+            "disableAspect": True,
+            "generateLabel": "이미지 편집하기",
+            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요? (예: 머리색을 은발로 바꾸고, 배경을 밤하늘로 바꿔주세요)",
+            # 1~2장까지 선택 UI(썸네일 그리드)를 활성화합니다.
+            "imageInputMulti": {"enabled": True, "max": 2},
+        },
+    },
+
+    "Flux2Klein_i2i_singleInput": {
+        # wrapper에서만 사용되는 내부 워크플로우(목록 비노출)
+        "hidden": True,
+        "display_name": "이미지 편집 (Klein) — 1장",
+        "description": "입력 이미지 1장을 기반으로 Klein(Flux2) Img2Img 편집을 수행합니다.",
+
+        "default_user_prompt": "",
+        "style_prompt": "",
+        "negative_prompt": "",
+
+        # Prompt: CLIPTextEncode.inputs.text
+        "prompt_node": "75:74",
+        "prompt_input_key": "text",
+
+        # Seed: Seed (rgthree).inputs.seed (RandomNoise가 이를 참조)
+        "seed_node": "100",
+        "seed_input_key": "seed",
+
+        # Input image: LoadImage(102).inputs.image
+        "image_input": {"image_node": "102", "input_field": "image"},
+
+        "ui": {
+            "templateMode": "utility",
+            "showLora": False,
+            "showPromptTranslate": True,
+            "disableAspect": True,
+            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요?",
+        },
+    },
+
+    "Flux2Klein_i2i_dualInput": {
+        # wrapper에서만 사용되는 내부 워크플로우(목록 비노출)
+        "hidden": True,
+        "display_name": "이미지 편집 (Klein) — 2장",
+        "description": "입력 이미지 2장을 기반으로 Klein(Flux2) Img2Img 편집을 수행합니다.",
+
+        "default_user_prompt": "",
+        "style_prompt": "",
+        "negative_prompt": "",
+
+        # Prompt: CLIPTextEncode.inputs.text
+        "prompt_node": "92:74",
+        "prompt_input_key": "text",
+
+        # Seed: Seed (rgthree).inputs.seed (RandomNoise가 이를 참조)
+        "seed_node": "100",
+        "seed_input_key": "seed",
+
+        # Dual input images:
+        # - 1번째 이미지: LoadImage(76).inputs.image
+        # - 2번째 이미지: LoadImage(81).inputs.image
+        "image_inputs": [
+            {"ordinal": 1, "image_node": "76", "input_field": "image"},
+            {"ordinal": 2, "image_node": "81", "input_field": "image"},
+        ],
+        # UI gate only (서버는 image_inputs를 사용하지만, 프론트는 image_input 존재 여부로만 표시 판단)
+        "image_input": {"image_node": "76", "input_field": "image"},
+
+        "ui": {
+            "templateMode": "utility",
+            "showLora": False,
+            "showPromptTranslate": True,
+            "disableAspect": True,
+            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요?",
+            # 내부 워크플로우를 직접 선택할 일은 없지만, 안전하게 동일 설정 유지
+            "imageInputMulti": {"enabled": True, "max": 2},
+        },
+    },
 }
 
 

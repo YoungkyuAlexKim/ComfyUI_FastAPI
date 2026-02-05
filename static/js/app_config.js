@@ -163,6 +163,11 @@
         url: '/static/img/banner/img_banner_workflow_CJKStyle_Klein.png',
         showTitle: false,
         showDescription: false
+      },
+      Flux2Klein_ImageEdit: {
+        url: '/static/img/banner/img_banner_Flux2Klein_ImageEdit.png',
+        showTitle: false,
+        showDescription: false,
       }
     }
   };

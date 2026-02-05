@@ -449,6 +449,7 @@
                 inWrap.innerHTML = `
                   <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                     <strong>입력 이미지 (필수)</strong>
+                    <span id="input-image-hint" style="display:none; margin-left:4px; font-size:12px; color:var(--text-muted); font-weight:600;"></span>
                     <button id="input-image-choose" type="button" class="chip-btn"><i class="fas fa-image"></i> 선택/업로드</button>
                     <button id="input-image-clear" type="button" class="chip-btn" style="display:none;">지우기</button>
                   </div>
@@ -2652,10 +2653,54 @@
             const img = document.getElementById('input-image-preview');
             const empty = document.getElementById('input-image-empty');
             const multiGrid = document.getElementById('input-image-multi-grid');
+            const drop = document.getElementById('input-image-drop');
+            const hint = document.getElementById('input-image-hint');
 
             const targetWf = getTargetWorkflowForMode();
             const needsInput = !!(targetWf && targetWf.image_input);
             const isMulti = needsInput && isInputMultiEnabled();
+
+            // Compact layout for small multi (e.g. max=2): reduce the empty space.
+            try {
+                const maxMulti = isMulti ? getInputMultiMax() : 0;
+                if (drop) {
+                    drop.dataset.multi = isMulti ? '1' : '0';
+                    drop.dataset.max = isMulti ? String(maxMulti) : '';
+                    if (isMulti && maxMulti <= 2) {
+                        drop.style.minHeight = '156px';
+                        drop.style.height = '156px';
+                        drop.style.maxWidth = '560px';
+                        drop.style.margin = '0 auto';
+                    } else {
+                        drop.style.minHeight = '120px';
+                        drop.style.height = '';
+                        drop.style.maxWidth = '';
+                        drop.style.margin = '';
+                    }
+                }
+                if (multiGrid) {
+                    if (isMulti && maxMulti <= 2) {
+                        multiGrid.style.gridTemplateColumns = 'repeat(2, minmax(120px, 1fr))';
+                        multiGrid.style.gridAutoRows = '120px';
+                        multiGrid.style.justifyContent = 'center';
+                        multiGrid.style.overflow = 'hidden';
+                    } else {
+                        multiGrid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(88px, 1fr))';
+                        multiGrid.style.gridAutoRows = '88px';
+                        multiGrid.style.justifyContent = '';
+                        multiGrid.style.overflow = 'auto';
+                    }
+                }
+                if (hint) {
+                    if (isMulti && maxMulti === 2) {
+                        hint.textContent = '1번: reference_image1 · 2번: reference_image2 (드래그로 순서 변경)';
+                        hint.style.display = '';
+                    } else {
+                        hint.textContent = '';
+                        hint.style.display = 'none';
+                    }
+                }
+            } catch (_) {}
 
             // Reset multi UI by default
             try { if (multiGrid) multiGrid.style.display = 'none'; } catch (_) {}
