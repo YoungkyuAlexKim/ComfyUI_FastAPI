@@ -35,6 +35,126 @@ def _wait_for_input_visibility(filename: str, timeout_sec: float = 1.5, poll_ms:
         return True
 
 
+def _maybe_downscale_img2img_input_for_comfy(png_bytes: bytes, max_side: int = 1536) -> tuple[bytes, Optional[dict]]:
+    """
+    Downscale an img2img input image before uploading to ComfyUI.
+
+    Policy:
+    - Keep aspect ratio
+    - Only downscale when max(width, height) > max_side
+    - Do not modify stored originals; this function only returns bytes for upload
+
+    Returns: (output_png_bytes, meta_or_none)
+    """
+    if not isinstance(png_bytes, (bytes, bytearray)) or not png_bytes:
+        return png_bytes, None
+    try:
+        max_side_int = int(max_side)
+    except Exception:
+        max_side_int = 1536
+    if max_side_int <= 0:
+        return png_bytes, None
+
+    try:
+        from io import BytesIO
+        from PIL import Image
+    except Exception:
+        return png_bytes, None
+    try:
+        from PIL import ImageOps
+    except Exception:
+        ImageOps = None
+
+    def _resample_lanczos():
+        try:
+            # Pillow >= 9.1
+            return Image.Resampling.LANCZOS
+        except Exception:
+            try:
+                return Image.LANCZOS
+            except Exception:
+                return Image.BICUBIC
+
+    try:
+        with Image.open(BytesIO(png_bytes)) as im0:
+            im = im0
+            # Best-effort: stabilize orientation for images with EXIF (mostly JPGs, but harmless here).
+            try:
+                if ImageOps is not None:
+                    im = ImageOps.exif_transpose(im)
+            except Exception:
+                pass
+
+            try:
+                w0, h0 = im.size
+            except Exception:
+                return png_bytes, None
+
+            resized = False
+            w1, h1 = w0, h0
+            if isinstance(w0, int) and isinstance(h0, int) and w0 > 0 and h0 > 0 and max(w0, h0) > max_side_int:
+                if w0 >= h0:
+                    w1 = max_side_int
+                    h1 = max(1, int(round(h0 * (max_side_int / float(w0)))))
+                else:
+                    h1 = max_side_int
+                    w1 = max(1, int(round(w0 * (max_side_int / float(h0)))))
+                try:
+                    im = im.resize((w1, h1), resample=_resample_lanczos())
+                    resized = True
+                except Exception:
+                    # If resize fails, fall back to original bytes
+                    return png_bytes, None
+
+            meta = {
+                "policy": "max_side_1536_keep_aspect",
+                "max_side": max_side_int,
+                "resized": bool(resized),
+                "original": {"width": int(w0), "height": int(h0)},
+                "output": {"width": int(w1), "height": int(h1)},
+            }
+            if not resized:
+                return png_bytes, meta
+
+            # Preserve alpha when present for the resized output.
+            try:
+                has_alpha = (
+                    im.mode in ("RGBA", "LA")
+                    or (im.mode == "P" and "transparency" in (im.info or {}))
+                )
+            except Exception:
+                has_alpha = False
+            im = im.convert("RGBA" if has_alpha else "RGB")
+
+            out = BytesIO()
+            im.save(out, format="PNG")
+            out_bytes = out.getvalue()
+            return out_bytes, meta
+    except Exception:
+        return png_bytes, None
+
+
+def _split_comfy_path(name: str) -> tuple[str, str]:
+    """
+    ComfyUI sometimes returns names that include a subfolder (e.g. 'foo/bar.png').
+    Returns (filename, subfolder).
+    """
+    try:
+        s = str(name or "").replace("\\", "/").strip()
+    except Exception:
+        s = ""
+    if not s:
+        return ("", "")
+    if "/" not in s:
+        return (s, "")
+    parts = [p for p in s.split("/") if p]
+    if not parts:
+        return ("", "")
+    if len(parts) == 1:
+        return (parts[0], "")
+    return (parts[-1], "/".join(parts[:-1]))
+
+
 def run_generation_processor(job, progress_cb: Callable[[float], None], set_cancel_handle: Callable[[Callable[[], bool]], None]):
     """Heavyweight generation processor extracted from main.
 
@@ -659,9 +779,23 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                         try:
                             with open(local_png, "rb") as f:
                                 data = f.read()
+                            data_for_upload = data
+                            downscale_meta = None
+                            try:
+                                data_for_upload, downscale_meta = _maybe_downscale_img2img_input_for_comfy(
+                                    data, max_side=1536
+                                )
+                            except Exception:
+                                data_for_upload = data
+                                downscale_meta = None
+                            try:
+                                if downscale_meta:
+                                    request.comfy_img2img_input_downscale = downscale_meta
+                            except Exception:
+                                pass
                             req_name = f"{img_id}_{job.id}.png"
                             uploaded_image_input_requested_name = req_name
-                            stored = client.upload_image_to_input(req_name, data, "image/png")
+                            stored = client.upload_image_to_input(req_name, data_for_upload, "image/png")
                             if isinstance(stored, str) and stored:
                                 try:
                                     _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
@@ -676,6 +810,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                                         "owner_id": job.owner_id,
                                         "stored": stored,
                                         "source": resolve_source,
+                                        "downscale": downscale_meta,
                                     })
                                 except Exception:
                                     pass
@@ -696,6 +831,92 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                                 resolve_source = "filename_passthrough"
                         except Exception:
                             pass
+
+            # If the image is already in ComfyUI input (preuploaded / filename passthrough),
+            # we can still downscale it by loading bytes, resizing in memory, and re-uploading
+            # a temporary PNG for this job only.
+            try:
+                if image_filename and resolve_source in ("preuploaded", "filename_passthrough"):
+                    orig_name = str(image_filename)
+                    raw_bytes = None
+
+                    # 1) Try local filesystem when COMFY_INPUT_DIR is configured (best for performance).
+                    try:
+                        fn, sub = _split_comfy_path(orig_name)
+                        if isinstance(COMFY_INPUT_DIR, str) and COMFY_INPUT_DIR and fn:
+                            cand = os.path.join(COMFY_INPUT_DIR, sub, fn) if sub else os.path.join(COMFY_INPUT_DIR, fn)
+                            if os.path.exists(cand):
+                                with open(cand, "rb") as f:
+                                    raw_bytes = f.read()
+                    except Exception:
+                        raw_bytes = None
+
+                    # 2) Fallback: fetch from ComfyUI over HTTP (/view?type=input)
+                    try:
+                        if raw_bytes is None:
+                            fn, sub = _split_comfy_path(orig_name)
+                            if fn:
+                                raw_bytes = client.get_image(fn, sub or "", "input")
+                    except Exception:
+                        raw_bytes = None
+
+                    if raw_bytes:
+                        ds_bytes = raw_bytes
+                        ds_meta = None
+                        try:
+                            ds_bytes, ds_meta = _maybe_downscale_img2img_input_for_comfy(raw_bytes, max_side=1536)
+                        except Exception:
+                            ds_bytes = raw_bytes
+                            ds_meta = None
+
+                        # Record meta even if no resize happened (helps debugging).
+                        try:
+                            if ds_meta:
+                                ds_meta["source"] = resolve_source
+                                ds_meta["input_filename"] = orig_name
+                                request.comfy_img2img_input_downscale = ds_meta
+                        except Exception:
+                            pass
+
+                        # Only upload a temporary file when a resize actually happened.
+                        try:
+                            resized_flag = bool(isinstance(ds_meta, dict) and ds_meta.get("resized") is True)
+                        except Exception:
+                            resized_flag = False
+
+                        if resized_flag:
+                            base = ""
+                            try:
+                                base = os.path.splitext(os.path.basename(orig_name.replace("\\", "/")))[0]
+                            except Exception:
+                                base = "input"
+                            if not base:
+                                base = "input"
+                            req_name = f"{base}_{job.id}_ds1536.png"
+                            uploaded_image_input_requested_name = req_name
+                            stored = client.upload_image_to_input(req_name, ds_bytes, "image/png")
+                            if isinstance(stored, str) and stored:
+                                try:
+                                    _ = _wait_for_input_visibility(stored, timeout_sec=1.5, poll_ms=50)
+                                except Exception:
+                                    pass
+                                image_filename = stored
+                                uploaded_image_input_filename = stored
+                                try:
+                                    logger.info(
+                                        {
+                                            "event": "image_input_preuploaded_downscaled",
+                                            "job_id": job.id,
+                                            "owner_id": job.owner_id,
+                                            "original": orig_name,
+                                            "stored": stored,
+                                            "downscale": ds_meta,
+                                        }
+                                    )
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
             # Hard gate: when image input is configured, an image must be resolved
             if not image_filename:
                 try:

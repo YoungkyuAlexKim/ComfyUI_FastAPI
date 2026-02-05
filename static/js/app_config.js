@@ -90,6 +90,43 @@
     // 1) 문자열: 배너 이미지 경로만 지정 (전역 기본 표시 여부 사용)
     // 2) 객체: { url: '...', showTitle: true/false, showDescription: true/false }
     map: {
+      // --- NanoBanana Pro (Google) family banners ---
+      // 이미지에 이미 텍스트가 포함되어 있어, 제목/설명 오버레이는 숨깁니다.
+      NanoBanana: {
+        url: '/static/img/banner/img_banner_Banana_Basic.png',
+        showTitle: false,
+        showDescription: false,
+      },
+      NanoBanana_Img2Img: {
+        url: '/static/img/banner/img_banner_Banana_Basic.png',
+        showTitle: false,
+        showDescription: false,
+      },
+      NanoBanana_ExpressionPortraitSheet: {
+        url: '/static/img/banner/img_banner_Banana_FacialExpressions.png',
+        showTitle: false,
+        showDescription: false,
+      },
+      NanoBanana_Relight: {
+        url: '/static/img/banner/img_banner_Banana_Relight.png',
+        showTitle: false,
+        showDescription: false,
+      },
+      NanoBanana_StoryboardCutboard: {
+        url: '/static/img/banner/img_banner_Banana_StoryBoard.png',
+        showTitle: false,
+        showDescription: false,
+      },
+      NanoBanana_TurnaroundSheet: {
+        url: '/static/img/banner/img_banner_Banana_TurnAround.png',
+        showTitle: false,
+        showDescription: false,
+      },
+      NanoBanana_WhatsNextVariations: {
+        url: '/static/img/banner/img_banner_Banana_WhatsNext.png',
+        showTitle: false,
+        showDescription: false,
+      },
       'BasicWorkFlow_PixelArt': {
         url: '/static/img/banner/img_banner_workflow_pixelart.png',
         // 예: 이미지에 텍스트가 내장된 경우 아래를 false로 설정

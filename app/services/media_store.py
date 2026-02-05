@@ -649,6 +649,8 @@ def _save_image_and_meta(anon_id: str, image_bytes: bytes, req, original_filenam
         "input_image_id": getattr(req, "input_image_id", None),
         # Forward-compatible: optional multi-input image ids
         "input_image_ids": getattr(req, "input_image_ids", None),
+        # ComfyUI Img2Img: input downscale info (bytes are downscaled only for upload; original remains unchanged)
+        "comfy_img2img_input_downscale": getattr(req, "comfy_img2img_input_downscale", None),
         "original_filename": original_filename,
         "mime": "image/png",
         "bytes": len(image_bytes),
