@@ -1,10 +1,10 @@
 #
-세션 인계 문서 — NanoBanana 일반 노출 전환 + Admin 운영툴 확장(휴지통 완전삭제/사용통계) + Dual Img2Img 정리 + 다음 작업(Quota 에러 UX) (2026-02-06)
+세션 인계 문서 — NanoBanana 기본 노출 + Admin 운영툴(휴지통 완전삭제/사용통계) + Dual Img2Img 정리 + (완료) Quota/한도 에러 UX (2026-02-06, 최신화)
 
 대상 저장소: `c:\Works\ComfyUI_FastAPI`  
 환경: Windows / FastAPI + Jinja 템플릿 프론트 (대부분 로직이 `templates/index.html`에 있음)
 
-이 문서는 “완전히 새 창에서 들어온 동료 AI”가 **프로젝트가 무엇인지 → 지금까지 반영된 변경 → 현재 동작 방식 → 다음 작업 요청서**를 바로 이해하고 곧바로 코드 작업을 이어갈 수 있도록 최대한 구체적으로 적었습니다.
+이 문서는 “완전히 새 창에서 들어온 사람(운영/개발/AI)”이 **프로젝트가 무엇인지 → 지금 상태가 어떤지 → 어디를 보면 되는지**를 빠르게 파악하도록 정리한 메모입니다.
 
 ---
 
@@ -41,23 +41,13 @@
 
 ---
 
-## 2) 이번까지 반영된 변경 사항(중요한 것만)
+## 2) 최근 반영된 변경(중요한 것만)
 
 ### 2.1 NanoBanana를 이제 `/create`에서 기본 노출로 전환
-이전:
-- 비용 때문에 Google(provider=google) 워크플로우는 기본 목록에서 숨김
-- `/newfeature`에서만 `include_google=1`로 노출
-
-현재:
-- `/api/v1/workflows`가 이제 **기본값으로 Google 워크플로우도 포함**해서 반환
-- `templates/index.html`도 `/newfeature` 분기 없이 **항상 `/api/v1/workflows`**만 호출
-- `/newfeature` 라우트는 **완전 제거**됨 → 이제 `/newfeature`는 404
-
-관련 변경 파일:
-- `app/routers/workflows.py` (include_google default를 true로 변경)
-- `templates/index.html` (`loadWorkflows()`에서 newfeature 분기 제거)
-- `templates/partials/input_panel.html` (주석 문구 정리)
-- `app/main.py` (`/newfeature` 라우트 삭제)
+- `/api/v1/workflows`가 **기본값으로 Google(provider=google) 워크플로우도 포함**해서 반환합니다.
+  - 필요하면 쿼리로 숨길 수는 있습니다: `GET /api/v1/workflows?include_google=false`
+- 프론트(`templates/index.html`)는 **항상 `/api/v1/workflows`**만 호출합니다.
+- 과거에 쓰던 `/newfeature` 페이지는 **제거되어 404가 정상**입니다.
 
 ### 2.2 NanoBanana “캐릭터 멘션(@Name)” 기능의 newfeature 제한 해제
 이전에는 `/newfeature`에서만 동작하도록 게이트가 있었는데, 이제 **워크플로우 조건(provider=google, NanoBanana base workflow 등)**만 충족하면 `/create`에서도 동작하도록 변경됨.
@@ -112,6 +102,10 @@
 - API: `GET /api/v1/admin/usage?days=30`
   - 일별 totals + 일별 워크플로우 랭킹 + 기간 합산 top workflows
 - UI: Admin 탭에 `사용 통계` 탭 추가(마스터-디테일 UX)
+
+추가(최신):
+- NanoBanana(구글) 쪽에서 **“쿼터/한도/속도제한”으로 막힌 에러**는 job 결과에 분류값이 저장되고,
+  `/admin`의 사용 통계에서 **NB(나노바나나) 제한/쿼터 에러 건수**로 집계되어 표시됩니다.
 
 중요: 기존 DB에는 workflow_id가 없던 레코드가 있으므로 과거 데이터는 `(unknown)`이 나올 수 있음.  
 지금부터 생성되는 job은 workflow_id/payload를 DB에 저장하므로 앞으로는 대부분 정상 표기됨.
@@ -172,36 +166,32 @@ NANOBANANA_MAX_PER_USER_QUEUE=5
 5) `/admin` → `사용 통계` 탭에서
    - 최근 7/30일 지표가 표시되는지
    - 날짜 클릭 시 상세 랭킹이 뜨는지
+   - (있으면) “NanoBanana 제한/쿼터 에러(NB)” 숫자가 함께 표시되는지
 
 ---
 
-## 5) 다음 작업 요청서(중요) — “NanoBanana 쿼터/한도 에러 UX”
+## 5) 완료된 작업 — “NanoBanana 쿼터/한도 에러 UX”
 
-배경:
-- NanoBanana(Google API)는 “하루 250장” 같은 상한에 빨리 닿을 수 있음.
-- 상한 도달 시 Google이 에러를 반환할 텐데, 사용자는 “왜 막혔는지”를 모르면 혼란스러움.
+무엇이 좋아졌나?
+- NanoBanana(구글) 호출이 실패할 때, 사용자가 이해하기 쉬운 문장으로 안내합니다.
+  - 예: “오늘 한도에 도달했어요. 내일 다시 시도해 주세요.”
+  - 예: “요청이 몰려… 30~60초 후 다시 시도해 주세요.”
 
-요구사항(목표):
-- Google 에러 상황에 따라 사용자가 이해할 수 있도록 **친절한 메시지**를 보여주기.
-- 운영자도 로그/통계에서 “쿼터 때문에 막혔는지”를 파악할 수 있도록 하기.
+어디에 구현되어 있나?
+- 에러 분류/사용자 메시지 매핑: `app/services/google_nano_banana.py`
+  - 내부적으로 `NanoBananaUpstreamError`로 “에러 종류(kind)”와 “사용자 메시지”를 함께 전달합니다.
+- 생성 라우팅에서 기록/저장: `app/services/generation.py`
+  - job 결과(`job.result`)에 `provider_error`를 저장해 Admin 집계에 활용합니다.
+- Admin 집계/표시:
+  - API: `GET /api/v1/admin/usage?days=...` (`app/routers/admin.py`)
+  - UI: `templates/admin.html` 사용 통계 탭에 NB(나노바나나) 제한/쿼터 에러 숫자를 표시합니다.
 
-권장 구현 방향:
-1) `app/services/google_nano_banana.py` 또는 `app/services/generation.py`에서
-   - Google API 실패 응답(HTTP status + body)을 분류
-   - 대표 케이스:
-     - 429 Too Many Requests(분당 제한)
-     - 403/429 RESOURCE_EXHAUSTED(일일 쿼터/결제/프로젝트 제한)
-     - 401/403 Unauthorized(키 문제)
-     - 5xx/timeout(일시 장애)
-2) 분류 결과를 **사용자 메시지로 매핑**
-   - 예: “오늘 생성 한도에 도달했어요. 내일 다시 시도해 주세요.”
-   - 예: “요청이 몰려 잠시 대기 중이에요. 잠시 후 다시 시도해 주세요.”
-3) 프론트(`templates/index.html`)는 이미 에러 메시지(`result.detail`)를 보여주는 흐름이 있으므로
-   - 서버에서 던지는 `detail`을 사용자 친화 문구로 다듬는 것이 1차 목표
-4) (선택) Admin/Usage에 “NanoBanana quota error count” 같은 운영 지표 추가
+운영 메모(중요):
+- NB 집계는 SQLite의 JSON 함수가 있는 환경에서 가장 정확합니다.
+  - 만약 서버 SQLite에 JSON 기능이 없다면, 사용 통계는 동작하되 NB 집계가 **0으로 표시**될 수 있습니다.
 
-추가 메모:
-- 실제 Google 에러 응답 샘플(JSON)이 있으면 메시지 분류 정확도가 크게 올라감.
+다음에 더 개선하고 싶다면(선택):
+- 실제 구글 에러 응답(JSON 샘플)을 몇 개 모으면, “분당 제한” vs “일일 한도” 분류 정확도를 더 올릴 수 있습니다.
 
 ---
 
@@ -210,4 +200,32 @@ NANOBANANA_MAX_PER_USER_QUEUE=5
 - `.env`에는 API 키/관리자 비밀번호 등 민감정보가 있으니 **커밋 금지** 권장.
 - static 파일 캐시로 인해 프론트 변경이 바로 안 보일 수 있음(필요하면 cache-busting 도입).
 - PowerShell에서는 `&&` 체인 명령이 기본으로 안 먹을 수 있으니 명령은 분리 실행 권장.
+
+---
+
+## 7) (여전히 유효) 2026-02-05 인수인계서에서 가져온 중요한 메모
+
+아래 내용은 “예전 문서에만 있던 내용”이지만, 현재 코드에서도 그대로 유효해서 여기에 합쳐둡니다.
+
+### 7.1 ComfyUI img2img 입력 자동 다운스케일(긴 변 1536)
+
+- 큰 이미지를 ComfyUI img2img에 넣으면 너무 느려질 수 있어서, 업로드 직전에 **긴 변 1536px 상한으로 자동 축소**합니다.
+- 원본 파일은 보존되고, **ComfyUI로 업로드되는 bytes만 축소**됩니다.
+- 구현 위치:
+  - `app/services/generation.py`: `_maybe_downscale_img2img_input_for_comfy(..., max_side=1536)`
+  - 저장되는 메타 필드: `comfy_img2img_input_downscale` (`app/services/media_store.py`가 meta.json에 기록)
+
+### 7.2 `outputs/global/characters/**`는 커밋(버전관리) 허용
+
+- 출력물(`outputs/`)은 기본적으로 커밋하지 않지만,
+  **운영용 공용 캐릭터 자산**은 예외로 커밋 가능하도록 `.gitignore`가 설정되어 있습니다.
+
+### 7.3 새로고침 시 img2img 입력 슬롯 초기화
+
+- 새로고침(F5) 후 예전 선택 이미지가 남아 혼란스러울 수 있어,
+  프론트가 시작할 때 `localStorage.inputImageIds` 등을 정리해서 **항상 빈 슬롯으로 시작**하도록 되어 있습니다.
+
+### 7.4 NanoBanana(google provider)에서는 seed UI가 숨겨질 수 있음
+
+- NanoBanana는 현재 통합 방식상 seed 재현성이 기대와 다를 수 있어, 워크플로우가 google provider일 때 seed 입력 UI를 숨기는 동작이 들어가 있습니다.
 
