@@ -249,7 +249,43 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         if cancel_event.is_set():
             raise RuntimeError("생성이 취소되었습니다.")
 
-        from .google_nano_banana import build_google_prompt, generate_text_to_image, generate_image_edit
+        from .google_nano_banana import (
+            NanoBananaUpstreamError,
+            build_google_prompt,
+            generate_text_to_image,
+            generate_image_edit,
+        )
+
+        def _record_google_provider_error(e: NanoBananaUpstreamError, *, context: str) -> None:
+            try:
+                job.result["provider_error"] = {
+                    "provider": "google",
+                    "kind": getattr(e, "kind", None),
+                    "http_status": getattr(e, "http_status", None),
+                    "upstream_status": getattr(e, "upstream_status", None),
+                    "reason": getattr(e, "reason", None),
+                    "retry_after": getattr(e, "retry_after", None),
+                    "context": str(context or ""),
+                }
+            except Exception:
+                pass
+            try:
+                logger.warning(
+                    {
+                        "event": "nanobanana_user_facing_error",
+                        "job_id": job.id,
+                        "owner_id": job.owner_id,
+                        "workflow_id": getattr(request, "workflow_id", None),
+                        "context": str(context or ""),
+                        "kind": getattr(e, "kind", None),
+                        "http_status": getattr(e, "http_status", None),
+                        "upstream_status": getattr(e, "upstream_status", None),
+                        "reason": getattr(e, "reason", None),
+                        "message": str(getattr(e, "public_message", str(e))),
+                    }
+                )
+            except Exception:
+                pass
 
         def _load_input_png_bytes(anon_id: str, image_id: str, ordinal: int) -> bytes:
             # 1) inputs 저장소
@@ -557,22 +593,30 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                 # Auto-switch to image-edit when we have any attached reference images.
                 # IMPORTANT: do not mix "hidden refs" with character mention sheets; it would break sheet ordering.
                 images_for_edit = ref_sheet_bytes_list if ref_sheet_bytes_list else hidden_ref_bytes_list
-                image_bytes = generate_image_edit(
-                    model=chosen_model,
-                    prompt=final_prompt,
-                    images=images_for_edit,
-                    aspect_ratio=google_aspect,
-                    image_size=req_size,
-                    timeout=(5.0, 90.0),
-                )
+                try:
+                    image_bytes = generate_image_edit(
+                        model=chosen_model,
+                        prompt=final_prompt,
+                        images=images_for_edit,
+                        aspect_ratio=google_aspect,
+                        image_size=req_size,
+                        timeout=(5.0, 90.0),
+                    )
+                except NanoBananaUpstreamError as e:
+                    _record_google_provider_error(e, context="imgedit_auto")
+                    raise RuntimeError(getattr(e, "public_message", str(e)))
             else:
-                image_bytes = generate_text_to_image(
-                    model=chosen_model,
-                    prompt=final_prompt,
-                    aspect_ratio=google_aspect,
-                    image_size=req_size,
-                    timeout=(5.0, 90.0),
-                )
+                try:
+                    image_bytes = generate_text_to_image(
+                        model=chosen_model,
+                        prompt=final_prompt,
+                        aspect_ratio=google_aspect,
+                        image_size=req_size,
+                        timeout=(5.0, 90.0),
+                    )
+                except NanoBananaUpstreamError as e:
+                    _record_google_provider_error(e, context="txt2img")
+                    raise RuntimeError(getattr(e, "public_message", str(e)))
         elif is_img2img:
             # Phase C: 멀티 입력 이미지 편집(img2img)
             # 규칙: input_image_ids가 비어있지 않으면 우선 사용, 없으면 input_image_id 사용
@@ -645,14 +689,18 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                 else:
                     google_aspect = "1:1"
 
-            image_bytes = generate_image_edit(
-                model=chosen_model,
-                prompt=final_prompt,
-                images=input_png_bytes_list,
-                aspect_ratio=google_aspect,
-                image_size=req_size,
-                timeout=(5.0, 90.0),
-            )
+            try:
+                image_bytes = generate_image_edit(
+                    model=chosen_model,
+                    prompt=final_prompt,
+                    images=input_png_bytes_list,
+                    aspect_ratio=google_aspect,
+                    image_size=req_size,
+                    timeout=(5.0, 90.0),
+                )
+            except NanoBananaUpstreamError as e:
+                _record_google_provider_error(e, context="imgedit_user")
+                raise RuntimeError(getattr(e, "public_message", str(e)))
         else:
             raise RuntimeError("이 나노바나나 워크플로우의 모드 설정이 올바르지 않습니다. 서버 워크플로우 설정을 확인해 주세요.")
 

@@ -387,22 +387,41 @@ async def admin_usage(request: Request, days: int = 30):
 
     with sqlite3.connect(db_path) as con:
         # Daily totals
-        cur = con.execute(
-            """
-            SELECT
-              strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') AS day,
-              COUNT(*) AS total,
-              COUNT(DISTINCT owner_id) AS users,
-              SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) AS complete,
-              SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error,
-              SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
-            FROM jobs
-            WHERE type = 'generate' AND created_at IS NOT NULL AND created_at >= ?
-            GROUP BY day
-            ORDER BY day DESC
-            """,
-            (cutoff,),
-        )
+        q_daily = """
+        SELECT
+          strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') AS day,
+          COUNT(*) AS total,
+          COUNT(DISTINCT owner_id) AS users,
+          SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) AS complete,
+          SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error,
+          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+          SUM(CASE WHEN json_extract(result_json, '$.provider_error.kind') = 'nanobanana_quota_exhausted' THEN 1 ELSE 0 END) AS nanobanana_quota_exhausted,
+          SUM(CASE WHEN json_extract(result_json, '$.provider_error.kind') = 'nanobanana_rate_limited' THEN 1 ELSE 0 END) AS nanobanana_rate_limited
+        FROM jobs
+        WHERE type = 'generate' AND created_at IS NOT NULL AND created_at >= ?
+        GROUP BY day
+        ORDER BY day DESC
+        """
+        q_daily_fallback = """
+        SELECT
+          strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') AS day,
+          COUNT(*) AS total,
+          COUNT(DISTINCT owner_id) AS users,
+          SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) AS complete,
+          SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error,
+          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+          0 AS nanobanana_quota_exhausted,
+          0 AS nanobanana_rate_limited
+        FROM jobs
+        WHERE type = 'generate' AND created_at IS NOT NULL AND created_at >= ?
+        GROUP BY day
+        ORDER BY day DESC
+        """
+        try:
+            cur = con.execute(q_daily, (cutoff,))
+        except Exception:
+            # Some environments may not have SQLite JSON1 enabled; keep endpoint functional.
+            cur = con.execute(q_daily_fallback, (cutoff,))
         daily_rows = cur.fetchall() or []
 
         # Per-day, per-workflow counts
@@ -448,12 +467,18 @@ async def admin_usage(request: Request, days: int = 30):
 
     days_out: list[dict] = []
     total_all = 0
-    for day, total, users, complete, error, cancelled in daily_rows:
+    nb_quota_exhausted_total = 0
+    nb_rate_limited_total = 0
+    for day, total, users, complete, error, cancelled, nb_quota_exhausted, nb_rate_limited in daily_rows:
         d = str(day or "")
         if not d:
             continue
         t = int(total or 0)
         total_all += t
+        nb_q = int(nb_quota_exhausted or 0)
+        nb_r = int(nb_rate_limited or 0)
+        nb_quota_exhausted_total += nb_q
+        nb_rate_limited_total += nb_r
         wf_list = by_day.get(d, [])
         top_wf = wf_list[0] if wf_list else None
         days_out.append(
@@ -464,6 +489,10 @@ async def admin_usage(request: Request, days: int = 30):
                 "complete": int(complete or 0),
                 "error": int(error or 0),
                 "cancelled": int(cancelled or 0),
+                # NanoBanana(Google) quota/limit errors (best-effort; only rows that recorded provider_error)
+                "nanobanana_quota_exhausted": nb_q,
+                "nanobanana_rate_limited": nb_r,
+                "nanobanana_quota": nb_q + nb_r,
                 "top_workflow": top_wf,
                 # Keep a cap for UI readability, but provide enough detail for ranking.
                 "workflows": wf_list[:50],
@@ -483,6 +512,9 @@ async def admin_usage(request: Request, days: int = 30):
     return {
         "days_requested": days_i,
         "total": total_all,
+        "nanobanana_quota_exhausted_total": nb_quota_exhausted_total,
+        "nanobanana_rate_limited_total": nb_rate_limited_total,
+        "nanobanana_quota_total": nb_quota_exhausted_total + nb_rate_limited_total,
         "days": days_out,
         "top_workflows": top_out,
     }

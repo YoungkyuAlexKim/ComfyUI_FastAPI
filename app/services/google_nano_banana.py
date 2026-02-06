@@ -10,6 +10,36 @@ from ..logging_utils import setup_logging
 logger = setup_logging()
 
 
+class NanoBananaUpstreamError(RuntimeError):
+    """
+    User-facing upstream error wrapper for NanoBanana(Google).
+
+    - public_message: safe to show to end users
+    - kind: machine-readable classification for ops/analytics
+    - http_status/upstream_status/reason: best-effort upstream details
+    """
+
+    def __init__(
+        self,
+        public_message: str,
+        *,
+        kind: str,
+        http_status: Optional[int] = None,
+        upstream_status: Optional[str] = None,
+        reason: Optional[str] = None,
+        upstream_message: Optional[str] = None,
+        retry_after: Optional[str] = None,
+    ):
+        super().__init__(public_message)
+        self.public_message = public_message
+        self.kind = str(kind or "nanobanana_unknown")
+        self.http_status = int(http_status) if isinstance(http_status, int) else None
+        self.upstream_status = upstream_status
+        self.reason = reason
+        self.upstream_message = upstream_message
+        self.retry_after = retry_after
+
+
 def _get_api_key() -> str:
     api_key = os.getenv("GOOGLE_AI_STUDIO_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -93,6 +123,98 @@ def _parse_google_error(resp: requests.Response) -> Tuple[Optional[str], Optiona
         err_status = None
         err_reason = None
     return detail, err_status, err_reason
+
+
+def _classify_google_error(
+    http_status: int,
+    detail: Optional[str],
+    err_status: Optional[str],
+    err_reason: Optional[str],
+) -> Tuple[str, str]:
+    """
+    Returns (kind, public_message).
+    kind is used for ops/admin analytics and should be stable.
+    """
+    low = str(detail or "").lower()
+    status_txt = str(err_status or "").upper()
+    reason = str(err_reason or "").upper()
+
+    # 1) Auth/billing/config issues (operator action)
+    if _looks_like_key_issue(http_status, detail, err_status, err_reason):
+        return (
+            "nanobanana_auth",
+            "나노바나나(구글) 연결 설정에 문제가 있어요. 운영자에게 문의해 주세요. "
+            "(서버: GOOGLE_AI_STUDIO_API_KEY/GEMINI_API_KEY 및 권한/결제 상태 확인 필요)",
+        )
+
+    # 2) Quota / rate limit (user can retry later)
+    # Google often uses RESOURCE_EXHAUSTED for both per-minute and daily quota.
+    if _looks_like_quota_issue(http_status, detail, err_status) or status_txt == "RESOURCE_EXHAUSTED" or reason in (
+        "RATE_LIMIT_EXCEEDED",
+        "RESOURCE_EXHAUSTED",
+    ):
+        looks_rate = False
+        looks_daily = False
+        try:
+            if "per minute" in low or "per-minute" in low or "requests per minute" in low or "rpm" in low:
+                looks_rate = True
+            if "per day" in low or "per-day" in low or "daily" in low or "24 hour" in low or "24h" in low:
+                looks_daily = True
+        except Exception:
+            looks_rate = False
+            looks_daily = False
+
+        if looks_daily and not looks_rate:
+            return ("nanobanana_quota_exhausted", "오늘 나노바나나 생성 한도에 도달했어요. 내일 다시 시도해 주세요.")
+        if looks_rate and not looks_daily:
+            return ("nanobanana_rate_limited", "요청이 몰려 잠시 대기해야 해요. 30~60초 후 다시 시도해 주세요.")
+
+        return ("nanobanana_rate_limited", "요청이 너무 많거나 사용량 한도에 도달했어요. 잠시 후 다시 시도해 주세요.")
+
+    # 3) Invalid request (user input/workflow config)
+    if http_status == 400:
+        return ("nanobanana_bad_request", "요청 내용이 올바르지 않아요. 프롬프트를 조금 더 구체적으로 작성해 주세요.")
+
+    # 4) Upstream instability
+    if 500 <= int(http_status) <= 599:
+        return ("nanobanana_upstream_unavailable", "지금은 구글 서버가 잠시 불안정해요. 잠시 후 다시 시도해 주세요.")
+
+    # 5) Fallback
+    return ("nanobanana_unknown", "나노바나나 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.")
+
+
+def _raise_google_error(resp: requests.Response, *, context: str) -> None:
+    detail, err_status, err_reason = _parse_google_error(resp)
+    s = int(getattr(resp, "status_code", 0) or 0)
+    retry_after = None
+    try:
+        retry_after = resp.headers.get("Retry-After")
+    except Exception:
+        retry_after = None
+
+    kind, msg = _classify_google_error(s, detail, err_status, err_reason)
+    logger.warning(
+        {
+            "event": "nanobanana_bad_status",
+            "context": str(context or ""),
+            "kind": kind,
+            "status": s,
+            "upstream_status": err_status,
+            "reason": err_reason,
+            "retry_after": retry_after,
+            "upstream_message": detail,
+            "message": msg,
+        }
+    )
+    raise NanoBananaUpstreamError(
+        msg,
+        kind=kind,
+        http_status=s,
+        upstream_status=err_status,
+        reason=err_reason,
+        upstream_message=detail,
+        retry_after=retry_after,
+    )
 
 
 def _extract_first_image_bytes(data: Any) -> bytes:
@@ -209,32 +331,15 @@ def generate_text_to_image(
             timeout=timeout,
         )
     except Exception as e:
-        logger.warning({"event": "nanobanana_upstream_error", "error": str(e)})
-        raise RuntimeError("나노바나나(Google) API 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+        logger.warning({"event": "nanobanana_upstream_error", "context": "txt2img", "error": str(e)})
+        raise NanoBananaUpstreamError(
+            "나노바나나(Google) 연결이 잠시 불안정해요. 잠시 후 다시 시도해 주세요.",
+            kind="nanobanana_network",
+            upstream_message=str(e),
+        )
 
     if not resp.ok:
-        detail, err_status, err_reason = _parse_google_error(resp)
-        s = int(resp.status_code)
-
-        if _looks_like_key_issue(s, detail, err_status, err_reason):
-            msg = "나노바나나 API 키(권한)가 올바르지 않거나 비활성화되었습니다. 서버 .env의 GOOGLE_AI_STUDIO_API_KEY를 확인한 뒤 서버를 재시작해 주세요."
-        elif _looks_like_quota_issue(s, detail, err_status):
-            msg = "요청이 너무 많거나 사용량 한도를 초과했습니다. 잠시 후 다시 시도해 주세요."
-        elif s == 400:
-            msg = "요청 내용이 올바르지 않습니다. 프롬프트를 조금 더 구체적으로 작성해 주세요."
-        else:
-            msg = detail or f"나노바나나 API 오류 (HTTP {s})"
-
-        logger.warning(
-            {
-                "event": "nanobanana_bad_status",
-                "status": s,
-                "upstream_status": err_status,
-                "reason": err_reason,
-                "message": msg,
-            }
-        )
-        raise RuntimeError(msg)
+        _raise_google_error(resp, context="txt2img")
 
     try:
         data = resp.json()
@@ -309,32 +414,15 @@ def generate_image_edit(
             timeout=timeout,
         )
     except Exception as e:
-        logger.warning({"event": "nanobanana_upstream_error", "error": str(e)})
-        raise RuntimeError("나노바나나(Google) API 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+        logger.warning({"event": "nanobanana_upstream_error", "context": "imgedit", "error": str(e)})
+        raise NanoBananaUpstreamError(
+            "나노바나나(Google) 연결이 잠시 불안정해요. 잠시 후 다시 시도해 주세요.",
+            kind="nanobanana_network",
+            upstream_message=str(e),
+        )
 
     if not resp.ok:
-        detail, err_status, err_reason = _parse_google_error(resp)
-        s = int(resp.status_code)
-
-        if _looks_like_key_issue(s, detail, err_status, err_reason):
-            msg = "나노바나나 API 키(권한)가 올바르지 않거나 비활성화되었습니다. 서버 .env의 GOOGLE_AI_STUDIO_API_KEY를 확인한 뒤 서버를 재시작해 주세요."
-        elif _looks_like_quota_issue(s, detail, err_status):
-            msg = "요청이 너무 많거나 사용량 한도를 초과했습니다. 잠시 후 다시 시도해 주세요."
-        elif s == 400:
-            msg = "요청 내용이 올바르지 않습니다. 프롬프트를 조금 더 구체적으로 작성해 주세요."
-        else:
-            msg = detail or f"나노바나나 API 오류 (HTTP {s})"
-
-        logger.warning(
-            {
-                "event": "nanobanana_bad_status",
-                "status": s,
-                "upstream_status": err_status,
-                "reason": err_reason,
-                "message": msg,
-            }
-        )
-        raise RuntimeError(msg)
+        _raise_google_error(resp, context="imgedit")
 
     try:
         data = resp.json()

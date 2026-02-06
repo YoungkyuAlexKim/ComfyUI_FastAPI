@@ -648,8 +648,10 @@
             const complete = Number(row.complete || 0);
             const err = Number(row.error || 0);
             const cancelled = Number(row.cancelled || 0);
+            const nbQuota = Number(row.nanobanana_quota || 0);
             if (usageDetailSummaryEl){
-                usageDetailSummaryEl.textContent = `총 ${total}회 · 사용자 ${users}명 (완료 ${complete} / 에러 ${err} / 취소 ${cancelled})`;
+                const nbTxt = (Number.isFinite(nbQuota) && nbQuota > 0) ? ` / NB ${nbQuota}` : '';
+                usageDetailSummaryEl.textContent = `총 ${total}회 · 사용자 ${users}명 (완료 ${complete} / 에러 ${err} / 취소 ${cancelled}${nbTxt})`;
             }
 
             const wfList = Array.isArray(row.workflows) ? row.workflows : [];
@@ -707,7 +709,9 @@
 
                 const total = (data && Number.isFinite(data.total)) ? data.total : (data.total || 0);
                 const daysRequested = (data && Number.isFinite(data.days_requested)) ? data.days_requested : d;
-                if (usageSummaryEl) usageSummaryEl.textContent = `최근 ${daysRequested}일 총 생성 호출: ${total}회`;
+                const nbQuotaTotal = (data && Number.isFinite(data.nanobanana_quota_total)) ? data.nanobanana_quota_total : (data.nanobanana_quota_total || 0);
+                const nbPart = (Number.isFinite(nbQuotaTotal) && nbQuotaTotal > 0) ? ` · NanoBanana 제한/쿼터 에러: ${nbQuotaTotal}` : '';
+                if (usageSummaryEl) usageSummaryEl.textContent = `최근 ${daysRequested}일 총 생성 호출: ${total}회${nbPart}`;
 
                 const daysList = Array.isArray(data.days) ? data.days : [];
                 if (usageDailyTbody) {
@@ -717,12 +721,14 @@
                         tr.className = 'usage-day-row';
                         const top = row.top_workflow || null;
                         const topText = top ? `${top.workflow_name || top.workflow_id || ''} (${top.count || 0})` : '-';
+                        const nb = Number(row.nanobanana_quota || 0);
+                        const errText = `${row.error || 0}${(Number.isFinite(nb) && nb > 0) ? ` (NB ${nb})` : ''}`;
                         tr.innerHTML = `
                             <td>${row.day || ''}</td>
                             <td><strong>${row.total || 0}</strong></td>
                             <td>${row.users || 0}</td>
                             <td>${row.complete || 0}</td>
-                            <td>${row.error || 0}</td>
+                            <td>${errText}</td>
                             <td>${row.cancelled || 0}</td>
                             <td style="max-width:380px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${topText}">${topText}</td>
                         `;
