@@ -15,7 +15,7 @@ WORKFLOW_DIR = "./workflows/"
 @router.get("/api/v1/workflows", response_model=WorkflowsResponse)
 async def get_workflows(
     include_google: bool = Query(
-        default=False,
+        default=True,
         description="true면 Google(provider=google) 워크플로우도 목록에 포함합니다.",
     ),
 ):

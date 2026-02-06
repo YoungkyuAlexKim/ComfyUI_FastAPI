@@ -188,13 +188,13 @@
 주의(자주 실수하는 포인트):
 - 프론트는 워크플로우별 placeholder를 `ui.userPromptPlaceholder`에서 가져옴
 - seed row는 google provider에만 숨김이므로 ComfyUI에는 계속 표시됨(정상)
-- `GET /api/v1/workflows`는 provider=google 워크플로우를 기본적으로 숨김( `include_google=1` 이면 표시)
+- `GET /api/v1/workflows`는 provider=google 워크플로우를 포함해 목록을 반환합니다.
 
 ---
 
 ## 3) 빠른 테스트 시나리오(다음 세션 시작 체크리스트)
 
-1) 서버 실행 후 `/newfeature` 접속
+1) 서버 실행 후 `/create` 접속
 2) 워크플로우 리스트에서:
    - `NanoBanana_ChainsawJuiceKingCharacter`에 **EXP 뱃지**가 붙는지 확인
 3) 새로고침(F5) 후 img2img 입력 이미지 슬롯이 **빈 상태**인지 확인

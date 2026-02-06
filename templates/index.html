@@ -308,9 +308,7 @@
 
         async function loadWorkflows() {
             try {
-                const isNewFeaturePage = (window.location && window.location.pathname === '/newfeature');
-                const workflowsUrl = isNewFeaturePage ? '/api/v1/workflows?include_google=1' : '/api/v1/workflows';
-                const response = await fetch(workflowsUrl);
+                const response = await fetch('/api/v1/workflows');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
                 if (data.workflows && data.workflows.length > 0) {
@@ -1254,7 +1252,7 @@
             } catch(_) {}
         }
 
-        // ---- Character mentions (@Name) for NanoBanana (newfeature only) ----
+        // ---- Character mentions (@Name) for NanoBanana ----
         let _characterCache = [];
         let _globalCharacterCache = [];
         let _characterUiBound = false;
@@ -1265,17 +1263,8 @@
         let _characterFetchInFlight = null;
         let _globalCharacterFetchInFlight = null;
 
-        function isNewFeaturePage() {
-            try {
-                return !!(window.location && window.location.pathname === '/newfeature');
-            } catch (_) {
-                return false;
-            }
-        }
-
         function canUseCharacterMentions() {
             try {
-                if (!isNewFeaturePage()) return false;
                 const mode = (document.getElementById('txtimg-img2img-tabs')?.dataset.mode) || 'txt2img';
                 if (mode !== 'txt2img') return false;
                 const targetWf = getTargetWorkflowForMode();

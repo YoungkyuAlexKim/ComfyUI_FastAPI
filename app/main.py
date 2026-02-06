@@ -367,43 +367,13 @@ async def create_page(request: Request):
     return response
 
 
-@app.get("/newfeature", response_class=HTMLResponse, tags=["Page"])
+@app.get("/newfeature", tags=["Page"])
 async def newfeature_page(request: Request):
-    """
-    내부 테스트/신기능 페이지.
-    - /create: 기본 워크플로우만 노출 (Google/NanoBanana 제외)
-    - /newfeature: Google/NanoBanana 워크플로우도 노출
-    """
-    default_values = get_default_values()
-    api_key_present = bool(os.getenv("GOOGLE_AI_STUDIO_API_KEY") or os.getenv("GEMINI_API_KEY"))
-    prompt_translate_enabled = _parse_bool_cookie_secure(
-        os.getenv("ENABLE_PROMPT_TRANSLATE"),
-        api_key_present,
-    )
-    prompt_translate_enabled = bool(prompt_translate_enabled and api_key_present)
-    existing = request.cookies.get(ANON_COOKIE_NAME)
-    if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
-        anon_id = existing
-    else:
-        anon_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
-    response = templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "anon_id": anon_id,
-            "current_page": "newfeature",
-            "prompt_translate_enabled": prompt_translate_enabled,
-            "default_user_prompt": "",
-            "default_style_prompt": default_values.get("style_prompt", ""),
-            "default_negative_prompt": default_values.get("negative_prompt", ""),
-            "default_recommended_prompt": default_values.get("recommended_prompt", ""),
-            "workflows_sizes_json": json.dumps(default_values.get("workflows_sizes", {})),
-            "workflow_default_prompts_json": json.dumps(default_values.get("workflow_default_prompts", {})),
-            "workflow_prompt_templates_json": json.dumps(default_values.get("workflow_prompt_templates", {})),
-        },
-    )
-    _ensure_anon_id_cookie(request, response, anon_id)
-    return response
+    # Legacy: /newfeature was a temporary "new features" entry point.
+    # It now behaves the same as /create.
+    resp = RedirectResponse(url="/create", status_code=303)
+    _ensure_anon_id_cookie(request, resp)
+    return resp
 
 
 @app.get("/feed", response_class=HTMLResponse, tags=["Page"])
