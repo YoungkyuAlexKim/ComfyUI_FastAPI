@@ -367,15 +367,6 @@ async def create_page(request: Request):
     return response
 
 
-@app.get("/newfeature", tags=["Page"])
-async def newfeature_page(request: Request):
-    # Legacy: /newfeature was a temporary "new features" entry point.
-    # It now behaves the same as /create.
-    resp = RedirectResponse(url="/create", status_code=303)
-    _ensure_anon_id_cookie(request, resp)
-    return resp
-
-
 @app.get("/feed", response_class=HTMLResponse, tags=["Page"])
 async def feed_page(request: Request):
     existing = request.cookies.get(ANON_COOKIE_NAME)
