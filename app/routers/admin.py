@@ -70,6 +70,45 @@ def _list_user_ids() -> list[str]:
     return sorted(entries)
 
 
+def _purge_user_trash_images(user_id: str) -> int:
+    """
+    Permanently delete all trashed images for a given user.
+
+    - A trashed image is defined as: meta JSON exists and meta.status != "active".
+    - Deletes: <id>.png, thumb/<id>.webp, thumb/<id>.jpg, <id>.json
+    """
+    base = _user_base_dir(user_id)
+    if not os.path.isdir(base):
+        return 0
+    deleted = 0
+    for root, _, files in os.walk(base):
+        for name in files:
+            if not name.endswith(".json"):
+                continue
+            meta_path = os.path.join(root, name)
+            try:
+                import json
+
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                if meta.get("status") == "active":
+                    continue
+                image_id = os.path.splitext(name)[0]
+                png_path = os.path.join(root, f"{image_id}.png")
+                t_webp = os.path.join(root, "thumb", f"{image_id}.webp")
+                t_jpg = os.path.join(root, "thumb", f"{image_id}.jpg")
+                for p in [png_path, t_webp, t_jpg, meta_path]:
+                    try:
+                        if os.path.exists(p):
+                            os.remove(p)
+                    except Exception:
+                        pass
+                deleted += 1
+            except Exception:
+                continue
+    return deleted
+
+
 @router.get("/api/v1/admin/users", tags=["Admin"])
 async def admin_users(page: int = 1, size: int = 50, q: Optional[str] = None):
     users = _list_user_ids()
@@ -273,32 +312,32 @@ async def admin_restore(image_id: str, req: AdminUpdateRequest):
 
 @router.post("/api/v1/admin/purge-trash", tags=["Admin"])
 async def admin_purge_trash(req: AdminUpdateRequest):
-    base = _user_base_dir(req.user_id)
-    if not os.path.isdir(base):
-        return {"deleted": 0}
-    deleted = 0
-    for root, _, files in os.walk(base):
-        for name in files:
-            if not name.endswith('.json'):
-                continue
-            meta_path = os.path.join(root, name)
-            try:
-                import json
-                with open(meta_path, 'r', encoding='utf-8') as f:
-                    meta = json.load(f)
-                if meta.get('status') == 'active':
-                    continue
-                image_id = os.path.splitext(name)[0]
-                png_path = os.path.join(root, f"{image_id}.png")
-                t_webp = os.path.join(root, 'thumb', f"{image_id}.webp")
-                t_jpg = os.path.join(root, 'thumb', f"{image_id}.jpg")
-                for p in [png_path, t_webp, t_jpg, meta_path]:
-                    try:
-                        if os.path.exists(p):
-                            os.remove(p)
-                    except Exception:
-                        pass
-                deleted += 1
-            except Exception:
-                continue
+    deleted = _purge_user_trash_images(req.user_id)
     return {"deleted": deleted}
+
+
+@router.post("/api/v1/admin/purge-trash-all", tags=["Admin"])
+async def admin_purge_trash_all():
+    """
+    Permanently delete all trashed images across ALL users.
+    Intended for ops/admin housekeeping.
+    """
+    users = _list_user_ids()
+    total_deleted = 0
+    users_with_deletions = 0
+    per_user: dict[str, int] = {}
+    for u in users:
+        try:
+            n = _purge_user_trash_images(u)
+            if n > 0:
+                per_user[u] = n
+                total_deleted += n
+                users_with_deletions += 1
+        except Exception:
+            continue
+    return {
+        "deleted": total_deleted,
+        "users_scanned": len(users),
+        "users_with_deletions": users_with_deletions,
+        "per_user": per_user,
+    }

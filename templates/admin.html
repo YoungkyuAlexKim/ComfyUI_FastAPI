@@ -107,6 +107,7 @@
                         </select>
                     </label>
                     <button class="btn danger" id="purge-trash">휴지통 비우기</button>
+                    <button class="btn danger" id="purge-trash-all" title="모든 사용자 휴지통 비우기">전체 휴지통 비우기</button>
                 </div>
                 <div class="admin-gallery" id="admin-gallery"></div>
                 <div class="admin-pagination" id="admin-pagination"></div>
@@ -432,6 +433,39 @@
             if (!confirm('휴지통을 비우시겠습니까? 복구할 수 없습니다.')) return;
             const res = await fetch('/api/v1/admin/purge-trash', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user_id: currentUser }) });
             if (res.ok) { loadImages(); }
+        });
+
+        document.getElementById('purge-trash-all').addEventListener('click', async () => {
+            const msg = [
+                '전체 사용자 휴지통을 비우시겠습니까?',
+                '',
+                '- 모든 사용자의 휴지통 이미지가 완전 삭제됩니다.',
+                '- 복구할 수 없습니다.',
+                '',
+                '정말 진행할까요?'
+            ].join('\n');
+            if (!confirm(msg)) return;
+            try {
+                const btn = document.getElementById('purge-trash-all');
+                if (btn) btn.disabled = true;
+                const res = await fetch('/api/v1/admin/purge-trash-all', { method: 'POST' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    alert(data.detail || '전체 휴지통 비우기 실패');
+                    return;
+                }
+                const deleted = (data && Number.isFinite(data.deleted)) ? data.deleted : (data.deleted || 0);
+                const usersScanned = (data && Number.isFinite(data.users_scanned)) ? data.users_scanned : (data.users_scanned || 0);
+                const usersWith = (data && Number.isFinite(data.users_with_deletions)) ? data.users_with_deletions : (data.users_with_deletions || 0);
+                alert(`완료: ${deleted}개 삭제 (스캔 ${usersScanned}명 / 삭제 발생 ${usersWith}명)`);
+                // Refresh current user's view if selected
+                loadImages();
+            } catch (e) {
+                alert('전체 휴지통 비우기 중 오류가 발생했습니다.');
+            } finally {
+                const btn2 = document.getElementById('purge-trash-all');
+                if (btn2) btn2.disabled = false;
+            }
         });
 
         function activateTab(btn){

@@ -38,15 +38,6 @@
       "title": "이미지 미리보기"
     }
   },
-  "92:61": {
-    "inputs": {
-      "sampler_name": "euler"
-    },
-    "class_type": "KSamplerSelect",
-    "_meta": {
-      "title": "KSampler (선택)"
-    }
-  },
   "92:71": {
     "inputs": {
       "clip_name": "qwen_3_8b_fp8mixed.safetensors",
@@ -77,6 +68,69 @@
       "title": "확산 모델 로드"
     }
   },
+  "92:61": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSampler (선택)"
+    }
+  },
+  "92:73": {
+    "inputs": {
+      "noise_seed": [
+        "100",
+        0
+      ]
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "무작위 노이즈"
+    }
+  },
+  "92:74": {
+    "inputs": {
+      "text": "prompt...",
+      "clip": [
+        "92:71",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "92:88": {
+    "inputs": {
+      "lora_name": "styles\\klein\\LOSstyle_klein_01.safetensors",
+      "strength_model": 1,
+      "model": [
+        "92:70",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA 로드 (모델 전용)"
+    }
+  },
+  "92:80": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "81",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "총 픽셀 수에 맞춰 이미지 크기 조정"
+    }
+  },
   "92:85": {
     "inputs": {
       "upscale_method": "nearest-exact",
@@ -104,44 +158,44 @@
       "title": "🔧 Get Image Size"
     }
   },
-  "92:80": {
+  "92:86": {
     "inputs": {
-      "upscale_method": "nearest-exact",
-      "megapixels": 1,
-      "resolution_steps": 1,
+      "conditioning": [
+        "92:74",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "조건 (0으로 출력)"
+    }
+  },
+  "92:81": {
+    "inputs": {
       "image": [
-        "81",
+        "92:80",
         0
       ]
     },
-    "class_type": "ImageScaleToTotalPixels",
+    "class_type": "GetImageSize",
     "_meta": {
-      "title": "총 픽셀 수에 맞춰 이미지 크기 조정"
+      "title": "이미지 크기 가져오기"
     }
   },
-  "92:73": {
+  "92:79:78": {
     "inputs": {
-      "noise_seed": [
-        "100",
+      "pixels": [
+        "92:80",
+        0
+      ],
+      "vae": [
+        "92:72",
         0
       ]
     },
-    "class_type": "RandomNoise",
+    "class_type": "VAEEncode",
     "_meta": {
-      "title": "무작위 노이즈"
-    }
-  },
-  "92:74": {
-    "inputs": {
-      "text": "make dog of picture1 little smaller as it is depicted in picture 2",
-      "clip": [
-        "92:71",
-        0
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Positive Prompt)"
+      "title": "VAE 인코드"
     }
   },
   "92:84:78": {
@@ -194,62 +248,6 @@
       "title": "Flux2Scheduler"
     }
   },
-  "92:81": {
-    "inputs": {
-      "image": [
-        "92:80",
-        0
-      ]
-    },
-    "class_type": "GetImageSize",
-    "_meta": {
-      "title": "이미지 크기 가져오기"
-    }
-  },
-  "92:79:78": {
-    "inputs": {
-      "pixels": [
-        "92:80",
-        0
-      ],
-      "vae": [
-        "92:72",
-        0
-      ]
-    },
-    "class_type": "VAEEncode",
-    "_meta": {
-      "title": "VAE 인코드"
-    }
-  },
-  "92:86": {
-    "inputs": {
-      "conditioning": [
-        "92:74",
-        0
-      ]
-    },
-    "class_type": "ConditioningZeroOut",
-    "_meta": {
-      "title": "조건 (0으로 출력)"
-    }
-  },
-  "92:79:77": {
-    "inputs": {
-      "conditioning": [
-        "92:74",
-        0
-      ],
-      "latent": [
-        "92:79:78",
-        0
-      ]
-    },
-    "class_type": "ReferenceLatent",
-    "_meta": {
-      "title": "참조 잠재"
-    }
-  },
   "92:79:76": {
     "inputs": {
       "conditioning": [
@@ -266,14 +264,14 @@
       "title": "참조 잠재"
     }
   },
-  "92:84:77": {
+  "92:79:77": {
     "inputs": {
       "conditioning": [
-        "92:79:77",
+        "92:74",
         0
       ],
       "latent": [
-        "92:84:78",
+        "92:79:78",
         0
       ]
     },
@@ -298,11 +296,27 @@
       "title": "참조 잠재"
     }
   },
+  "92:84:77": {
+    "inputs": {
+      "conditioning": [
+        "92:79:77",
+        0
+      ],
+      "latent": [
+        "92:84:78",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "참조 잠재"
+    }
+  },
   "92:63": {
     "inputs": {
       "cfg": 1.2,
       "model": [
-        "92:70",
+        "92:88",
         0
       ],
       "positive": [

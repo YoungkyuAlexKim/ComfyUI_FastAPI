@@ -4513,7 +4513,7 @@
             ov.innerHTML = `
                 <div class="confirm-card">
                     <h3 class="confirm-title"><i class="fas fa-trash"></i> 선택 삭제</h3>
-                    <p class="confirm-text" id="batch-confirm-text">선택한 이미지를 휴지통으로 이동할까요?</p>
+                    <p class="confirm-text" id="batch-confirm-text">선택한 이미지를 삭제할까요?</p>
                     <div class="confirm-actions">
                         <button class="btn-ghost" id="batch-confirm-cancel">취소</button>
                         <button class="btn-danger" id="batch-confirm-ok">삭제</button>
@@ -4529,7 +4529,7 @@
             pendingBatchIds = Array.isArray(ids) ? ids.slice() : [];
             const ov = ensureBatchConfirmModal();
             const textEl = document.getElementById('batch-confirm-text');
-            if (textEl) textEl.textContent = `선택한 ${pendingBatchIds.length}개 이미지를 휴지통으로 이동할까요? (나중에 복구 가능)`;
+            if (textEl) textEl.textContent = `선택한 ${pendingBatchIds.length}개 이미지를 삭제할까요?`;
             ov.classList.add('open');
             ov.setAttribute('aria-hidden', 'false');
             const cancelBtn = document.getElementById('batch-confirm-cancel');

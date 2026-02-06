@@ -1021,6 +1021,14 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "LOS 스타일 — 편집 (Klein)",
         "description": "Klein 기반 Flux2 Img2Img 편집 워크플로우입니다. (LOS 스타일 편집 대체)",
 
+        # 입력 이미지 1장/2장에 따라 내부 워크플로우(JSON)를 자동 선택합니다.
+        # - 1장: 기존 single-input 워크플로우(이 엔트리 자체)
+        # - 2장: dual-input 워크플로우(아래 hidden 엔트리)
+        "comfy_variants_by_input_count": {
+            1: "LOSStyle_Klein_Img2Img",
+            2: "LOSStyle_Klein_Img2Img_dualInput",
+        },
+
         # 프롬프트: 단일 positive conditioning만 사용 (negative는 ConditioningZeroOut 기반)
         # - CLIPTextEncode(107) inputs.text
         "prompt_node": "107",
@@ -1071,6 +1079,68 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "templateMode": "natural",
             "disableAspect": True,
             "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요? (예: 슬라임을 제거하고 강아지로 교체해 주세요)",
+            # 1~2장까지 선택 UI(썸네일 그리드)를 활성화합니다.
+            "imageInputMulti": {"enabled": True, "max": 2},
+        },
+    },
+
+    "LOSStyle_Klein_Img2Img_dualInput": {
+        # LOSStyle_Klein_Img2Img wrapper에서만 사용되는 내부 워크플로우(목록 비노출)
+        "hidden": True,
+        "display_name": "LOS 스타일 — 편집 (Klein) — 2장",
+        "description": "입력 이미지 2장을 기반으로 LOS 스타일 Klein(Flux2) Img2Img 편집을 수행합니다.",
+
+        "default_user_prompt": "",
+        "style_prompt": "LOSart",
+        "negative_prompt": "",
+
+        # Prompt: CLIPTextEncode(92:74).inputs.text
+        "prompt_node": "92:74",
+        "prompt_input_key": "text",
+
+        # Seed: Seed (rgthree)(100).inputs.seed -> RandomNoise(92:73)가 이를 참조
+        "seed_node": "100",
+        "seed_input_key": "seed",
+
+        # Dual input images:
+        # - 1번째 이미지: LoadImage(76).inputs.image
+        # - 2번째 이미지: LoadImage(81).inputs.image
+        "image_inputs": [
+            {"ordinal": 1, "image_node": "76", "input_field": "image"},
+            {"ordinal": 2, "image_node": "81", "input_field": "image"},
+        ],
+        # UI gate only
+        "image_input": {"image_node": "76", "input_field": "image"},
+
+        # LoRA: 스타일 LoRA 강도 조절(노드 92:88)
+        "loras": {
+            "style": {
+                "node": "92:88",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                # LoraLoaderModelOnly는 clip strength가 없으므로 동일 키로 매핑
+                "clip_input": "strength_model",
+                "defaults": {"unet": 1.0, "clip": 1.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05,
+            }
+        },
+        "lora_hint": {
+            "style": "강도를 높일수록 LOS 스타일 성향이 강해집니다.",
+            "character": "",
+        },
+
+        "ui": {
+            "showLora": True,
+            "showStyleLora": True,
+            "showCharacterLora": False,
+            "showPromptTranslate": True,
+            "templateMode": "natural",
+            "disableAspect": True,
+            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요?",
+            # 내부 워크플로우를 직접 선택할 일은 없지만, 안전하게 동일 설정 유지
+            "imageInputMulti": {"enabled": True, "max": 2},
         },
     },
 
@@ -1149,6 +1219,14 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "OHD 스타일 — 편집 (Klein)",
         "description": "Klein 기반 Flux2 Img2Img 편집 워크플로우입니다. (OHD 스타일 편집 대체)",
 
+        # 입력 이미지 1장/2장에 따라 내부 워크플로우(JSON)를 자동 선택합니다.
+        # - 1장: 기존 single-input 워크플로우(이 엔트리 자체)
+        # - 2장: dual-input 워크플로우(아래 hidden 엔트리)
+        "comfy_variants_by_input_count": {
+            1: "OHDStyle_Klein_Img2Img",
+            2: "OHDStyle_Klein_Img2Img_dualInput",
+        },
+
         # 프롬프트: 단일 positive conditioning만 사용 (negative는 ConditioningZeroOut 기반)
         # - CLIPTextEncode(107) inputs.text
         "prompt_node": "107",
@@ -1198,6 +1276,68 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "templateMode": "natural",
             "disableAspect": True,
             "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요? (예: 파란 슬라임을 제거하고 다른 동물로 바꿔 주세요)",
+            # 1~2장까지 선택 UI(썸네일 그리드)를 활성화합니다.
+            "imageInputMulti": {"enabled": True, "max": 2},
+        },
+    },
+
+    "OHDStyle_Klein_Img2Img_dualInput": {
+        # OHDStyle_Klein_Img2Img wrapper에서만 사용되는 내부 워크플로우(목록 비노출)
+        "hidden": True,
+        "display_name": "OHD 스타일 — 편집 (Klein) — 2장",
+        "description": "입력 이미지 2장을 기반으로 OHD 스타일 Klein(Flux2) Img2Img 편집을 수행합니다.",
+
+        "default_user_prompt": "",
+        "style_prompt": "OHDart.",
+        "negative_prompt": "",
+
+        # Prompt: CLIPTextEncode(92:74).inputs.text
+        "prompt_node": "92:74",
+        "prompt_input_key": "text",
+
+        # Seed: Seed (rgthree)(100).inputs.seed -> RandomNoise(92:73)가 이를 참조
+        "seed_node": "100",
+        "seed_input_key": "seed",
+
+        # Dual input images:
+        # - 1번째 이미지: LoadImage(76).inputs.image
+        # - 2번째 이미지: LoadImage(81).inputs.image
+        "image_inputs": [
+            {"ordinal": 1, "image_node": "76", "input_field": "image"},
+            {"ordinal": 2, "image_node": "81", "input_field": "image"},
+        ],
+        # UI gate only
+        "image_input": {"image_node": "76", "input_field": "image"},
+
+        # LoRA: 스타일 LoRA 강도 조절(노드 92:88)
+        "loras": {
+            "style": {
+                "node": "92:88",
+                "name_input": "lora_name",
+                "unet_input": "strength_model",
+                # LoraLoaderModelOnly는 clip strength가 없으므로 동일 키로 매핑
+                "clip_input": "strength_model",
+                "defaults": {"unet": 1.0, "clip": 1.0},
+                "min": 0.0,
+                "max": 1.5,
+                "step": 0.05,
+            }
+        },
+        "lora_hint": {
+            "style": "강도를 높일수록 Klein 스타일 성향이 강해집니다.",
+            "character": "",
+        },
+
+        "ui": {
+            "showLora": True,
+            "showStyleLora": True,
+            "showCharacterLora": False,
+            "showPromptTranslate": True,
+            "templateMode": "natural",
+            "disableAspect": True,
+            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요?",
+            # 내부 워크플로우를 직접 선택할 일은 없지만, 안전하게 동일 설정 유지
+            "imageInputMulti": {"enabled": True, "max": 2},
         },
     },
 

@@ -38,15 +38,6 @@
       "title": "이미지 미리보기"
     }
   },
-  "92:61": {
-    "inputs": {
-      "sampler_name": "euler"
-    },
-    "class_type": "KSamplerSelect",
-    "_meta": {
-      "title": "KSampler (선택)"
-    }
-  },
   "92:71": {
     "inputs": {
       "clip_name": "qwen_3_8b_fp8mixed.safetensors",
@@ -75,6 +66,42 @@
     "class_type": "UNETLoader",
     "_meta": {
       "title": "확산 모델 로드"
+    }
+  },
+  "92:61": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSampler (선택)"
+    }
+  },
+  "92:74": {
+    "inputs": {
+      "text": "prompt...",
+      "clip": [
+        "92:71",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "92:88": {
+    "inputs": {
+      "lora_name": "styles\\klein\\OHDStyle_klein_02.safetensors",
+      "strength_model": 1,
+      "model": [
+        "92:70",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA 로드 (모델 전용)"
     }
   },
   "92:85": {
@@ -131,17 +158,16 @@
       "title": "무작위 노이즈"
     }
   },
-  "92:74": {
+  "92:86": {
     "inputs": {
-      "text": "make dog of picture1 little smaller as it is depicted in picture 2",
-      "clip": [
-        "92:71",
+      "conditioning": [
+        "92:74",
         0
       ]
     },
-    "class_type": "CLIPTextEncode",
+    "class_type": "ConditioningZeroOut",
     "_meta": {
-      "title": "CLIP Text Encode (Positive Prompt)"
+      "title": "조건 (0으로 출력)"
     }
   },
   "92:84:78": {
@@ -222,34 +248,6 @@
       "title": "VAE 인코드"
     }
   },
-  "92:86": {
-    "inputs": {
-      "conditioning": [
-        "92:74",
-        0
-      ]
-    },
-    "class_type": "ConditioningZeroOut",
-    "_meta": {
-      "title": "조건 (0으로 출력)"
-    }
-  },
-  "92:79:77": {
-    "inputs": {
-      "conditioning": [
-        "92:74",
-        0
-      ],
-      "latent": [
-        "92:79:78",
-        0
-      ]
-    },
-    "class_type": "ReferenceLatent",
-    "_meta": {
-      "title": "참조 잠재"
-    }
-  },
   "92:79:76": {
     "inputs": {
       "conditioning": [
@@ -266,14 +264,14 @@
       "title": "참조 잠재"
     }
   },
-  "92:84:77": {
+  "92:79:77": {
     "inputs": {
       "conditioning": [
-        "92:79:77",
+        "92:74",
         0
       ],
       "latent": [
-        "92:84:78",
+        "92:79:78",
         0
       ]
     },
@@ -298,11 +296,27 @@
       "title": "참조 잠재"
     }
   },
+  "92:84:77": {
+    "inputs": {
+      "conditioning": [
+        "92:79:77",
+        0
+      ],
+      "latent": [
+        "92:84:78",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "참조 잠재"
+    }
+  },
   "92:63": {
     "inputs": {
       "cfg": 1.2,
       "model": [
-        "92:70",
+        "92:88",
         0
       ],
       "positive": [
