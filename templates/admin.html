@@ -52,6 +52,16 @@
         .admin-card input,
         .admin-card select { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--bg-surface); border-radius: 8px; padding: 6px 8px; }
         .admin-card input::placeholder { color: var(--text-muted); }
+
+        /* Usage analytics (master-detail) */
+        .usage-grid { display:grid; grid-template-columns: 1fr 360px; gap:12px; }
+        @media (max-width: 960px){ .usage-grid{ grid-template-columns: 1fr; } }
+        .usage-day-row { cursor: pointer; }
+        .usage-day-row:hover { background: var(--bg-tertiary); }
+        .usage-day-row.active { background: var(--bg-tertiary); outline: 1px solid var(--lc-primary); }
+        .usage-muted { color: var(--text-muted); font-size: 12px; }
+        .usage-bar { height: 10px; background: rgba(59,130,246,.12); border: 1px solid rgba(59,130,246,.18); border-radius: 9999px; overflow:hidden; }
+        .usage-bar > div { height: 100%; background: rgba(59,130,246,.8); width: 0%; }
     </style>
 </head>
 <body>
@@ -70,6 +80,7 @@
             <button class="tab-btn active" id="tab-images" type="button">이미지</button>
             <button class="tab-btn" id="tab-jobs" type="button">작업 히스토리</button>
             <button class="tab-btn" id="tab-feed" type="button">쇼케이스</button>
+            <button class="tab-btn" id="tab-usage" type="button">사용 통계</button>
         </div>
         <div class="admin-grid" id="images-panel">
             <div class="admin-card admin-users">
@@ -143,6 +154,89 @@
             <div class="jobs-meta" id="jobs-meta"></div>
         </div>
 
+        <div class="admin-card" id="usage-panel" style="display:none; margin-top: 16px;">
+            <div class="admin-toolbar" style="margin-bottom:10px;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <strong>사용 통계</strong>
+                    <label style="display:inline-flex; align-items:center; gap:6px;">
+                        기간
+                        <select id="usage-days">
+                            <option value="7">최근 7일</option>
+                            <option value="30" selected>최근 30일</option>
+                            <option value="90">최근 90일</option>
+                            <option value="365">최근 365일</option>
+                        </select>
+                    </label>
+                    <button class="btn" id="usage-refresh">새로고침</button>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <span class="jobs-meta" id="usage-summary"></span>
+                </div>
+            </div>
+
+            <div class="usage-grid">
+                <div class="admin-card" style="padding:12px;">
+                    <strong>일별 사용량</strong>
+                    <div class="jobs-meta" style="margin-top:6px;">(생성 호출 수 / 사용자 수)</div>
+                    <div style="overflow:auto; max-height: 62vh; margin-top:10px;">
+                        <table class="jobs-table" id="usage-daily-table">
+                            <thead>
+                                <tr>
+                                    <th>날짜</th>
+                                    <th>총 생성</th>
+                                    <th>사용자</th>
+                                    <th>완료</th>
+                                    <th>에러</th>
+                                    <th>취소</th>
+                                    <th>TOP 워크플로우</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                    <div class="admin-card" id="usage-detail-card" style="padding:12px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                            <strong>선택한 날짜 상세</strong>
+                            <span class="usage-muted" id="usage-detail-day">날짜를 선택해주세요</span>
+                        </div>
+                        <div class="jobs-meta" id="usage-detail-summary" style="margin-top:6px;">-</div>
+                        <div style="overflow:auto; max-height: 32vh; margin-top:10px;">
+                            <table class="jobs-table" id="usage-daywf-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>워크플로우</th>
+                                        <th>횟수</th>
+                                        <th>비중</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="admin-card" style="padding:12px;">
+                        <strong>인기 워크플로우</strong>
+                        <div class="jobs-meta" style="margin-top:6px;">(선택 기간 합산)</div>
+                        <div style="overflow:auto; max-height: 28vh; margin-top:10px;">
+                            <table class="jobs-table" id="usage-topwf-table">
+                                <thead>
+                                    <tr>
+                                        <th>워크플로우</th>
+                                        <th>횟수</th>
+                                        <th>비중</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="admin-card" id="feed-panel" style="display:none; margin-top: 16px;">
             <div class="admin-toolbar" style="margin-bottom:10px;">
                 <div style="display:flex; align-items:center; gap:10px;">
@@ -181,9 +275,11 @@
         const imagesPanel = document.getElementById('images-panel');
         const jobsPanel = document.getElementById('jobs-card');
         const feedPanel = document.getElementById('feed-panel');
+        const usagePanel = document.getElementById('usage-panel');
         const tabImages = document.getElementById('tab-images');
         const tabJobs = document.getElementById('tab-jobs');
         const tabFeed = document.getElementById('tab-feed');
+        const tabUsage = document.getElementById('tab-usage');
 
         let currentUser = null;
         let userPage = 1;
@@ -475,6 +571,8 @@
         function showImagesTab(){
             imagesPanel.style.display = '';
             jobsPanel.style.display = 'none';
+            if (feedPanel) feedPanel.style.display = 'none';
+            if (usagePanel) usagePanel.style.display = 'none';
             activateTab(tabImages);
             loadUsers();
         }
@@ -482,6 +580,7 @@
             imagesPanel.style.display = 'none';
             jobsPanel.style.display = '';
             if (feedPanel) feedPanel.style.display = 'none';
+            if (usagePanel) usagePanel.style.display = 'none';
             activateTab(tabJobs);
             loadJobs();
             loadMetrics();
@@ -490,13 +589,187 @@
             imagesPanel.style.display = 'none';
             jobsPanel.style.display = 'none';
             if (feedPanel) feedPanel.style.display = '';
+            if (usagePanel) usagePanel.style.display = 'none';
             activateTab(tabFeed);
             loadFeed();
+        }
+        function showUsageTab(){
+            imagesPanel.style.display = 'none';
+            jobsPanel.style.display = 'none';
+            if (feedPanel) feedPanel.style.display = 'none';
+            if (usagePanel) usagePanel.style.display = '';
+            activateTab(tabUsage);
+            loadUsage();
         }
         tabImages.addEventListener('click', showImagesTab);
         tabJobs.addEventListener('click', showJobsTab);
         if (tabFeed) tabFeed.addEventListener('click', showFeedTab);
+        if (tabUsage) tabUsage.addEventListener('click', showUsageTab);
         showImagesTab();
+
+        // ---- Usage analytics ----
+        const usageDaysEl = document.getElementById('usage-days');
+        const usageRefreshBtn = document.getElementById('usage-refresh');
+        const usageSummaryEl = document.getElementById('usage-summary');
+        const usageDailyTbody = document.querySelector('#usage-daily-table tbody');
+        const usageTopwfTbody = document.querySelector('#usage-topwf-table tbody');
+        const usageDetailCard = document.getElementById('usage-detail-card');
+        const usageDetailDayEl = document.getElementById('usage-detail-day');
+        const usageDetailSummaryEl = document.getElementById('usage-detail-summary');
+        const usageDaywfTbody = document.querySelector('#usage-daywf-table tbody');
+
+        let __usageCache = null;
+        let __usageSelectedDay = null;
+
+        function _fmtPct(n){
+            try {
+                const x = Number(n);
+                if (!Number.isFinite(x)) return '-';
+                return `${(x * 100).toFixed(1)}%`;
+            } catch (_) { return '-'; }
+        }
+
+        function renderUsageDayDetail(day){
+            const data = __usageCache || {};
+            const daysList = Array.isArray(data.days) ? data.days : [];
+            const row = daysList.find(d => String(d.day || '') === String(day || ''));
+
+            __usageSelectedDay = row ? String(row.day || '') : null;
+            if (usageDetailDayEl) usageDetailDayEl.textContent = __usageSelectedDay || '날짜를 선택해주세요';
+
+            if (!row){
+                if (usageDetailSummaryEl) usageDetailSummaryEl.textContent = '-';
+                if (usageDaywfTbody) usageDaywfTbody.innerHTML = '';
+                return;
+            }
+
+            const total = Number(row.total || 0);
+            const users = Number(row.users || 0);
+            const complete = Number(row.complete || 0);
+            const err = Number(row.error || 0);
+            const cancelled = Number(row.cancelled || 0);
+            if (usageDetailSummaryEl){
+                usageDetailSummaryEl.textContent = `총 ${total}회 · 사용자 ${users}명 (완료 ${complete} / 에러 ${err} / 취소 ${cancelled})`;
+            }
+
+            const wfList = Array.isArray(row.workflows) ? row.workflows : [];
+            if (usageDaywfTbody){
+                usageDaywfTbody.innerHTML = '';
+                wfList.forEach((it, idx) => {
+                    const c = Number(it.count || 0);
+                    const pct = total > 0 ? (c / total) : null;
+                    const name = it.workflow_name || it.workflow_id || '(unknown)';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="width:34px;">${idx + 1}</td>
+                        <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${name}">${name}</td>
+                        <td><strong>${c}</strong></td>
+                        <td>
+                            <div class="usage-bar" title="${pct === null ? '-' : _fmtPct(pct)}">
+                                <div style="width:${pct === null ? 0 : Math.max(0, Math.min(100, pct * 100))}%;"></div>
+                            </div>
+                            <div class="usage-muted" style="margin-top:4px;">${pct === null ? '-' : _fmtPct(pct)}</div>
+                        </td>
+                    `;
+                    usageDaywfTbody.appendChild(tr);
+                });
+            }
+
+            // On small screens, scroll the detail card into view for convenience.
+            try {
+                if (usageDetailCard && window.innerWidth <= 960) {
+                    usageDetailCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            } catch (_) {}
+        }
+
+        async function loadUsage(){
+            try {
+                if (usageDailyTbody) usageDailyTbody.innerHTML = '';
+                if (usageTopwfTbody) usageTopwfTbody.innerHTML = '';
+                if (usageSummaryEl) usageSummaryEl.textContent = '불러오는 중...';
+                if (usageDetailDayEl) usageDetailDayEl.textContent = '날짜를 선택해주세요';
+                if (usageDetailSummaryEl) usageDetailSummaryEl.textContent = '-';
+                if (usageDaywfTbody) usageDaywfTbody.innerHTML = '';
+                __usageCache = null;
+                __usageSelectedDay = null;
+
+                const days = parseInt((usageDaysEl && usageDaysEl.value) || '30', 10);
+                const d = Number.isFinite(days) ? days : 30;
+                const res = await fetch(`/api/v1/admin/usage?days=${encodeURIComponent(d)}`, { cache: 'no-store' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok){
+                    if (usageSummaryEl) usageSummaryEl.textContent = '불러오기 실패';
+                    alert(data.detail || '사용 통계를 불러오지 못했습니다.');
+                    return;
+                }
+                __usageCache = data;
+
+                const total = (data && Number.isFinite(data.total)) ? data.total : (data.total || 0);
+                const daysRequested = (data && Number.isFinite(data.days_requested)) ? data.days_requested : d;
+                if (usageSummaryEl) usageSummaryEl.textContent = `최근 ${daysRequested}일 총 생성 호출: ${total}회`;
+
+                const daysList = Array.isArray(data.days) ? data.days : [];
+                if (usageDailyTbody) {
+                    usageDailyTbody.innerHTML = '';
+                    daysList.forEach(row => {
+                        const tr = document.createElement('tr');
+                        tr.className = 'usage-day-row';
+                        const top = row.top_workflow || null;
+                        const topText = top ? `${top.workflow_name || top.workflow_id || ''} (${top.count || 0})` : '-';
+                        tr.innerHTML = `
+                            <td>${row.day || ''}</td>
+                            <td><strong>${row.total || 0}</strong></td>
+                            <td>${row.users || 0}</td>
+                            <td>${row.complete || 0}</td>
+                            <td>${row.error || 0}</td>
+                            <td>${row.cancelled || 0}</td>
+                            <td style="max-width:380px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${topText}">${topText}</td>
+                        `;
+                        tr.addEventListener('click', () => {
+                            try {
+                                document.querySelectorAll('.usage-day-row').forEach(el => el.classList.remove('active'));
+                                tr.classList.add('active');
+                            } catch (_) {}
+                            renderUsageDayDetail(row.day);
+                        });
+                        usageDailyTbody.appendChild(tr);
+                    });
+                }
+
+                const topWf = Array.isArray(data.top_workflows) ? data.top_workflows : [];
+                if (usageTopwfTbody) {
+                    usageTopwfTbody.innerHTML = '';
+                    topWf.forEach(it => {
+                        const tr = document.createElement('tr');
+                        const c = Number(it.count || 0);
+                        const pct = total > 0 ? (c / total) : null;
+                        const name = it.workflow_name || it.workflow_id || '(unknown)';
+                        tr.innerHTML = `
+                            <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${name}">${name}</td>
+                            <td><strong>${c}</strong></td>
+                            <td>${pct === null ? '-' : _fmtPct(pct)}</td>
+                        `;
+                        usageTopwfTbody.appendChild(tr);
+                    });
+                }
+
+                // Auto-select the most recent day for convenience.
+                try {
+                    if (daysList && daysList.length && usageDailyTbody) {
+                        const first = daysList[0];
+                        const firstRow = usageDailyTbody.querySelector('tr.usage-day-row');
+                        if (firstRow) firstRow.classList.add('active');
+                        renderUsageDayDetail(first.day);
+                    }
+                } catch (_) {}
+            } catch (e) {
+                if (usageSummaryEl) usageSummaryEl.textContent = '불러오기 실패';
+                alert('사용 통계 로딩 중 오류가 발생했습니다.');
+            }
+        }
+        if (usageRefreshBtn) usageRefreshBtn.addEventListener('click', loadUsage);
+        if (usageDaysEl) usageDaysEl.addEventListener('change', loadUsage);
 
         async function loadFeed(){
             try {

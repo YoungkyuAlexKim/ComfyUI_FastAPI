@@ -27,7 +27,9 @@ class JobStore:
                     ended_at REAL,
                     error TEXT,
                     result_json TEXT,
-                    artifact_available INTEGER
+                    artifact_available INTEGER,
+                    workflow_id TEXT,
+                    payload_json TEXT
                 )
                 """
             )
@@ -38,14 +40,44 @@ class JobStore:
                 con.execute("ALTER TABLE jobs ADD COLUMN artifact_available INTEGER")
             except Exception:
                 pass
+            # Migration: add workflow_id / payload_json if missing
+            try:
+                con.execute("ALTER TABLE jobs ADD COLUMN workflow_id TEXT")
+            except Exception:
+                pass
+            try:
+                con.execute("ALTER TABLE jobs ADD COLUMN payload_json TEXT")
+            except Exception:
+                pass
+            # Index (after migrations so the column exists)
+            try:
+                con.execute("CREATE INDEX IF NOT EXISTS idx_jobs_workflow ON jobs(workflow_id)")
+            except Exception:
+                pass
 
     def upsert_job(self, j: Dict[str, Any]):
         def _exec():
             with self._connect() as con:
+                payload = j.get("payload") if isinstance(j, dict) else None
+                workflow_id = None
+                try:
+                    if isinstance(j.get("workflow_id"), str) and j.get("workflow_id"):
+                        workflow_id = str(j.get("workflow_id")).strip()
+                except Exception:
+                    workflow_id = None
+                if not workflow_id:
+                    try:
+                        if isinstance(payload, dict):
+                            wf = payload.get("workflow_id")
+                            if isinstance(wf, str) and wf.strip():
+                                workflow_id = wf.strip()
+                    except Exception:
+                        workflow_id = None
+
                 con.execute(
                     """
-                    INSERT INTO jobs (id, owner_id, type, status, progress, created_at, started_at, ended_at, error, result_json, artifact_available)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, json(?), ?)
+                    INSERT INTO jobs (id, owner_id, type, status, progress, created_at, started_at, ended_at, error, result_json, artifact_available, workflow_id, payload_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, json(?), ?, ?, json(?))
                     ON CONFLICT(id) DO UPDATE SET
                         owner_id=excluded.owner_id,
                         type=excluded.type,
@@ -56,7 +88,9 @@ class JobStore:
                         ended_at=excluded.ended_at,
                         error=excluded.error,
                         result_json=excluded.result_json,
-                        artifact_available=excluded.artifact_available
+                        artifact_available=excluded.artifact_available,
+                        workflow_id=excluded.workflow_id,
+                        payload_json=excluded.payload_json
                     """,
                     (
                         j.get("id"),
@@ -70,6 +104,8 @@ class JobStore:
                         j.get("error"),
                         json_dumps_safe(j.get("result") or {}),
                         1 if j.get("artifact_available") else 0,
+                        workflow_id,
+                        json_dumps_safe(payload or {}),
                     ),
                 )
         try:
@@ -88,7 +124,7 @@ class JobStore:
         def _query():
             with self._connect() as con:
                 cur = con.execute(
-                    "SELECT id, owner_id, type, status, progress, created_at, started_at, ended_at, error, result_json, COALESCE(artifact_available,0) FROM jobs ORDER BY created_at DESC LIMIT ?",
+                    "SELECT id, owner_id, type, status, progress, created_at, started_at, ended_at, error, result_json, COALESCE(artifact_available,0), workflow_id, payload_json FROM jobs ORDER BY created_at DESC LIMIT ?",
                     (limit,),
                 )
                 return cur.fetchall()
@@ -119,6 +155,9 @@ class JobStore:
                     "error": r[8],
                     "result": json_loads_safe(r[9]) if r[9] is not None else {},
                     "artifact_available": bool(r[10])
+                    ,
+                    "workflow_id": r[11],
+                    "payload": json_loads_safe(r[12]) if r[12] is not None else {},
                 }
             )
         return items

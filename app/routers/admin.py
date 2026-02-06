@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from ..config import SERVER_CONFIG
+from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS
 from ..services.media_store import (
     _gather_user_images,
     _gather_user_inputs,
@@ -340,4 +340,149 @@ async def admin_purge_trash_all():
         "users_scanned": len(users),
         "users_with_deletions": users_with_deletions,
         "per_user": per_user,
+    }
+
+
+@router.get("/api/v1/admin/usage", tags=["Admin"])
+async def admin_usage(request: Request, days: int = 30):
+    """
+    Simple ops analytics:
+    - Daily total generate calls
+    - Daily top workflows
+    - Overall top workflows for the selected window
+
+    Notes:
+    - Grouping uses server-local day boundary (SQLite 'localtime').
+    - Older rows (before workflow_id/payload was stored) may appear as "(unknown)".
+    """
+    try:
+        days_i = int(days)
+    except Exception:
+        days_i = 30
+    days_i = max(1, min(365, days_i))
+
+    job_store = getattr(request.app.state, "job_store", None)
+    db_path = getattr(job_store, "db_path", None) if job_store else None
+    if not isinstance(db_path, str) or not db_path:
+        return {"days": [], "top_workflows": [], "total": 0, "days_requested": days_i}
+
+    import sqlite3
+    import time as _t
+
+    cutoff = float(_t.time()) - (days_i * 86400.0)
+
+    def wf_label(wf_id: str | None) -> str:
+        try:
+            s = str(wf_id or "").strip()
+        except Exception:
+            s = ""
+        if not s:
+            return "(unknown)"
+        try:
+            cfg = WORKFLOW_CONFIGS.get(s) if isinstance(WORKFLOW_CONFIGS, dict) else None
+            dn = (cfg or {}).get("display_name") if isinstance(cfg, dict) else None
+            return str(dn or s)
+        except Exception:
+            return s
+
+    with sqlite3.connect(db_path) as con:
+        # Daily totals
+        cur = con.execute(
+            """
+            SELECT
+              strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') AS day,
+              COUNT(*) AS total,
+              COUNT(DISTINCT owner_id) AS users,
+              SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) AS complete,
+              SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error,
+              SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
+            FROM jobs
+            WHERE type = 'generate' AND created_at IS NOT NULL AND created_at >= ?
+            GROUP BY day
+            ORDER BY day DESC
+            """,
+            (cutoff,),
+        )
+        daily_rows = cur.fetchall() or []
+
+        # Per-day, per-workflow counts
+        cur2 = con.execute(
+            """
+            SELECT
+              strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') AS day,
+              COALESCE(workflow_id, '(unknown)') AS workflow_id,
+              COUNT(*) AS cnt
+            FROM jobs
+            WHERE type = 'generate' AND created_at IS NOT NULL AND created_at >= ?
+            GROUP BY day, workflow_id
+            ORDER BY day DESC, cnt DESC
+            """,
+            (cutoff,),
+        )
+        wf_rows = cur2.fetchall() or []
+
+        # Overall top workflows
+        cur3 = con.execute(
+            """
+            SELECT
+              COALESCE(workflow_id, '(unknown)') AS workflow_id,
+              COUNT(*) AS cnt
+            FROM jobs
+            WHERE type = 'generate' AND created_at IS NOT NULL AND created_at >= ?
+            GROUP BY workflow_id
+            ORDER BY cnt DESC
+            LIMIT 50
+            """,
+            (cutoff,),
+        )
+        top_rows = cur3.fetchall() or []
+
+    by_day: dict[str, list[dict]] = {}
+    for day, wf_id, cnt in wf_rows:
+        d = str(day or "")
+        if not d:
+            continue
+        by_day.setdefault(d, []).append(
+            {"workflow_id": wf_id, "workflow_name": wf_label(wf_id), "count": int(cnt or 0)}
+        )
+
+    days_out: list[dict] = []
+    total_all = 0
+    for day, total, users, complete, error, cancelled in daily_rows:
+        d = str(day or "")
+        if not d:
+            continue
+        t = int(total or 0)
+        total_all += t
+        wf_list = by_day.get(d, [])
+        top_wf = wf_list[0] if wf_list else None
+        days_out.append(
+            {
+                "day": d,
+                "total": t,
+                "users": int(users or 0),
+                "complete": int(complete or 0),
+                "error": int(error or 0),
+                "cancelled": int(cancelled or 0),
+                "top_workflow": top_wf,
+                # Keep a cap for UI readability, but provide enough detail for ranking.
+                "workflows": wf_list[:50],
+            }
+        )
+
+    top_out: list[dict] = []
+    for wf_id, cnt in top_rows:
+        top_out.append(
+            {
+                "workflow_id": wf_id,
+                "workflow_name": wf_label(wf_id),
+                "count": int(cnt or 0),
+            }
+        )
+
+    return {
+        "days_requested": days_i,
+        "total": total_all,
+        "days": days_out,
+        "top_workflows": top_out,
     }

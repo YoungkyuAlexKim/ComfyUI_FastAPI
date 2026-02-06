@@ -830,6 +830,8 @@ async def on_startup():
                         "ended_at": j.ended_at,
                         "error": j.error_message,
                         "result": j.result,
+                        "payload": j.payload,
+                        "workflow_id": (j.payload.get("workflow_id") if isinstance(j.payload, dict) else None),
                         "artifact_available": artifact_available,
                     })
         except Exception:
