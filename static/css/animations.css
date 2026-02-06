@@ -22,7 +22,7 @@
 }
 
 .fade-in-panel {
-    animation: fadeInUp 220ms cubic-bezier(.22,.8,.2,1);
+    animation: fadeInUp 220ms cubic-bezier(.22, .8, .2, 1);
 }
 
 @keyframes fadeOut {
@@ -46,5 +46,48 @@
 }
 
 .fade-out-panel {
-    animation: fadeOutDown 200ms cubic-bezier(.22,.8,.2,1) forwards;
+    animation: fadeOutDown 200ms cubic-bezier(.22, .8, .2, 1) forwards;
+}
+
+/* CTA shimmer - subtle shine across button surface */
+@keyframes ctaShimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+}
+
+/* Subtle pulse for attention */
+@keyframes subtlePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Scale pop for selections / reactions */
+@keyframes scalePop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+}
+
+/* Smooth slide-in from right (gallery drawer, panels) */
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(24px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Gentle float for empty-state icons */
+@keyframes gentleFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+}
+
+/* Glow pulse for active/processing states */
+@keyframes glowPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(155, 184, 255, 0); }
+    50% { box-shadow: 0 0 0 8px rgba(155, 184, 255, 0.12); }
 }

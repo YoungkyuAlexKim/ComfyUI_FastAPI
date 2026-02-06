@@ -21,11 +21,11 @@
 /* Dark Theme Sidebar - Full Height from Start */
 .sidebar {
     width: var(--sidebar-width);
-    background: transparent;
+    background: linear-gradient(180deg, var(--bg-card) 0%, var(--bg-primary) 100%);
     backdrop-filter: none;
     border-right: 1px solid var(--bg-surface);
     border-radius: 0;
-    box-shadow: none;
+    box-shadow: 2px 0 16px -4px rgba(0, 0, 0, 0.3);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -43,8 +43,7 @@
     padding: var(--space-lg) var(--space-md);
     border-bottom: 1px solid var(--bg-surface);
     text-align: center;
-    /* 로고 배너가 투명 PNG일 때도, 페이지 전체 배경과 동일하게 보이도록 통일 */
-    background: var(--bg-primary);
+    background: var(--bg-card);
     position: sticky; top: 0; z-index: 21; /* 스크롤 시 상단 고정 */
 }
 
@@ -98,7 +97,7 @@
 .sidebar-footer {
     padding: var(--space-sm) var(--space-md);
     border-top: 1px solid var(--bg-surface);
-    background: var(--bg-tertiary);
+    background: var(--bg-card);
     position: sticky; bottom: 0; z-index: 21; /* 하단 고정, 잘림 방지 */
 }
 
@@ -176,7 +175,7 @@
 .workflow-name-display {
     font-size: calc(var(--font-size-xl) + 2px);
     font-weight: 700;
-    color: #a9b4e6;
+    color: var(--lc-primary);
     margin-bottom: var(--space-sm);
     display: flex;
     align-items: center;
@@ -184,7 +183,7 @@
     gap: var(--space-sm);
 }
 
-.workflow-name-display.selected { color: #fff; text-shadow: none; }
+.workflow-name-display.selected { color: var(--text-primary); text-shadow: none; }
 
 .workflow-description-display {
     color: var(--text-secondary);
@@ -237,26 +236,32 @@
     padding-left: var(--space-lg);
 }
 
-/* 세로 구분선: 상하단이 끊기지 않도록 pseudo로 전체 높이를 덮음 */
+/* 세로 구분선: gradient fade로 양 끝이 자연스럽게 사라지는 효과 */
 .input-panel::after {
     content: "";
     position: absolute;
-    top: calc(-1 * var(--space-3xl)); /* 상단 패딩 구간까지 확장 */
-    bottom: calc(-1 * var(--space-3xl)); /* 하단 패딩 구간까지 확장 */
+    top: calc(-1 * var(--space-3xl));
+    bottom: calc(-1 * var(--space-3xl));
     right: 0;
     width: 1px;
-    background: var(--divider-color, var(--bg-surface));
-    opacity: 0.45; /* 세로 구분선 대비를 약간 낮춰 시각적 무게를 줄임 */
+    background: linear-gradient(
+        180deg,
+        transparent 0%,
+        var(--bg-surface) 15%,
+        var(--bg-surface) 85%,
+        transparent 100%
+    );
+    opacity: 0.6;
     pointer-events: none;
     z-index: 0;
 }
 
 .output-card {
-    background: var(--bg-tertiary);
+    background: var(--bg-card);
     backdrop-filter: none;
-    border: 1px solid var(--divider-color);
+    border: 1px solid var(--bg-surface);
     border-radius: var(--radius-2xl);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
     height: auto;
     min-height: 560px;
@@ -324,7 +329,8 @@
 
 .gallery-card {
     background: var(--bg-card);
-    backdrop-filter: blur(20px);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--bg-surface);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-lg);
@@ -409,19 +415,20 @@
 .app-title {
     font-size: var(--font-size-2xl);
     font-weight: 700;
-    color: #fff;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: var(--space-sm);
     margin: 0 0 var(--space-lg) 0;
     text-shadow: none;
+    letter-spacing: -0.02em;
 }
 
 .app-title i {
     font-size: var(--font-size-xl);
-    color: #fff;
+    color: var(--lc-primary);
     background: none;
-    -webkit-text-fill-color: #fff;
+    -webkit-text-fill-color: var(--lc-primary);
     text-shadow: none;
 }
 
@@ -442,7 +449,7 @@
 .workflow-name-display {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--text-primary);
     margin-bottom: var(--space-sm);
     display: flex;
     align-items: center;
@@ -450,12 +457,12 @@
     gap: var(--space-sm);
 }
 
-.workflow-name-display.selected { color: #fff; }
+.workflow-name-display.selected { color: var(--text-primary); }
 
-/* Explicit color for the header workflow title (slightly more blue tone) */
+/* Explicit color for the header workflow title (accent blue tone) */
 #workflow-name-display,
 #workflow-name-display.selected {
-    color: #a9c3ff;
+    color: var(--lc-primary);
 }
 
 .workflow-description-display {
@@ -479,7 +486,7 @@
 }
 
 .placeholder-card {
-    background: var(--bg-tertiary);
+    background: var(--bg-card);
     border: 1px solid var(--bg-surface);
     border-radius: var(--radius-xl);
     padding: var(--space-xl);
@@ -510,25 +517,26 @@
 }
 
 .placeholder-icon {
-    width: 120px;
-    height: 120px;
+    width: 100px;
+    height: 100px;
     background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 3rem;
+    font-size: 2.5rem;
     color: var(--bg-primary);
     margin-bottom: var(--space-md);
-    box-shadow: var(--shadow-glow);
-    border: 2px solid var(--bg-surface);
+    box-shadow: var(--cta-shadow);
+    border: none;
+    animation: gentleFloat 4s ease-in-out infinite;
 }
 
 .placeholder-text {
-    color: var(--text-secondary);
-    font-size: 1rem;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
     line-height: 1.6;
-    max-width: 400px;
+    max-width: 360px;
     margin: 0;
 }
 
@@ -549,8 +557,9 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: var(--shadow-lg);
 }
 
 .result-content {

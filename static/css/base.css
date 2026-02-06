@@ -48,38 +48,44 @@ a {
     color: inherit;
 }
 
-/* Focus styles */
+/* Focus styles - softer ring for dark theme */
 :focus-visible {
-    outline: 2px solid var(--lc-primary);
+    outline: 2px solid rgba(155, 184, 255, 0.55);
     outline-offset: 2px;
 }
 
 /* Selection styles */
 ::selection {
-    background-color: var(--lc-primary);
-    color: var(--bg-primary);
+    background-color: rgba(155, 184, 255, 0.3);
+    color: var(--text-primary);
 }
 
-/* Dark Theme Scrollbar styles */
+/* Slim dark scrollbar */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--bg-secondary);
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--bg-tertiary);
+    background: rgba(148, 163, 184, 0.15);
     border-radius: var(--radius-full);
-    border: 1px solid var(--bg-surface);
+    transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--bg-surface);
+    background: rgba(148, 163, 184, 0.3);
 }
 
 ::-webkit-scrollbar-corner {
-    background: var(--bg-secondary);
+    background: transparent;
+}
+
+/* Firefox thin scrollbar */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.15) transparent;
 }
