@@ -159,7 +159,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "description": "캐릭터 1장을 넣으면 같은 그림체/같은 인상으로 표정 포트레이트들을 한 장의 시트로 만들어줍니다.",
         "hidden": False,
 
-        # 툴 워크플로우: 프롬프트 입력을 숨기므로, 내부 기본 프롬프트는 영어로 고정하는 것이 안정적입니다.
+        # 툴 워크플로우:
+        # - 기본 동작은 "프롬프트 없이도" 결과가 나오도록 영어 기본 프롬프트를 둡니다.
+        # - 사용자가 원하면 "화풍(스타일) 힌트"를 선택 입력으로 추가할 수 있도록 UI에서 프롬프트 입력을 엽니다.
         "default_user_prompt": (
             "Create a portrait expression sheet based on the provided character image.\n"
             "Keep the original character identity and style consistent."
@@ -171,7 +173,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "Keep the character design consistent across all portraits (face, proportions, outfit, colors, accessories).\n"
             "Portrait framing: head and shoulders.\n"
             "Use consistent lighting and a simple neutral background.\n"
-            "Style: match the reference image style.\n"
+            "Style: match the reference image style unless a STYLE OVERRIDE is provided by the user.\n"
             "Text elements: absent (captions, labels).\n"
             "Branding: absent (watermark, logos)."
         ),
@@ -188,8 +190,16 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "showLora": False,
             "showPromptTranslate": True,
             "generateLabel": "표정 포트레이트 만들기",
-            # 툴 UI로만 조작하도록 프롬프트 입력은 숨김(혼동 방지)
-            "hideUserPrompt": True,
+            # 스타일 힌트(선택 입력)로 프롬프트 입력을 사용
+            "hideUserPrompt": False,
+            # 프롬프트가 비어 있으면 default_user_prompt로 동작(기존과 동일)
+            "userPromptOptional": True,
+            "userPromptLabel": "스타일(선택)",
+            "userPromptHelp": (
+                "여기에는 '화풍/렌더링'만 적어주세요. (예: 수채화, 지브리풍, 애니 셀채색, 필름 그레인)\n"
+                "비워두면 입력 이미지의 기존 스타일을 그대로 따릅니다."
+            ),
+            "userPromptPlaceholder": "원하는 화풍을 적어주세요(선택). 비워두면 기존처럼 입력 이미지 스타일을 유지합니다.",
             # 2x2 / 3x3 시트는 정사각형이 가장 안정적입니다.
             "disableAspect": False,
             "aspectOptions": ["square"],

@@ -47,6 +47,8 @@
             workflowDescriptionDisplay: document.getElementById('workflow-description-display'),
             generateBtn: document.getElementById('generate-btn'),
             userPromptInput: document.getElementById('user_prompt'),
+            userPromptLabelText: document.getElementById('user-prompt-label-text'),
+            userPromptHelp: document.getElementById('user-prompt-help'),
             stylePromptInput: document.getElementById('style_prompt'),
             negativePromptInput: document.getElementById('negative_prompt'),
             promptSuggestionText: document.getElementById('prompt-suggestion-text'),
@@ -70,6 +72,13 @@
                 return ui.userPromptInput ? String(ui.userPromptInput.getAttribute('placeholder') || '') : '';
             } catch (_) {
                 return '';
+            }
+        })();
+        const DEFAULT_USER_PROMPT_LABEL_TEXT = (function () {
+            try {
+                return ui.userPromptLabelText ? String(ui.userPromptLabelText.textContent || '') : '프롬프트 (내용)';
+            } catch (_) {
+                return '프롬프트 (내용)';
             }
         })();
 
@@ -594,7 +603,15 @@
                 try {
                     const targetWf = getTargetWorkflowForMode();
                     const def = getDefaultPromptForWorkflowId(targetWf.id);
-                    if (typeof def === 'string') {
+                    const uiSchema = (targetWf && targetWf.ui) || {};
+                    if (uiSchema && uiSchema.hideUserPrompt) {
+                        // Hidden prompt tools must always use default prompt.
+                        ui.userPromptInput.value = (typeof def === 'string') ? def : '';
+                        autoResizeTextarea(ui.userPromptInput);
+                    } else if (uiSchema && uiSchema.userPromptOptional) {
+                        // Optional prompt tools: do not clobber user input on mode switch.
+                        // (Keep empty if empty; keep typed text if present.)
+                    } else if (typeof def === 'string') {
                         ui.userPromptInput.value = def;
                         autoResizeTextarea(ui.userPromptInput);
                     }
@@ -605,6 +622,11 @@
                     const uiSchema = (targetWf && targetWf.ui) || {};
                     const ph = (uiSchema && typeof uiSchema.userPromptPlaceholder === 'string') ? uiSchema.userPromptPlaceholder : '';
                     if (ui.userPromptInput) ui.userPromptInput.setAttribute('placeholder', ph || DEFAULT_USER_PROMPT_PLACEHOLDER || '');
+                } catch (_) {}
+                // Update prompt label/help per target workflow (optional)
+                try {
+                    const targetWf = getTargetWorkflowForMode();
+                    applyUserPromptLabelHelpForWorkflow(targetWf);
                 } catch (_) {}
                 // Re-render prompt templates for current mode/workflow
                 try {
@@ -703,6 +725,25 @@
 
         function getDefaultPromptForWorkflowId(id) {
             try { return (workflowDefaultPrompts && typeof workflowDefaultPrompts === 'object') ? (workflowDefaultPrompts[id] || '') : ''; } catch(_) { return ''; }
+        }
+
+        function applyUserPromptLabelHelpForWorkflow(wf) {
+            try {
+                const uiSchema = (wf && wf.ui) || {};
+                const label = (uiSchema && typeof uiSchema.userPromptLabel === 'string') ? uiSchema.userPromptLabel : (DEFAULT_USER_PROMPT_LABEL_TEXT || '프롬프트 (내용)');
+                if (ui.userPromptLabelText) ui.userPromptLabelText.textContent = label;
+
+                const help = (uiSchema && typeof uiSchema.userPromptHelp === 'string') ? uiSchema.userPromptHelp : '';
+                if (ui.userPromptHelp) {
+                    if (help && help.trim()) {
+                        ui.userPromptHelp.textContent = help;
+                        ui.userPromptHelp.style.display = '';
+                    } else {
+                        ui.userPromptHelp.textContent = '';
+                        ui.userPromptHelp.style.display = 'none';
+                    }
+                }
+            } catch (_) {}
         }
 
         function applyAspectUiForMode() {
@@ -2320,21 +2361,36 @@
                 if (descEl) descEl.style.display = showDesc ? '' : 'none';
             } catch(_) {}
 
-            // 워크플로우별 기본 프롬프트 설정 및 UI 가시성
+            // --- 조건부 UI 렌더링 (워크플로우 스키마 기반) ---
+            const uiSchema = workflow.ui || {};
+
+            // 워크플로우별 기본 프롬프트 설정
+            // - hideUserPrompt: 항상 기본 프롬프트 사용(사용자 입력 불가)
+            // - userPromptOptional: 입력이 비어도 기본 프롬프트로 동작(사용자는 "스타일 힌트"만 선택 입력)
             const defaultPrompt = workflowDefaultPrompts[workflow.id] || '';
-            ui.userPromptInput.value = defaultPrompt;
+            try {
+                if (uiSchema && uiSchema.hideUserPrompt) {
+                    ui.userPromptInput.value = defaultPrompt;
+                } else if (uiSchema && uiSchema.userPromptOptional) {
+                    ui.userPromptInput.value = '';
+                } else {
+                    ui.userPromptInput.value = defaultPrompt;
+                }
+            } catch (_) {
+                ui.userPromptInput.value = defaultPrompt;
+            }
             autoResizeTextarea(ui.userPromptInput);
 
             ui.stylePromptInput.value = workflow.style_prompt;
             try { if (ui.negativePromptInput) ui.negativePromptInput.value = workflow.negative_prompt; } catch(_) {}
 
-            // --- 조건부 UI 렌더링 (워크플로우 스키마 기반) ---
-            const uiSchema = workflow.ui || {};
             // 워크플로우별 프롬프트 placeholder (선택)
             try {
                 const ph = (uiSchema && typeof uiSchema.userPromptPlaceholder === 'string') ? uiSchema.userPromptPlaceholder : '';
                 if (ui.userPromptInput) ui.userPromptInput.setAttribute('placeholder', ph || DEFAULT_USER_PROMPT_PLACEHOLDER || '');
             } catch (_) {}
+            // 워크플로우별 프롬프트 라벨/도움말 (선택)
+            try { applyUserPromptLabelHelpForWorkflow(workflow); } catch (_) {}
             // Ensure tabs and toggle visibility based on related img2img
             try {
                 const tabs = ensureModeTabs();
@@ -3435,7 +3491,7 @@
             showPreviewOverlay();
 
             const requestData = {
-                user_prompt: ui.userPromptInput.value.trim(),
+                user_prompt: '',
                 aspect_ratio: selectedAspectRatio,
                 workflow_id: (function(){
                     try {
@@ -3455,6 +3511,43 @@
                     requestData.seed = Date.now() % 1000000000000000;
                 }
             } catch (_) {}
+
+            // Resolve final user prompt for this workflow/mode.
+            // - hideUserPrompt: always use default prompt
+            // - userPromptOptional: empty input => default prompt, non-empty => default + style hint
+            // - default: use user input as-is
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const raw = String(ui.userPromptInput.value || '').trim();
+                const def = String(getDefaultPromptForWorkflowId(targetWf.id) || '').trim();
+
+                if (uiSchema && uiSchema.hideUserPrompt) {
+                    requestData.user_prompt = def;
+                } else if (uiSchema && uiSchema.userPromptOptional) {
+                    if (!raw) {
+                        requestData.user_prompt = def;
+                    } else if (def) {
+                        requestData.user_prompt = [
+                            def,
+                            '',
+                            'STYLE OVERRIDE (user):',
+                            raw,
+                            '',
+                            'RULES:',
+                            '- Apply style only. Keep character identity consistent with the input image.',
+                            '- Do not add text, labels, captions, watermarks, or logos.',
+                        ].join('\n');
+                    } else {
+                        // If no default is provided, fall back to raw input.
+                        requestData.user_prompt = raw;
+                    }
+                } else {
+                    requestData.user_prompt = raw;
+                }
+            } catch (_) {
+                requestData.user_prompt = String(ui.userPromptInput.value || '').trim();
+            }
 
             // Tool-specific prompt augmentation (NanoBanana Turnaround Sheet)
             try {

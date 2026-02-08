@@ -4,7 +4,7 @@ from typing import Callable, List, Optional
 
 from ..logging_utils import setup_logging
 from ..comfy_client import ComfyUIClient
-from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, COMFY_INPUT_DIR, JOB_DB_PATH
+from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, COMFY_INPUT_DIR, JOB_DB_PATH, get_workflow_default_prompt
 from .media_store import (
     _locate_input_png_path,
     _save_image_and_meta,
@@ -191,6 +191,34 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                 pass
     except Exception:
         pass
+
+    # Optional safety: if user_prompt is empty, fall back to the workflow default prompt (when defined).
+    # This is important for tool workflows that allow "optional" user text on the frontend.
+    try:
+        raw_up = str(getattr(request, "user_prompt", "") or "")
+    except Exception:
+        raw_up = ""
+    if not raw_up.strip():
+        try:
+            wf_id = str(getattr(request, "workflow_id", "") or "").strip()
+        except Exception:
+            wf_id = ""
+        if wf_id:
+            try:
+                default_up = str(get_workflow_default_prompt(wf_id) or "")
+            except Exception:
+                default_up = ""
+            if default_up.strip():
+                try:
+                    request.user_prompt = default_up
+                except Exception:
+                    pass
+                try:
+                    if isinstance(req_dict, dict):
+                        req_dict["user_prompt"] = default_up
+                except Exception:
+                    pass
+
     try:
         logger.info({
             "event": "gen_request",

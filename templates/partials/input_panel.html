@@ -31,7 +31,7 @@
 
                 <div class="form-group" id="user-prompt-wrap">
                     <label class="form-label" for="user_prompt">
-                        <i class="fas fa-comment-dots"></i> 프롬프트 (내용)
+                        <i class="fas fa-comment-dots"></i> <span id="user-prompt-label-text">프롬프트 (내용)</span>
                     </label>
                     <div class="input-with-action">
                         <div id="user-prompt-highlights" class="prompt-highlights" aria-hidden="true"></div>
@@ -42,6 +42,7 @@
                         </button>
                         {% endif %}
                     </div>
+                    <p class="hint" id="user-prompt-help" style="display:none; margin-top:8px; color:var(--text-muted); font-size:12px; line-height:1.35;"></p>
                     <div id="prompt-mentions-bar" style="display:none; margin-top:8px;"></div>
                     <div id="prompt-templates" style="display:none; margin-top:8px;">
                         <p class="prompt-suggestion" id="prompt-suggestion-text" style="margin: 0 0 6px 0; color: var(--text-muted); font-size: 12px; display:none;" title=""></p>
