@@ -1049,6 +1049,39 @@ def _locate_audio_meta_path(anon_id: str, audio_id: str) -> Optional[str]:
     return None
 
 
+def _master_audio_file(audio_path: str) -> bool:
+    """Apply mastering chain (EQ + Compressor + Limiter) to an audio file in-place."""
+    try:
+        from pedalboard import Pedalboard, Compressor, HighShelfFilter, LowShelfFilter, Limiter, Gain
+        from pedalboard.io import AudioFile
+    except ImportError:
+        return False
+    try:
+        # Read
+        with AudioFile(audio_path) as f:
+            audio = f.read(f.frames)
+            sr = f.samplerate
+            channels = audio.shape[0]
+
+        # Mastering chain
+        board = Pedalboard([
+            HighShelfFilter(cutoff_frequency_hz=3500, gain_db=3.5, q=0.7),
+            LowShelfFilter(cutoff_frequency_hz=200, gain_db=1.5, q=0.7),
+            Compressor(threshold_db=-18, ratio=3.0, attack_ms=10, release_ms=150),
+            Gain(gain_db=2.0),
+            Limiter(threshold_db=-1.0, release_ms=100),
+        ])
+
+        result = board(audio, sr)
+
+        # Write back (overwrite)
+        with AudioFile(audio_path, 'w', sr, channels, quality="V0") as f:
+            f.write(result)
+        return True
+    except Exception:
+        return False
+
+
 def _update_audio_status(anon_id: str, audio_id: str, status: str) -> bool:
     meta_path = _locate_audio_meta_path(anon_id, audio_id)
     if not meta_path:

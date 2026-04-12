@@ -11,7 +11,8 @@
       "Bash(python -c \"from app.workflow_configs import WORKFLOW_CONFIGS; cfg = WORKFLOW_CONFIGS['AceStep15XL']; print\\('audio_workflow:', cfg.get\\('audio_workflow'\\)\\); print\\('prompt_node:', cfg.get\\('prompt_node'\\)\\); print\\('audio_params keys:', list\\(cfg.get\\('audio_params',{}\\).keys\\(\\)\\)\\); print\\('ui musicMode:', cfg.get\\('ui',{}\\).get\\('musicMode'\\)\\); print\\('presets:', len\\(cfg.get\\('audio_fixed_params',{}\\).get\\('94',{}\\)\\)\\)\")",
       "Bash(python -c \"from app.prompt_templates import PROMPT_TEMPLATES; print\\('AceStep15XL presets:', len\\(PROMPT_TEMPLATES.get\\('AceStep15XL', []\\)\\)\\)\")",
       "Bash(grep -n \"CREATE TABLE\" c:/Works/ComfyUI_FastAPI/app/*.py)",
-      "Bash(python -c \"from app.prompt_templates import PROMPT_TEMPLATES; items = PROMPT_TEMPLATES.get\\('AceStep15XL',[]\\); print\\(f'Count: {len\\(items\\)}'\\); print\\('instrumental' in str\\(items\\)\\)\")"
+      "Bash(python -c \"from app.prompt_templates import PROMPT_TEMPLATES; items = PROMPT_TEMPLATES.get\\('AceStep15XL',[]\\); print\\(f'Count: {len\\(items\\)}'\\); print\\('instrumental' in str\\(items\\)\\)\")",
+      "Bash(pip install:*)"
     ]
   }
 }

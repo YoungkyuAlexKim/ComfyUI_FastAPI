@@ -1,5 +1,6 @@
 import os
 import time
+import json
 from typing import Callable, List, Optional
 
 from ..logging_utils import setup_logging
@@ -9,6 +10,7 @@ from .media_store import (
     _locate_input_png_path,
     _save_image_and_meta,
     _save_audio_and_meta,
+    _master_audio_file,
     _build_web_path,
 )
 
@@ -1413,6 +1415,11 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         is_audio_wf = bool(wf_cfg_effective.get("audio_workflow"))
         if is_audio_wf:
             audio_path, _ = _save_audio_and_meta(job.owner_id, file_bytes, request, filename)
+            # Auto-mastering (EQ + Compressor + Limiter) — overwrites in-place
+            try:
+                _master_audio_file(audio_path)
+            except Exception:
+                pass
             web_path = _build_web_path(audio_path)
             job.result["audio_path"] = web_path
             job.result["is_audio"] = True
