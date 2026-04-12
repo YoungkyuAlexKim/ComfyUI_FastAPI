@@ -23,6 +23,20 @@
                             <i class="fas fa-download"></i>
                         </button>
                     </div>
+                    <!-- Audio Result (ACE-Step) -->
+                    <div class="audio-container" id="result-audio-container" style="display:none;">
+                        <div class="audio-player-card">
+                            <div class="audio-visual">
+                                <i class="fas fa-compact-disc fa-spin" id="audio-spinning-icon" style="font-size:64px; color:var(--accent-primary); animation-play-state:paused;"></i>
+                            </div>
+                            <audio id="result-audio" controls preload="metadata" style="width:100%;"></audio>
+                            <div style="display:flex; gap:8px; margin-top:8px; justify-content:center;">
+                                <a id="audio-download-btn" href="#" download class="chip-btn" style="text-decoration:none;">
+                                    <i class="fas fa-download"></i> MP3 다운로드
+                                </a>
+                            </div>
+                        </div>
+                    </div>
                     <p class="result-hint" id="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
                 </div>
             </div>

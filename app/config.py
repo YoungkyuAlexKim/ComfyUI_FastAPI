@@ -153,25 +153,30 @@ def get_prompt_overrides(
     overrides: Dict[str, Any] = {}
 
     # prompt / negative / seed 노드는 존재할 때만 반영
+    # NOTE: 같은 노드에 여러 필드가 있을 수 있으므로 (예: AceStep node 94에 tags + seed)
+    #       dict를 교체하지 않고 merge 합니다.
     try:
         pn = config.get("prompt_node")
         prompt_key = (config.get("prompt_input_key") or "text") if isinstance(config, dict) else "text"
         if pn:
-            overrides[pn] = {"inputs": {str(prompt_key): final_positive_prompt or ""}}
+            overrides.setdefault(pn, {"inputs": {}})
+            overrides[pn]["inputs"][str(prompt_key)] = final_positive_prompt or ""
     except Exception:
         pass
     try:
         nn = config.get("negative_prompt_node")
         negative_key = (config.get("negative_prompt_input_key") or "text") if isinstance(config, dict) else "text"
         if nn:
-            overrides[nn] = {"inputs": {str(negative_key): config.get("negative_prompt", "")}}
+            overrides.setdefault(nn, {"inputs": {}})
+            overrides[nn]["inputs"][str(negative_key)] = config.get("negative_prompt", "")
     except Exception:
         pass
     try:
         sn = config.get("seed_node")
         if sn is not None:
             seed_key = (config.get("seed_input_key") or "seed") if isinstance(config, dict) else "seed"
-            overrides[sn] = {"inputs": {str(seed_key): seed}}
+            overrides.setdefault(sn, {"inputs": {}})
+            overrides[sn]["inputs"][str(seed_key)] = seed
     except Exception:
         pass
 
@@ -179,7 +184,9 @@ def get_prompt_overrides(
     try:
         ln = config.get("latent_image_node")
         if ln and width is not None and height is not None:
-            overrides[ln] = {"inputs": {"width": width, "height": height}}
+            overrides.setdefault(ln, {"inputs": {}})
+            overrides[ln]["inputs"]["width"] = width
+            overrides[ln]["inputs"]["height"] = height
     except Exception:
         pass
 
@@ -194,9 +201,11 @@ def get_prompt_overrides(
             h_node = size_nodes.get("height_node")
             value_key = size_nodes.get("value_key", "value")
             if w_node:
-                overrides[str(w_node)] = {"inputs": {str(value_key): int(width)}}
+                overrides.setdefault(str(w_node), {"inputs": {}})
+                overrides[str(w_node)]["inputs"][str(value_key)] = int(width)
             if h_node:
-                overrides[str(h_node)] = {"inputs": {str(value_key): int(height)}}
+                overrides.setdefault(str(h_node), {"inputs": {}})
+                overrides[str(h_node)]["inputs"][str(value_key)] = int(height)
     except Exception:
         pass
     

@@ -11,7 +11,9 @@ from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS
 from ..services.media_store import (
     _gather_user_images,
     _gather_user_inputs,
+    _gather_user_audio,
     _update_image_status,
+    _update_audio_status,
     _user_base_dir,
 )
 from pydantic import BaseModel
@@ -72,15 +74,16 @@ def _list_user_ids() -> list[str]:
 
 def _purge_user_trash_images(user_id: str) -> int:
     """
-    Permanently delete all trashed images for a given user.
+    Permanently delete all trashed items (images + audio) for a given user.
 
-    - A trashed image is defined as: meta JSON exists and meta.status != "active".
-    - Deletes: <id>.png, thumb/<id>.webp, thumb/<id>.jpg, <id>.json
+    - A trashed item is defined as: meta JSON exists and meta.status != "active".
+    - Deletes: <id>.png/.mp3/.wav/etc, thumb/<id>.webp, thumb/<id>.jpg, <id>.json
     """
     base = _user_base_dir(user_id)
     if not os.path.isdir(base):
         return 0
     deleted = 0
+    _media_exts = (".png", ".mp3", ".wav", ".flac", ".ogg", ".m4a")
     for root, _, files in os.walk(base):
         for name in files:
             if not name.endswith(".json"):
@@ -93,11 +96,14 @@ def _purge_user_trash_images(user_id: str) -> int:
                     meta = json.load(f)
                 if meta.get("status") == "active":
                     continue
-                image_id = os.path.splitext(name)[0]
-                png_path = os.path.join(root, f"{image_id}.png")
-                t_webp = os.path.join(root, "thumb", f"{image_id}.webp")
-                t_jpg = os.path.join(root, "thumb", f"{image_id}.jpg")
-                for p in [png_path, t_webp, t_jpg, meta_path]:
+                item_id = os.path.splitext(name)[0]
+                # Delete all possible media files for this item
+                candidates = [meta_path]
+                for ext in _media_exts:
+                    candidates.append(os.path.join(root, f"{item_id}{ext}"))
+                candidates.append(os.path.join(root, "thumb", f"{item_id}.webp"))
+                candidates.append(os.path.join(root, "thumb", f"{item_id}.jpg"))
+                for p in candidates:
                     try:
                         if os.path.exists(p):
                             os.remove(p)
@@ -286,6 +292,35 @@ async def admin_inputs(user_id: str, page: int = 1, size: int = 24, include: str
     return {"items": response_items, "page": page, "size": size, "total": total, "total_pages": total_pages}
 
 
+@router.get("/api/v1/admin/audio", tags=["Admin"])
+async def admin_audio(user_id: str, page: int = 1, size: int = 24, include: str = "all"):
+    include_trash = True
+    items = _gather_user_audio(user_id, include_trash=include_trash)
+    if include == "active":
+        items = [it for it in items if it.get("status") == "active"]
+    elif include == "trash":
+        items = [it for it in items if it.get("status") != "active"]
+
+    size = max(1, min(100, size))
+    page = max(1, page)
+    start = (page - 1) * size
+    end = start + size
+    total = len(items)
+    slice_items = items[start:end]
+    response_items = []
+    from datetime import datetime, timezone
+    for it in slice_items:
+        response_items.append({
+            "id": it["id"],
+            "url": it["url"],
+            "status": it.get("status"),
+            "meta": it.get("meta"),
+            "created_at": datetime.fromtimestamp(it["mtime"], tz=timezone.utc).isoformat(),
+        })
+    total_pages = max(1, (total + size - 1) // size)
+    return {"items": response_items, "page": page, "size": size, "total": total, "total_pages": total_pages}
+
+
 class AdminControlUpdateRequest(BaseModel):
     user_id: str
 
@@ -307,6 +342,22 @@ async def admin_restore(image_id: str, req: AdminUpdateRequest):
     ok = _update_image_status(req.user_id, image_id, "active")
     if not ok:
         raise HTTPException(status_code=404, detail="Image not found")
+    return {"ok": True}
+
+
+@router.post("/api/v1/admin/audio/{audio_id}/delete", tags=["Admin"])
+async def admin_soft_delete_audio(audio_id: str, req: AdminUpdateRequest):
+    ok = _update_audio_status(req.user_id, audio_id, "trash")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Audio not found")
+    return {"ok": True}
+
+
+@router.post("/api/v1/admin/audio/{audio_id}/restore", tags=["Admin"])
+async def admin_restore_audio(audio_id: str, req: AdminUpdateRequest):
+    ok = _update_audio_status(req.user_id, audio_id, "active")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Audio not found")
     return {"ok": True}
 
 

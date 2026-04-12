@@ -923,3 +923,142 @@ def _update_image_status(anon_id: str, image_id: str, status: str) -> bool:
         return True
     except Exception:
         return False
+
+
+# ── Audio (ACE-Step) storage ──────────────────────────────────────────
+
+def _audio_base_dir(anon_id: str) -> str:
+    return os.path.join(OUTPUT_DIR, "users", anon_id, "audio")
+
+
+def _save_audio_and_meta(
+    anon_id: str,
+    audio_bytes: bytes,
+    req,
+    original_filename: str,
+) -> Tuple[str, str]:
+    """Save audio file + JSON sidecar, mirroring _save_image_and_meta structure."""
+    now = datetime.now(timezone.utc)
+    base = _audio_base_dir(anon_id)
+    dated_dir = _date_partition_path(base, now)
+    os.makedirs(dated_dir, exist_ok=True)
+
+    audio_id = uuid.uuid4().hex
+    # Determine extension from original filename
+    ext = ".mp3"
+    try:
+        _, fext = os.path.splitext(original_filename)
+        if fext:
+            ext = fext.lower()
+    except Exception:
+        pass
+    audio_filename = f"{audio_id}{ext}"
+    audio_path = os.path.join(dated_dir, audio_filename)
+
+    with open(audio_path, "wb") as f:
+        f.write(audio_bytes)
+
+    # Build metadata
+    import hashlib as _hl
+    sha = ""
+    try:
+        sha = _hl.sha256(audio_bytes).hexdigest()
+    except Exception:
+        pass
+
+    meta = {
+        "id": audio_id,
+        "owner": anon_id,
+        "kind": "audio",
+        "workflow_id": getattr(req, "workflow_id", None) if req else None,
+        "prompt": getattr(req, "user_prompt", "") if req else "",
+        "lyrics": getattr(req, "lyrics", "") if req else "",
+        "bpm": getattr(req, "bpm", None) if req else None,
+        "duration": getattr(req, "duration", None) if req else None,
+        "keyscale": getattr(req, "keyscale", None) if req else None,
+        "language": getattr(req, "language", None) if req else None,
+        "seed": getattr(req, "seed", None) if req else None,
+        "original_filename": original_filename,
+        "mime": "audio/mpeg" if ext == ".mp3" else f"audio/{ext.lstrip('.')}",
+        "bytes": len(audio_bytes),
+        "sha256": sha,
+        "created_at": now.isoformat(),
+        "status": "active",
+        "tags": [],
+    }
+
+    meta_path = os.path.join(dated_dir, f"{audio_id}.json")
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+
+    return audio_path, meta_path
+
+
+def _gather_user_audio(anon_id: str, include_trash: bool = False) -> List[dict]:
+    """List audio files for a user, newest first."""
+    base = _audio_base_dir(anon_id)
+    if not os.path.isdir(base):
+        return []
+    items: List[dict] = []
+    _audio_exts = (".mp3", ".wav", ".flac", ".ogg", ".m4a")
+    for root, _, files in os.walk(base):
+        for name in files:
+            low = name.lower()
+            if not any(low.endswith(e) for e in _audio_exts):
+                continue
+            audio_path = os.path.join(root, name)
+            try:
+                stat = os.stat(audio_path)
+                created = stat.st_mtime
+                audio_id = os.path.splitext(name)[0]
+                meta_path = os.path.join(root, f"{audio_id}.json")
+                meta = None
+                if os.path.exists(meta_path):
+                    try:
+                        with open(meta_path, "r", encoding="utf-8") as f:
+                            meta = json.load(f)
+                    except Exception:
+                        meta = None
+                # Skip orphan files (no metadata JSON) — leftover from purge
+                if not meta or not isinstance(meta, dict):
+                    continue
+                status = meta.get("status")
+                if not include_trash and status and status != "active":
+                    continue
+                items.append({
+                    "id": audio_id,
+                    "url": _build_web_path(audio_path),
+                    "meta": meta,
+                    "status": status or "active",
+                    "mtime": created,
+                })
+            except Exception:
+                continue
+    items.sort(key=lambda x: x["mtime"], reverse=True)
+    return items
+
+
+def _locate_audio_meta_path(anon_id: str, audio_id: str) -> Optional[str]:
+    base = _audio_base_dir(anon_id)
+    if not os.path.isdir(base):
+        return None
+    for root, _, files in os.walk(base):
+        cand = f"{audio_id}.json"
+        if cand in files:
+            return os.path.join(root, cand)
+    return None
+
+
+def _update_audio_status(anon_id: str, audio_id: str, status: str) -> bool:
+    meta_path = _locate_audio_meta_path(anon_id, audio_id)
+    if not meta_path:
+        return False
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        meta["status"] = status
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False

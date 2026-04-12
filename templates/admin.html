@@ -122,6 +122,14 @@
                 </div>
                 <div class="admin-gallery" id="admin-gallery"></div>
                 <div class="admin-pagination" id="admin-pagination"></div>
+
+                <!-- Audio section -->
+                <div id="admin-audio-section" style="margin-top:16px; border-top:1px solid rgba(255,255,255,0.08); padding-top:12px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                        <h4 style="margin:0;"><i class="fas fa-music"></i> 음악</h4>
+                    </div>
+                    <div id="admin-audio-list"></div>
+                </div>
             </div>
         </div>
         <div class="admin-card jobs-card" id="jobs-card" style="display:none;">
@@ -407,6 +415,7 @@
             document.querySelectorAll('.admin-user').forEach(e => e.classList.remove('active'));
             el.classList.add('active');
             loadImages();
+            loadAdminAudio();
         }
 
         async function loadImages(){
@@ -509,7 +518,71 @@
             if (res.ok){ loadImages(); }
         }
 
-        filterSelect.addEventListener('change', () => { include = filterSelect.value; page = 1; loadImages(); });
+        // ---- Admin Audio ----
+        const adminAudioList = document.getElementById('admin-audio-list');
+
+        async function loadAdminAudio() {
+            if (!currentUser || !adminAudioList) { if (adminAudioList) adminAudioList.innerHTML = ''; return; }
+            const params = new URLSearchParams({ user_id: currentUser, include, size: '100' });
+            try {
+                const res = await fetch(`/api/v1/admin/audio?${params.toString()}`);
+                const data = await res.json();
+                renderAdminAudio(data.items || []);
+            } catch(_) {
+                if (adminAudioList) adminAudioList.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">로드 실패</div>';
+            }
+        }
+
+        function renderAdminAudio(items) {
+            if (!adminAudioList) return;
+            adminAudioList.innerHTML = '';
+            if (!items.length) {
+                adminAudioList.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">음악 없음</div>';
+                return;
+            }
+            items.forEach(it => {
+                const meta = it.meta || {};
+                const tags = meta.prompt || '(설명 없음)';
+                const isActive = it.status === 'active';
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:6px 8px; background:rgba(255,255,255,0.03); border-radius:6px; margin-bottom:4px;';
+                row.innerHTML = `
+                    <i class="fas fa-compact-disc" style="color:var(--text-muted);"></i>
+                    <div style="flex:1; min-width:0; overflow:hidden;">
+                        <div style="font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${tags}">${tags}</div>
+                        <div style="font-size:11px; color:var(--text-muted);">${[meta.duration ? meta.duration+'s' : '', meta.bpm ? meta.bpm+' BPM' : ''].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <span class="status-badge ${isActive ? 'badge-active' : 'badge-trash'}" style="font-size:10px;">${isActive ? '활성' : '휴지통'}</span>
+                    <audio src="${it.url}" preload="none" style="display:none;"></audio>
+                `;
+                // Play button
+                const playBtn = document.createElement('button');
+                playBtn.className = 'btn'; playBtn.style.cssText = 'padding:2px 6px; font-size:11px;';
+                playBtn.innerHTML = '<i class="fas fa-play"></i>';
+                const audioEl = row.querySelector('audio');
+                playBtn.addEventListener('click', () => {
+                    if (audioEl.paused) { audioEl.play(); playBtn.innerHTML = '<i class="fas fa-pause"></i>'; }
+                    else { audioEl.pause(); playBtn.innerHTML = '<i class="fas fa-play"></i>'; }
+                });
+                audioEl.addEventListener('ended', () => { playBtn.innerHTML = '<i class="fas fa-play"></i>'; });
+                row.appendChild(playBtn);
+                // Delete/Restore button
+                const actBtn = document.createElement('button');
+                actBtn.className = isActive ? 'btn danger' : 'btn success';
+                actBtn.style.cssText = 'padding:2px 6px; font-size:11px;';
+                actBtn.textContent = isActive ? '삭제' : '복구';
+                actBtn.addEventListener('click', async () => {
+                    const action = isActive ? 'delete' : 'restore';
+                    const url = `/api/v1/admin/audio/${it.id}/${action}`;
+                    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({user_id:currentUser}) });
+                    if (res.ok) loadAdminAudio();
+                });
+                row.appendChild(actBtn);
+                adminAudioList.appendChild(row);
+            });
+        }
+
+        filterSelect.addEventListener('change', () => { include = filterSelect.value; page = 1; loadImages(); loadAdminAudio(); });
 
         document.getElementById('apply-date').addEventListener('click', () => {
             fromDate = document.getElementById('from-date').value;

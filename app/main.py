@@ -48,6 +48,7 @@ from .routers.inputs import router as inputs_router
 from .routers.health import router as health_router
 from .routers.jobs import router as jobs_router
 from .routers.feed import router as feed_router
+from .routers.audio import router as audio_router
 from .routers.admin_feed import router as admin_feed_router
 from .routers.characters import router as characters_router
 from .routers.global_characters import router as global_characters_router
@@ -71,6 +72,7 @@ app.include_router(inputs_router)
 app.include_router(health_router)
 app.include_router(jobs_router)
 app.include_router(feed_router)
+app.include_router(audio_router)
 app.include_router(admin_feed_router)
 app.include_router(characters_router)
 app.include_router(global_characters_router)
@@ -189,6 +191,14 @@ class GenerateRequest(BaseModel):
     # Optional LoRA strengths (per-slot) – forward-compatible
     # Example: [{"slot":"character","unet":1.0,"clip":1.0},{"slot":"style","unet":0.8,"clip":0.8}]
     loras: Optional[List[dict]] = None
+    # --- ACE-Step (music/audio) params ---
+    lyrics: Optional[str] = None
+    bpm: Optional[int] = None
+    duration: Optional[int] = None
+    steps: Optional[int] = None
+    keyscale: Optional[str] = None
+    timesignature: Optional[str] = None
+    language: Optional[str] = None
 
 WORKFLOW_DIR = "./workflows/"
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
@@ -582,25 +592,93 @@ async def cancel_active_for_user(request: Request):
     return {"message": "Cancel request sent.", "job_id": j.id}
 
 @app.post("/api/v1/translate-prompt", tags=["Prompt Translation"], response_model=TranslateResponse)
-async def translate_prompt_endpoint(text: str = Form(...)):
+async def translate_prompt_endpoint(text: str = Form(...), mode: str = Form("image"), language: str = Form("ko"), context: str = Form("")):
     api_key = os.getenv("GOOGLE_AI_STUDIO_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=503, detail="번역 기능(API)이 설정되지 않았습니다. 서버 .env에 GOOGLE_AI_STUDIO_API_KEY를 설정해 주세요.")
-    model = os.getenv("PROMPT_TRANSLATE_GOOGLE_MODEL") or "gemini-2.5-flash-lite"
+    model = os.getenv("PROMPT_TRANSLATE_GOOGLE_MODEL") or "gemma-4-26b-a4b-it"
     raw = (text or "").strip()
     if not raw:
         raise HTTPException(status_code=400, detail="번역할 내용을 입력해주세요.")
 
-    instruction = (
-        "아래 한국어 설명을 이미지 생성 AI가 이해하기 좋은 영어 프롬프트로 변환해줘.\n"
-        "조건:\n"
-        "- 사용자의 의도를 최대한 그대로 유지\n"
-        "- 영어로만 작성\n"
-        "- 결과는 가장 베스트 1개만\n"
-        "- 설명/해설/옵션/번호/따옴표/마크다운 없이, 프롬프트 문장만 한 줄로 출력\n"
-        "- Danbooru 태그 나열이 아니라 자연스러운 영어 프롬프트 문장으로 작성\n\n"
-        f"한국어 원문:\n{raw}\n"
-    )
+    mode = (mode or "image").strip().lower()
+
+    if mode == "music_tags":
+        # Music description enhancement: convert user input to ACE-Step natural language description
+        instruction = (
+            "You are a music production prompt writer for ACE-Step AI.\n"
+            "Convert the user's request into a music production description.\n\n"
+            "STRICT RULES:\n"
+            "- Focus on SPECIFIC instruments, playing techniques, arrangement, and sound texture\n"
+            "- Do NOT use abstract scene descriptions (no 'sense of wonder', 'enchanting world')\n"
+            "- Do NOT include genre labels as keywords (no 'RPG theme', 'village music')\n"
+            "- Every sentence must describe something the AI can actually produce as SOUND\n"
+            "- Output ONLY the description paragraph, no explanations or labels\n\n"
+            "Example 1:\n"
+            "User: fantasy RPG village background music\n"
+            "Fingerpicked nylon-string acoustic guitar playing a lilting waltz-time melody, "
+            "accompanied by a wooden transverse flute weaving gentle counter-melodies. "
+            "A celtic harp provides arpeggiated chords underneath while light frame-drum "
+            "taps keep a relaxed pulse. Warm string pads swell softly in the background.\n\n"
+            "Example 2:\n"
+            "User: intense boss battle music\n"
+            "Aggressive staccato string ostinatos over pounding double-kick drums and "
+            "thunderous taiko hits. Brass section delivers sharp, dissonant power chords "
+            "while a choir sings fortissimo Latin phrases. Rapid tempo with relentless "
+            "sixteenth-note percussion patterns driving forward momentum.\n\n"
+            "Example 3:\n"
+            "User: rainy day cafe jazz\n"
+            "Brushed snare drum with a lazy swing pattern and warm upright bass playing "
+            "chromatic walking lines. A breathy tenor saxophone improvises behind-the-beat "
+            "over lush extended piano voicings with ninth and thirteenth chords. Subtle "
+            "vinyl crackle and room reverb add intimate warmth.\n\n"
+            "Example 4:\n"
+            "User: retro 8-bit game music\n"
+            "Square-wave lead melody with rapid arpeggiated triangle-wave bass. Pulse-wave "
+            "harmony channel playing staccato chords. Noise-channel percussion with snappy "
+            "hi-hats and punchy kick patterns. Bright, energetic chiptune arrangement with "
+            "frequent pitch bends and echo effects.\n\n"
+            f"User: {raw}\n"
+        )
+    elif mode == "music_lyrics":
+        # Lyrics generation: user can provide either tags-based or free-text request
+        lang_name = {"ko": "한국어", "en": "English", "ja": "日本語", "zh": "中文",
+                     "es": "Español", "fr": "Français", "de": "Deutsch",
+                     "it": "Italiano", "pt": "Português", "ru": "Русский"}.get(language, language)
+        # context = tags from the tags input field (음악 설명)
+        # raw = user's free-text request in the lyrics textarea
+        tags_info = (context or "").strip()
+        context_block = f"\n음악 설명(tags): {tags_info}" if tags_info else ""
+        instruction = (
+            "사용자가 음악 생성 AI(ACE-Step)에 넣을 가사를 작성하려 합니다.\n"
+            f"아래 사용자의 요청을 바탕으로 어울리는 {lang_name} 가사를 작성해주세요.\n\n"
+            "아래 구조 패턴 중 장르와 분위기에 가장 어울리는 것을 하나 골라 사용하세요:\n"
+            "A) [verse] [verse] [chorus] [verse] [chorus] — 포크/컨트리/어쿠스틱\n"
+            "B) [verse] [pre-chorus] [chorus] [verse] [pre-chorus] [chorus] [bridge] [chorus] — 팝/댄스\n"
+            "C) [intro] [verse] [chorus] [verse] [chorus] [bridge] [chorus] [outro] — 록/메탈\n"
+            "D) [verse] [chorus] [verse] [chorus] [bridge] [verse] [chorus] — 발라드/R&B\n"
+            "E) [verse] [verse] [chorus] [verse] [verse] [chorus] [bridge] [chorus] — 랩/힙합\n"
+            "F) [intro] [verse] [chorus] [interlude] [verse] [chorus] [outro] — 일렉트로닉/앰비언트\n"
+            "G) [verse] [chorus] [verse] [chorus] — 심플/동요/짧은 곡\n\n"
+            "조건:\n"
+            "- 사용자가 원하는 분위기, 주제, 감정을 가사에 반영\n"
+            "- 각 줄은 짧고 리듬감 있게 (노래로 부를 수 있도록)\n"
+            "- 설명/해설 없이, 가사 텍스트만 출력\n"
+            f"{context_block}\n\n"
+            f"사용자 요청:\n{raw}\n"
+        )
+    else:
+        # Default: image prompt translation
+        instruction = (
+            "아래 한국어 설명을 이미지 생성 AI가 이해하기 좋은 영어 프롬프트로 변환해줘.\n"
+            "조건:\n"
+            "- 사용자의 의도를 최대한 그대로 유지\n"
+            "- 영어로만 작성\n"
+            "- 결과는 가장 베스트 1개만\n"
+            "- 설명/해설/옵션/번호/따옴표/마크다운 없이, 프롬프트 문장만 한 줄로 출력\n"
+            "- Danbooru 태그 나열이 아니라 자연스러운 영어 프롬프트 문장으로 작성\n\n"
+            f"한국어 원문:\n{raw}\n"
+        )
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     try:
@@ -612,12 +690,12 @@ async def translate_prompt_endpoint(text: str = Form(...)):
                     {"role": "user", "parts": [{"text": instruction}]}
                 ],
                 "generationConfig": {
-                    "temperature": 0.2,
+                    "temperature": 0.7 if mode.startswith("music") else 0.2,
                     "topP": 0.95,
-                    "maxOutputTokens": 256,
+                    "maxOutputTokens": 1024 if mode == "music_lyrics" else 256,
                 },
             },
-            timeout=(5.0, 20.0),
+            timeout=(5.0, 30.0),
         )
     except Exception as e:
         logger.warning({"event": "prompt_translate_upstream_error", "error": str(e)})
@@ -730,10 +808,45 @@ async def translate_prompt_endpoint(text: str = Form(...)):
     if not out:
         raise HTTPException(status_code=502, detail="번역 결과가 비어 있습니다. 잠시 후 다시 시도해 주세요.")
 
-    # Ensure single-line response (best-effort)
-    out = out.splitlines()[0].strip()
-    # Remove accidental quotes
-    out = out.strip().strip('"').strip("'").strip()
+    if mode in ("music_lyrics", "music_tags"):
+        # Music modes: keep multi-line, clean up LLM thinking artifacts
+        out = out.strip()
+        # Gemma 4 is a thinking model — it may prepend reasoning lines
+        # (e.g., "* Source text: ...", "* The user wants...", bullet analysis)
+        cleaned_lines = []
+        for line in out.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                cleaned_lines.append(line)
+                continue
+            # Skip thinking/meta/analysis lines
+            if stripped.startswith(("*", "#", "- ", "•")):
+                continue
+            if stripped.lower().startswith(("here is", "here's", "output:", "result:", "source text", "translation", "note:", "let me", "i will", "the user")):
+                continue
+            # Skip lines that look like labels (e.g., "Genre:", "Instruments:")
+            if len(stripped) < 60 and stripped.endswith(":"):
+                continue
+            cleaned_lines.append(line)
+        out = "\n".join(cleaned_lines).strip()
+        # Remove wrapping quotes if present
+        if len(out) >= 2 and out[0] == '"' and out[-1] == '"':
+            out = out[1:-1].strip()
+        # For music_tags: if still empty after filtering, fall back to full output
+        if not out and mode == "music_tags":
+            # Try to find the last substantial paragraph (likely the actual description)
+            paragraphs = [p.strip() for p in (out or "").split("\n\n") if p.strip()]
+            if not paragraphs:
+                # Re-parse from original
+                raw_out = (parts[0] or {}).get("text", "") if isinstance(parts, list) and parts else ""
+                paragraphs = [p.strip() for p in raw_out.split("\n\n") if p.strip() and not p.strip().startswith("*")]
+            if paragraphs:
+                out = paragraphs[-1].strip()
+    else:
+        # Ensure single-line response (best-effort) for image prompts
+        out = out.splitlines()[0].strip()
+        # Remove accidental quotes
+        out = out.strip().strip('"').strip("'").strip()
 
     return {"translated_text": out}
 
@@ -767,7 +880,7 @@ async def on_startup():
                     # Detect artifact availability on completion (best-effort)
                     artifact_available = False
                     try:
-                        p = j.result.get("image_path") if isinstance(j.result, dict) else None
+                        p = (j.result.get("image_path") or j.result.get("audio_path")) if isinstance(j.result, dict) else None
                         if isinstance(p, str) and p:
                             if p.startswith('/outputs/'):
                                 rel = p[len('/outputs/') : ]

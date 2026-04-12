@@ -192,6 +192,122 @@
                     </p>
                 </div>
 
+                <!-- ACE-Step Music Parameters -->
+                <div class="form-group" id="music-params-wrap" style="display:none;">
+                    <div class="music-params">
+
+                        <!-- 가사 -->
+                        <div class="music-ctrl">
+                            <div class="music-ctrl-label">
+                                <i class="fas fa-microphone-lines"></i> 가사
+                                <span class="music-help" data-tooltip="직접 가사를 쓰거나, 원하는 방향을 적고 우상단 ✨ 버튼을 눌러보세요. [verse], [chorus], [bridge] 등 구조 태그를 지원합니다."><i class="fas fa-circle-question"></i></span>
+                            </div>
+                            <div class="input-with-action">
+                                <textarea class="form-input" id="music_lyrics" placeholder="직접 가사를 적거나, 원하는 방향을 적고 ✨ 버튼을 눌러보세요&#10;&#10;예) 비 오는 도시를 걸어가는 감성적인 가사&#10;구조 태그: [verse] [chorus] [bridge] [intro] [outro]" rows="5"></textarea>
+                                {% if prompt_translate_enabled %}
+                                <button class="lyrics-enhance-btn" id="music-lyrics-enhance-btn" data-tooltip="AI 가사 생성" aria-label="AI 가사 생성">
+                                    <i class="fas fa-wand-magic-sparkles"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- 길이 + BPM (2열) -->
+                        <div class="music-row-2col">
+                            <div class="music-ctrl">
+                                <div class="music-ctrl-label">
+                                    <i class="fas fa-clock"></i> 길이
+                                    <span class="music-help" data-tooltip="생성할 음악의 길이. 길수록 생성 시간이 늘어납니다."><i class="fas fa-circle-question"></i></span>
+                                </div>
+                                <div class="music-duration-grid" id="music-duration-group">
+                                    <button class="music-duration-btn selected" data-duration="60">1분</button>
+                                    <button class="music-duration-btn" data-duration="90">1분반</button>
+                                    <button class="music-duration-btn" data-duration="120">2분</button>
+                                    <button class="music-duration-btn" data-duration="150">2분반</button>
+                                    <button class="music-duration-btn" data-duration="180">3분</button>
+                                    <button class="music-duration-btn" data-duration="210">3분반</button>
+                                </div>
+                            </div>
+                            <div class="music-ctrl">
+                                <div class="music-ctrl-label">
+                                    <i class="fas fa-drum"></i> BPM
+                                    <span class="music-help" data-tooltip="곡의 빠르기. 60=발라드, 90=재즈, 120=팝, 140=댄스, 180=록"><i class="fas fa-circle-question"></i></span>
+                                </div>
+                                <div class="music-slider">
+                                    <input id="music-bpm" type="range" min="40" max="220" step="1" value="120" />
+                                    <input id="music-bpm-num" type="number" min="40" max="220" step="1" value="120" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 세부 설정 (조성 + 박자 + 언어 + 스텝) -->
+                        <div class="music-divider"><i class="fas fa-sliders"></i> 세부 설정</div>
+                        <div class="music-row-3col">
+                            <div class="music-ctrl">
+                                <div class="music-ctrl-label">
+                                    <i class="fas fa-key"></i> 조성
+                                    <span class="music-help" data-tooltip="Major=밝고 경쾌, minor=어둡고 감성적"><i class="fas fa-circle-question"></i></span>
+                                </div>
+                                <select id="music-keyscale" class="music-select">
+                                    <option value="C major" selected>C major — 밝고 순수한</option>
+                                    <option value="C minor">C minor — 비장한</option>
+                                    <option value="D major">D major — 화사한</option>
+                                    <option value="D minor">D minor — 드라마틱</option>
+                                    <option value="E major">E major — 따뜻한</option>
+                                    <option value="E minor">E minor — 서정적</option>
+                                    <option value="F major">F major — 목가적</option>
+                                    <option value="F minor">F minor — 비극적</option>
+                                    <option value="G major">G major — 활기찬</option>
+                                    <option value="G minor">G minor — 몽환적</option>
+                                    <option value="A major">A major — 설렘</option>
+                                    <option value="A minor">A minor — 감성적</option>
+                                    <option value="B major">B major — 웅장한</option>
+                                    <option value="B minor">B minor — 숭고한</option>
+                                </select>
+                            </div>
+                            <div class="music-ctrl">
+                                <div class="music-ctrl-label">
+                                    <i class="fas fa-music"></i> 박자
+                                    <span class="music-help" data-tooltip="4/4=대부분의 곡, 3/4=왈츠, 6/8=셔플"><i class="fas fa-circle-question"></i></span>
+                                </div>
+                                <select id="music-timesignature" class="music-select">
+                                    <option value="4" selected>4/4 (기본)</option>
+                                    <option value="3">3/4 (왈츠)</option>
+                                    <option value="6">6/8 (셔플)</option>
+                                </select>
+                            </div>
+                            <div class="music-ctrl">
+                                <div class="music-ctrl-label">
+                                    <i class="fas fa-language"></i> 가사 언어
+                                </div>
+                                <select id="music-language" class="music-select">
+                                    <option value="ko" selected>한국어</option>
+                                    <option value="en">English</option>
+                                    <option value="ja">日本語</option>
+                                    <option value="zh">中文</option>
+                                    <option value="es">Español</option>
+                                    <option value="fr">Français</option>
+                                    <option value="de">Deutsch</option>
+                                    <option value="it">Italiano</option>
+                                    <option value="pt">Português</option>
+                                    <option value="ru">Русский</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="music-ctrl">
+                            <div class="music-ctrl-label">
+                                <i class="fas fa-shoe-prints"></i> 스텝 (품질)
+                                <span class="music-help" data-tooltip="생성 반복 횟수. 높을수록 음질 향상 가능. 권장: 8, 고품질: 12~16"><i class="fas fa-circle-question"></i></span>
+                            </div>
+                            <div class="music-slider">
+                                <input id="music-steps" type="range" min="4" max="32" step="1" value="8" />
+                                <input id="music-steps-num" type="number" min="4" max="32" step="1" value="8" />
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
                 <!-- LoRA Strength Controls (single value per slot) -->
                 <div class="form-group" id="lora-strengths-wrap" style="display:none;">
                     <label class="form-label">

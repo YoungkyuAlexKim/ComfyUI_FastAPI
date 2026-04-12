@@ -1464,6 +1464,146 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "imageInputMulti": {"enabled": True, "max": 2},
         },
     },
+
+    # ──────────────────────────────────────────────
+    # ACE-Step 1.5 XL — 음악(오디오) 생성
+    # ──────────────────────────────────────────────
+    "AceStep15XL": {
+        "display_name": "🎵 음악 생성 (ACE-Step)",
+        "description": "텍스트 설명과 가사를 입력하여 AI 음악(MP3)을 생성합니다.",
+
+        # 프롬프트 노드: TextEncodeAceStepAudio1.5 (node 94) — tags 필드에 주입
+        "prompt_node": "94",
+        "prompt_input_key": "tags",
+
+        "default_user_prompt": "pop, piano, emotional, warm, acoustic, 100 BPM",
+        "style_prompt": "",
+        "negative_prompt": "",
+
+        # 시드: TextEncodeAceStepAudio1.5 (node 94)의 seed 필드
+        "seed_node": "94",
+        "seed_input_key": "seed",
+
+        # KSampler(node 3)에도 시드 주입
+        "extra_seed_nodes": [{"node": "3", "key": "seed"}],
+
+        # 이미지 사이즈/비율은 사용하지 않음
+        "sizes": {},
+
+        # 오디오 전용 설정
+        "audio_workflow": True,
+        "audio_params": {
+            # TextEncodeAceStepAudio1.5 (node 94) 의 각 파라미터 → 프론트에서 오버라이드 가능
+            "lyrics_node": "94",
+            "lyrics_key": "lyrics",
+            "bpm_node": "94",
+            "bpm_key": "bpm",
+            "duration_node_encode": "94",    # TextEncode의 duration
+            "duration_node_latent": "98",    # EmptyAceStep1.5LatentAudio의 seconds
+            "duration_key_encode": "duration",
+            "duration_key_latent": "seconds",
+            "timesignature_node": "94",
+            "timesignature_key": "timesignature",
+            "language_node": "94",
+            "language_key": "language",
+            "keyscale_node": "94",
+            "keyscale_key": "keyscale",
+        },
+        # 고정 파라미터 (사용자에게 노출하지 않음)
+        "audio_fixed_params": {
+            "94": {
+                "cfg_scale": 2,
+                "temperature": 0.85,
+                "top_p": 0.9,
+                "top_k": 0,
+                "min_p": 0,
+                "generate_audio_codes": True,
+            }
+        },
+
+        "ui": {
+            "icon": "music",
+            "templateMode": "music",
+            "showLora": False,
+            "showPromptTranslate": True,
+            "disableAspect": True,
+            "hideUserPrompt": False,
+            "userPromptPlaceholder": "만들고 싶은 음악의 분위기를 설명해주세요 (예: 밝은 팝, 피아노 중심, 봄 느낌)",
+            "userPromptLabel": "음악 설명 (Tags)",
+            "generateLabel": "음악 생성하기",
+            "generateIcon": "music",
+            # 음악 전용 UI 컴포넌트 표시 플래그
+            "musicMode": True,
+            "musicParams": {
+                "lyrics": {
+                    "label": "가사 (Lyrics)",
+                    "placeholder": "[verse]\n여기에 가사를 입력하세요\n\n[chorus]\n반복되는 후렴구\n\n[bridge]\n브릿지 부분",
+                    "tooltip": "가사를 입력하세요. [verse], [chorus], [bridge] 등의 구조 태그를 사용하면 더 좋은 결과를 얻을 수 있습니다. 비워두면 인스트루멘탈이 생성됩니다.",
+                    "rows": 8,
+                },
+                "bpm": {
+                    "label": "BPM (빠르기)",
+                    "tooltip": "곡의 빠르기입니다. 60=느린 발라드, 90=편안한 재즈, 120=일반적인 팝, 140=신나는 댄스, 180=빠른 록",
+                    "min": 40,
+                    "max": 220,
+                    "step": 1,
+                    "default": 120,
+                },
+                "duration": {
+                    "label": "길이 (초)",
+                    "tooltip": "생성할 음악의 길이입니다. 길수록 생성 시간이 오래 걸립니다. (30초≈1분, 60초≈2분, 120초≈4분 소요 예상)",
+                    "presets": [
+                        {"label": "15초", "value": 15},
+                        {"label": "30초", "value": 30},
+                        {"label": "60초", "value": 60},
+                        {"label": "120초", "value": 120},
+                        {"label": "180초", "value": 180},
+                    ],
+                    "default": 60,
+                },
+                "keyscale": {
+                    "label": "조성 (Key)",
+                    "tooltip": "곡의 음악적 분위기입니다. Major(장조)=밝고 경쾌한 느낌, minor(단조)=어둡고 감성적인 느낌. 잘 모르겠다면 'C major'를 추천합니다.",
+                    "options": [
+                        "C major", "C minor", "C# major", "C# minor",
+                        "D major", "D minor", "D# major", "D# minor",
+                        "E major", "E minor", "F major", "F minor",
+                        "F# major", "F# minor", "G major", "G minor",
+                        "G# major", "G# minor", "A major", "A minor",
+                        "A# major", "A# minor", "B major", "B minor",
+                    ],
+                    "default": "C major",
+                },
+                "timesignature": {
+                    "label": "박자",
+                    "tooltip": "한 마디의 박자 구성입니다. 4/4=일반적인 대부분의 곡, 3/4=왈츠/발라드, 6/8=느린 셔플 느낌. 잘 모르겠다면 4/4를 추천합니다.",
+                    "options": [
+                        {"label": "4/4 (기본, 대부분의 곡)", "value": "4"},
+                        {"label": "3/4 (왈츠, 느린 발라드)", "value": "3"},
+                        {"label": "6/8 (셔플, 마치)", "value": "6"},
+                    ],
+                    "default": "4",
+                },
+                "language": {
+                    "label": "가사 언어",
+                    "tooltip": "가사의 언어를 선택합니다. 인스트루멘탈(가사 없음)이면 영향 없습니다.",
+                    "options": [
+                        {"label": "한국어", "value": "ko"},
+                        {"label": "English", "value": "en"},
+                        {"label": "日本語", "value": "ja"},
+                        {"label": "中文", "value": "zh"},
+                        {"label": "Español", "value": "es"},
+                        {"label": "Français", "value": "fr"},
+                        {"label": "Deutsch", "value": "de"},
+                        {"label": "Italiano", "value": "it"},
+                        {"label": "Português", "value": "pt"},
+                        {"label": "Русский", "value": "ru"},
+                    ],
+                    "default": "ko",
+                },
+            },
+        },
+    },
 }
 
 

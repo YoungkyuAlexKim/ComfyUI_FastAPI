@@ -343,14 +343,17 @@
             const natural = [];
             const utility = [];
             const nanobanana = [];
+            const music = [];
             workflows.forEach((wf) => {
                 const uiSchema = (wf && wf.ui) || {};
                 const mode = uiSchema.templateMode || '';
                 const isNatural = mode === 'natural';
                 const isUtility = mode === 'utility';
                 const isNanoBanana = mode === 'nanobanana';
+                const isMusic = mode === 'music';
                 if (isUtility) utility.push(wf);
                 else if (isNanoBanana) nanobanana.push(wf);
+                else if (isMusic) music.push(wf);
                 else if (isNatural) natural.push(wf);
                 else tagBased.push(wf);
             });
@@ -425,6 +428,13 @@
                 <div class="workflow-group">
                     <div class="workflow-group-label">사내 게임 스타일</div>
                     ${natural.map(renderItem).join('')}
+                </div>`;
+            }
+            if (music.length > 0) {
+                html += `
+                <div class="workflow-group">
+                    <div class="workflow-group-label">🎵 음악 생성</div>
+                    ${music.map(renderItem).join('')}
                 </div>`;
             }
             ui.workflowList.innerHTML = html;
@@ -598,6 +608,7 @@
                 try { applyRelightToolUiForWorkflow(); } catch(_) {}
                 try { applyStoryboardToolUiForWorkflow(); } catch(_) {}
                 try { applyWhatsNextToolUiForWorkflow(); } catch(_) {}
+                try { applyMusicModeUi(); } catch(_) {}
                 try { updateInputImagePreview(); } catch(_) {}
                 // Update default prompt when switching modes
                 try {
@@ -643,7 +654,7 @@
                         if (arr.length > 0) {
                             wrap.style.display = '';
                             try { const old = document.getElementById('prompt-suggestion-text'); if (old) old.style.display = 'none'; } catch(_) {}
-                            arr.slice(0, 12).forEach((item) => {
+                            arr.forEach((item) => {
                                 const title = (item && item.title) ? String(item.title) : (typeof item === 'string' ? item : '추천 프롬프트');
                                 const baseText = (item && item.text) ? String(item.text) : (typeof item === 'string' ? item : '');
                                 const options = (item && Array.isArray(item.options)) ? item.options.slice() : [];
@@ -762,6 +773,8 @@
                     if (ui.aspectRatioGroup) ui.aspectRatioGroup.classList.toggle('aspect-ratio-group--4', !!isFour);
                 } catch(_) {}
                 document.querySelectorAll('.aspect-ratio-btn').forEach(btn => {
+                    // Skip duration buttons (music mode) — they use data-duration, not data-ratio
+                    if (btn.dataset.duration) return;
                     const ok = allowed.includes(btn.dataset.ratio);
                     btn.style.display = ok ? '' : 'none';
                     if (!ok && btn.classList.contains('selected')) {
@@ -1291,6 +1304,197 @@
                     ui.translateBtn.style.display = show ? '' : 'none';
                 }
             } catch(_) {}
+        }
+
+        // ---- Music mode (ACE-Step) UI ----
+        let _musicModeBound = false;
+        let _musicInstrumentalMode = false;
+        let _selectedDuration = 60;
+
+        function applyMusicModeUi() {
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const isMusicMode = !!uiSchema.musicMode;
+                const wrap = document.getElementById('music-params-wrap');
+                const aspectWrap = document.getElementById('aspect-ratio-group');
+                const aspectLabel = aspectWrap ? aspectWrap.closest('.form-group') : null;
+
+                if (wrap) wrap.style.display = isMusicMode ? '' : 'none';
+                // Hide aspect ratio for music workflows
+                if (aspectLabel) aspectLabel.style.display = isMusicMode ? 'none' : '';
+
+                // Switch generate button label
+                try {
+                    const genLabel = isMusicMode ? (uiSchema.generateLabel || '음악 생성하기') : '이미지 생성하기';
+                    const genIcon = isMusicMode ? 'fa-music' : 'fa-sparkles';
+                    if (!ui.generateBtn.disabled) {
+                        ui.generateBtn.innerHTML = `<i class="fas ${genIcon}"></i><span>${genLabel}</span>`;
+                    }
+                } catch(_) {}
+
+                // Switch placeholder text
+                try {
+                    const ph = document.getElementById('placeholder-section');
+                    if (ph) {
+                        const icon = ph.querySelector('.placeholder-icon i');
+                        const txt = ph.querySelector('.placeholder-text');
+                        if (isMusicMode) {
+                            if (icon) icon.className = 'fas fa-music';
+                            if (txt) txt.innerHTML = '만들고 싶은 음악의 분위기를 설명하고<br>"음악 생성하기" 버튼을 눌러보세요!';
+                        } else {
+                            if (icon) icon.className = 'fas fa-image';
+                            if (txt) txt.innerHTML = '그리고 싶은 내용을 프롬프트에 입력하고<br>"이미지 생성하기" 버튼을 눌러보세요!';
+                        }
+                    }
+                } catch(_) {}
+
+                // Hide result hint for music mode
+                try {
+                    const hint = document.getElementById('result-hint');
+                    if (hint) hint.style.display = isMusicMode ? 'none' : '';
+                } catch(_) {}
+
+                if (!isMusicMode || _musicModeBound) return;
+                _musicModeBound = true;
+
+                // BPM slider <-> number sync
+                const bpmSlider = document.getElementById('music-bpm');
+                const bpmNum = document.getElementById('music-bpm-num');
+                if (bpmSlider && bpmNum) {
+                    bpmSlider.addEventListener('input', () => { bpmNum.value = bpmSlider.value; });
+                    bpmNum.addEventListener('input', () => { bpmSlider.value = bpmNum.value; });
+                }
+
+                // Steps slider <-> number sync
+                const stepsSlider = document.getElementById('music-steps');
+                const stepsNum = document.getElementById('music-steps-num');
+                if (stepsSlider && stepsNum) {
+                    stepsSlider.addEventListener('input', () => { stepsNum.value = stepsSlider.value; });
+                    stepsNum.addEventListener('input', () => { stepsSlider.value = stepsNum.value; });
+                }
+
+                // Duration preset buttons
+                document.querySelectorAll('#music-duration-group .music-duration-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        document.querySelectorAll('#music-duration-group .music-duration-btn').forEach(b => b.classList.remove('selected'));
+                        btn.classList.add('selected');
+                        _selectedDuration = parseInt(btn.dataset.duration, 10) || 60;
+                    });
+                });
+
+                // Instrumental toggle
+                const instrBtn = document.getElementById('music-instrumental-toggle');
+                const lyricsTA = document.getElementById('music_lyrics');
+                if (instrBtn && lyricsTA) {
+                    instrBtn.addEventListener('click', () => {
+                        _musicInstrumentalMode = !_musicInstrumentalMode;
+                        if (_musicInstrumentalMode) {
+                            instrBtn.classList.add('selected');
+                            instrBtn.innerHTML = '<i class="fas fa-guitar"></i> 인스트루멘탈 모드 (ON)';
+                            lyricsTA.disabled = true;
+                            lyricsTA.style.opacity = '0.4';
+                            lyricsTA.placeholder = '인스트루멘탈 모드 — 가사 없이 생성됩니다';
+                        } else {
+                            instrBtn.classList.remove('selected');
+                            instrBtn.innerHTML = '<i class="fas fa-guitar"></i> 인스트루멘탈 (가사 없음)';
+                            lyricsTA.disabled = false;
+                            lyricsTA.style.opacity = '1';
+                            lyricsTA.placeholder = '직접 가사를 적거나, 원하는 방향을 적고 \'가사 생성\' 버튼을 눌러보세요\n\n사용 가능한 구조 태그:\n[intro] [verse] [pre-chorus] [chorus] [bridge] [outro] [interlude]';
+                        }
+                    });
+                }
+
+                // Lyrics enhance button
+                const lyricsEnhBtn = document.getElementById('music-lyrics-enhance-btn');
+                if (lyricsEnhBtn) {
+                    lyricsEnhBtn.addEventListener('click', async () => {
+                        if (lyricsEnhBtn.disabled) return;
+                        const tags = String(ui.userPromptInput.value || '').trim();
+                        const lyricsInput = String(lyricsTA?.value || '').trim();
+                        if (!tags && !lyricsInput) {
+                            showStatus('음악 설명(Tags)이나 원하는 가사 방향을 적어주세요.', 'warning');
+                            return;
+                        }
+                        lyricsEnhBtn.disabled = true;
+                        const origHTML = lyricsEnhBtn.innerHTML;
+                        lyricsEnhBtn.innerHTML = '<div class="loading-spinner-small"></div> 생성 중...';
+                        try {
+                            const lang = document.getElementById('music-language')?.value || 'ko';
+                            const fd = new FormData();
+                            // text: 사용자의 자유 요청 (가사 textarea), 없으면 tags
+                            fd.append('text', lyricsInput || tags);
+                            fd.append('mode', 'music_lyrics');
+                            fd.append('language', lang);
+                            // context: 음악 설명(tags) — 분위기 참고용
+                            fd.append('context', tags);
+                            const resp = await fetch('/api/v1/translate-prompt', { method: 'POST', body: fd });
+                            if (!resp.ok) throw new Error('API error');
+                            const data = await resp.json();
+                            if (data.translated_text && lyricsTA) {
+                                lyricsTA.value = data.translated_text;
+                                lyricsTA.dispatchEvent(new Event('input'));
+                                // Turn off instrumental mode if it was on
+                                if (_musicInstrumentalMode && instrBtn) instrBtn.click();
+                            }
+                        } catch(e) {
+                            showStatus('가사 생성에 실패했습니다. 다시 시도해주세요.', 'error');
+                        } finally {
+                            lyricsEnhBtn.disabled = false;
+                            lyricsEnhBtn.innerHTML = origHTML;
+                        }
+                    });
+                }
+            } catch(_) {}
+        }
+
+        // Exposed globally so prompt_translate.js can detect music mode
+        window.isMusicWorkflow = function isMusicWorkflow() {
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                return !!(targetWf && targetWf.ui && targetWf.ui.musicMode);
+            } catch(_) { return false; }
+        }
+
+        function displayAudio(audioPath) {
+            const imgContainer = document.getElementById('result-image-container');
+            const audioContainer = document.getElementById('result-audio-container');
+            const audioEl = document.getElementById('result-audio');
+            const downloadBtn = document.getElementById('audio-download-btn');
+            const spinIcon = document.getElementById('audio-spinning-icon');
+
+            if (imgContainer) imgContainer.style.display = 'none';
+            if (audioContainer) audioContainer.style.display = '';
+
+            const cacheBusted = `${audioPath}?t=${new Date().getTime()}`;
+            if (audioEl) {
+                audioEl.src = cacheBusted;
+                audioEl.load();
+                // Spin icon while playing
+                audioEl.onplay = () => { if (spinIcon) spinIcon.style.animationPlayState = 'running'; };
+                audioEl.onpause = () => { if (spinIcon) spinIcon.style.animationPlayState = 'paused'; };
+                audioEl.onended = () => { if (spinIcon) spinIcon.style.animationPlayState = 'paused'; };
+            }
+            if (downloadBtn) {
+                downloadBtn.href = audioPath;
+                downloadBtn.download = audioPath.split('/').pop() || 'music.mp3';
+            }
+
+            ui.placeholderSection.style.display = 'none';
+            ui.resultSection.style.display = 'block';
+        }
+
+        function resetOutputForMode() {
+            // When switching workflows, reset the output panel to the correct mode
+            const imgContainer = document.getElementById('result-image-container');
+            const audioContainer = document.getElementById('result-audio-container');
+            if (isMusicWorkflow()) {
+                if (imgContainer) imgContainer.style.display = 'none';
+                if (audioContainer) audioContainer.style.display = 'none';
+            } else {
+                if (imgContainer) imgContainer.style.display = '';
+                if (audioContainer) audioContainer.style.display = 'none';
+            }
         }
 
         // ---- Character mentions (@Name) for NanoBanana ----
@@ -2476,14 +2680,25 @@
                         wrap.style.display = '';
                         // 기존 레거시 추천 문구는 완전 숨김 유지
                         try { const old = document.getElementById('prompt-suggestion-text'); if (old) old.style.display = 'none'; } catch(_) {}
-                        arr.slice(0, 12).forEach((item) => {
+                        // Group by tier if tier field exists
+                        let lastTier = null;
+                        arr.forEach((item) => {
+                            const tier = (item && typeof item.tier === 'number') ? item.tier : null;
+                            if (tier !== null && tier !== lastTier) {
+                                lastTier = tier;
+                                const label = document.createElement('div');
+                                label.style.cssText = 'width:100%; font-size:11px; font-weight:700; color:var(--text-muted); margin-top:' + (tier === 1 ? '0' : '6px') + '; margin-bottom:2px;';
+                                const tierLabels = {1: '⭐ 높은 품질', 2: '👍 좋은 품질', 3: '🎲 실험적 (결과 편차 있음)'};
+                                label.textContent = tierLabels[tier] || `Tier ${tier}`;
+                                chips.appendChild(label);
+                            }
                             const title = (item && item.title) ? String(item.title) : (typeof item === 'string' ? item : '추천 프롬프트');
                             // 텍스트와 옵션(전체 포함 치환)을 해석
                             const baseText = (item && item.text) ? String(item.text) : (typeof item === 'string' ? item : '');
                             const options = (item && Array.isArray(item.options)) ? item.options.slice() : [];
                             const btn = document.createElement('button');
                             btn.type = 'button';
-                            btn.className = 'chip-btn';
+                            btn.className = 'chip-btn' + (tier === 3 ? ' chip-btn--muted' : '');
                             btn.textContent = title;
                             const tip = '클릭: 덮어쓰기 | Shift+클릭: 추가(중복 제거)';
                             btn.title = tip; // 네이티브 툴팁(접근성/백업)
@@ -2542,6 +2757,8 @@
             try { applyRelightToolUiForWorkflow(); } catch(_) {}
             try { applyStoryboardToolUiForWorkflow(); } catch(_) {}
             try { applyWhatsNextToolUiForWorkflow(); } catch(_) {}
+            try { applyMusicModeUi(); } catch(_) {}
+            try { resetOutputForMode(); } catch(_) {}
             // 입력 이미지 섹션 표시 여부
             try {
                 const inWrap = document.getElementById('input-image-wrap');
@@ -3357,28 +3574,30 @@
             // because some client environments block WebSocket connections.
             if (data.status === 'running') { setGenerationState(true, 'AI 생성 중...'); hideQueueInfo(); }
             if (data.status === 'complete') {
-                showStatus('🎉 이미지 생성 완료!', 'success');
-                updateProgress(0); // 완료 후 진행률을 0%로 리셋
-                if (data.image_path) {
+                const _isAudio = !!data.is_audio || !!data.audio_path;
+                const _genLabel = _isAudio ? '음악 생성하기' : '이미지 생성하기';
+                showStatus(_isAudio ? '🎵 음악 생성 완료!' : '🎉 이미지 생성 완료!', 'success');
+                updateProgress(0);
+                if (_isAudio && data.audio_path) {
+                    displayAudio(data.audio_path);
+                    hidePreviewOverlay();
+                    setGenerationState(false, _genLabel);
+                } else if (data.image_path) {
                     try { lastResultLightboxMetaItem = buildResultLightboxMeta(data.image_path); } catch(_) {}
                     displayImage(data.image_path, () => {
-                        // 먼저 오버레이 페이드아웃 시작
                         hidePreviewOverlay();
-                        // 버튼 복구는 오버레이 페이드아웃이 끝난 뒤
                         const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && (window.APP_CONFIG.loading.overlayFadeOutMs || window.APP_CONFIG.loading.fadeMs)) || 300;
-                        setTimeout(() => setGenerationState(false, '이미지 생성하기'), Math.max(50, fadeMs));
+                        setTimeout(() => setGenerationState(false, _genLabel), Math.max(50, fadeMs));
                     });
                 } else {
                     hidePreviewOverlay();
                     const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && (window.APP_CONFIG.loading.overlayFadeOutMs || window.APP_CONFIG.loading.fadeMs)) || 300;
-                    setTimeout(() => setGenerationState(false, '이미지 생성하기'), Math.max(50, fadeMs));
+                    setTimeout(() => setGenerationState(false, _genLabel), Math.max(50, fadeMs));
                 }
-                // Immediate safety unlock in case late events re-toggle state
-                setGenerationState(false, '이미지 생성하기');
+                setGenerationState(false, _genLabel);
                 currentJobId = null;
                 currentJobQueueKind = null;
-                // Final watchdog to ensure overlay/buttons reset
-                setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, '이미지 생성하기'); }, 2500);
+                setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, _genLabel); }, 2500);
                 hideQueueInfo();
                 stopQueuePolling();
             }
@@ -3765,6 +3984,21 @@
                     if (arr.length) requestData.loras = arr;
                 }
             } catch(_) {}
+            // ACE-Step music parameters
+            try {
+                if (isMusicWorkflow()) {
+                    const lyricsTA = document.getElementById('music_lyrics');
+                    requestData.lyrics = lyricsTA ? (lyricsTA.value || '') : '';
+                    requestData.bpm = parseInt(document.getElementById('music-bpm-num')?.value || '120', 10);
+                    requestData.duration = _selectedDuration || 60;
+                    requestData.steps = parseInt(document.getElementById('music-steps-num')?.value || '8', 10);
+                    requestData.keyscale = document.getElementById('music-keyscale')?.value || 'C major';
+                    requestData.timesignature = document.getElementById('music-timesignature')?.value || '4';
+                    requestData.language = document.getElementById('music-language')?.value || 'ko';
+                    // Music doesn't use aspect ratio
+                    requestData.aspect_ratio = 'square';
+                }
+            } catch(_) {}
             try {
                 const dbgInputId = (typeof getInputImageId === 'function') ? getInputImageId() : null;
                 const dbgInputIds = (typeof getInputImageIds === 'function') ? getInputImageIds() : null;
@@ -3914,25 +4148,32 @@
                 } else if (data.status === 'complete') {
                     hideQueueInfo();
                     stopQueuePolling();
-                    showStatus('🎉 이미지 생성 완료!', 'success');
+                    const _r = (data && data.result) || data || {};
+                    const _isAudio2 = !!_r.is_audio || !!_r.audio_path;
+                    const _genLabel2 = _isAudio2 ? '음악 생성하기' : '이미지 생성하기';
+                    showStatus(_isAudio2 ? '🎵 음악 생성 완료!' : '🎉 이미지 생성 완료!', 'success');
                     updateProgress(0);
-                    // data.result may contain image_path
-                    const imagePath = (data && data.result && data.result.image_path) ? data.result.image_path : (data && data.image_path ? data.image_path : null);
-                    if (imagePath) {
+                    const audioPath = _r.audio_path || null;
+                    const imagePath = _r.image_path || (data && data.image_path) || null;
+                    if (_isAudio2 && audioPath) {
+                        displayAudio(audioPath);
+                        hidePreviewOverlay();
+                        setGenerationState(false, _genLabel2);
+                    } else if (imagePath) {
                         try { lastResultLightboxMetaItem = buildResultLightboxMeta(imagePath); } catch(_) {}
                         displayImage(imagePath, () => {
                             hidePreviewOverlay();
                             const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && (window.APP_CONFIG.loading.overlayFadeOutMs || window.APP_CONFIG.loading.fadeMs)) || 300;
-                            setTimeout(() => setGenerationState(false, '이미지 생성하기'), Math.max(50, fadeMs));
+                            setTimeout(() => setGenerationState(false, _genLabel2), Math.max(50, fadeMs));
                         });
                     } else {
                         hidePreviewOverlay();
                         const fadeMs = (window.APP_CONFIG && window.APP_CONFIG.loading && (window.APP_CONFIG.loading.overlayFadeOutMs || window.APP_CONFIG.loading.fadeMs)) || 300;
-                        setTimeout(() => setGenerationState(false, '이미지 생성하기'), Math.max(50, fadeMs));
+                        setTimeout(() => setGenerationState(false, _genLabel2), Math.max(50, fadeMs));
                     }
-                    setGenerationState(false, '이미지 생성하기');
+                    setGenerationState(false, _genLabel2);
                     currentJobId = null;
-                    setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, '이미지 생성하기'); }, 2500);
+                    setTimeout(() => { hidePreviewOverlay(); setGenerationState(false, _genLabel2); }, 2500);
                 } else if (data.status === 'cancelled') {
                     hideQueueInfo();
                     stopQueuePolling();
@@ -4327,25 +4568,32 @@
             gallery.grid.appendChild(group);
         }
 
-        let gallerySource = 'generated'; // 'generated' | 'inputs'
+        let gallerySource = 'generated'; // 'generated' | 'inputs' | 'audio'
         const tabGenerated = document.getElementById('tab-generated');
         const tabInputs = document.getElementById('tab-inputs');
+        const tabAudio = document.getElementById('tab-audio');
         const galleryTitle = document.getElementById('gallery-title');
         const inputsUpload = document.getElementById('inputs-upload');
         const controlUploadIcon = document.getElementById('control-upload-icon');
 
         tabGenerated?.addEventListener('click', () => switchGallery('generated'));
         if (tabInputs) tabInputs.addEventListener('click', () => switchGallery('inputs'));
+        if (tabAudio) tabAudio.addEventListener('click', () => switchGallery('audio'));
 
         function switchGallery(src){
             gallerySource = src;
             tabGenerated?.classList.toggle('active', src === 'generated');
             if (tabInputs) tabInputs.classList.toggle('active', src === 'inputs');
+            if (tabAudio) tabAudio.classList.toggle('active', src === 'audio');
             if (src === 'inputs') {
                 galleryTitle.innerHTML = '<i class="fas fa-image"></i> 입력 이미지';
                 if (controlUploadIcon) controlUploadIcon.style.display = '';
                 if (controlUploadIcon) controlUploadIcon.onclick = () => inputsUpload?.click();
                 setSelectionMode(false);
+            } else if (src === 'audio') {
+                galleryTitle.innerHTML = '<i class="fas fa-music"></i> 생성된 음악';
+                if (controlUploadIcon) controlUploadIcon.style.display = 'none';
+                if (controlUploadIcon) controlUploadIcon.onclick = null;
             } else {
                 galleryTitle.innerHTML = '<i class="fas fa-clock-rotate-left"></i> 최근 생성 이미지';
                 if (controlUploadIcon) controlUploadIcon.style.display = 'none';
@@ -4380,22 +4628,34 @@
         async function fetchGallery(initial = false) {
             if (galleryLoading) return;
             galleryLoading = true;
-            renderSkeleton(12);
+            // Audio tab uses a list layout, not image skeletons
+            if (gallerySource === 'audio') {
+                gallery.grid.innerHTML = '<div style="text-align:center; padding:24px; color:var(--text-muted);"><div class="loading-spinner"></div></div>';
+            } else {
+                renderSkeleton(12);
+            }
             try {
                 const params = new URLSearchParams();
                 params.set('page', String(currentPage));
                 params.set('size', String(PAGE_SIZE));
                 let endpoint = '/api/v1/images';
                 if (gallerySource === 'inputs') endpoint = '/api/v1/inputs';
+                if (gallerySource === 'audio') endpoint = '/api/v1/audio';
                 const res = await fetch(`${endpoint}?${params.toString()}`);
-                if (!res.ok) throw new Error(`Failed to fetch images (${res.status})`);
+                if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
                 const data = await res.json();
                 const items = Array.isArray(data.items) ? data.items : [];
-                renderGallery(items, true);
+                if (gallerySource === 'audio') {
+                    renderAudioGallery(items);
+                } else {
+                    renderGallery(items, true);
+                }
                 renderPagination(data.page, data.total_pages);
                 gallery.loadMoreBtn.style.display = 'none';
             } catch (e) {
                 console.error(e);
+                // Clear loading state on error
+                gallery.grid.innerHTML = '';
             } finally {
                 galleryLoading = false;
             }
@@ -4406,6 +4666,7 @@
             gallery.grid.innerHTML = '';
             galleryItems = items.slice();
             gallery.grid.classList.add('gallery-grid--grouped');
+            gallery.grid.classList.remove('gallery-grid--audio');
 
             const frag = document.createDocumentFragment();
             const groups = new Map();
@@ -4484,6 +4745,100 @@
                 group.grid.appendChild(a);
             });
 
+            gallery.grid.appendChild(frag);
+        }
+
+        function renderAudioGallery(items) {
+            galleryItems = [];
+            gallery.grid.innerHTML = '';
+            galleryItems = items.slice();
+            gallery.grid.classList.remove('gallery-grid--grouped');
+            gallery.grid.classList.add('gallery-grid--audio');
+
+            if (!items.length) {
+                gallery.grid.innerHTML = '<div style="text-align:center; padding:32px; color:var(--text-muted); font-size:14px;"><i class="fas fa-music" style="font-size:32px; margin-bottom:12px; display:block; opacity:0.4;"></i>생성된 음악이 없습니다</div>';
+                return;
+            }
+
+            const frag = document.createDocumentFragment();
+            items.forEach((it) => {
+                const meta = it.meta || {};
+                const tags = meta.prompt || meta.tags || '(설명 없음)';
+                const duration = meta.duration ? `${meta.duration}초` : '';
+                const bpm = meta.bpm ? `${meta.bpm} BPM` : '';
+                const keyscale = meta.keyscale || '';
+                const createdRaw = it.created_at || '';
+                let createdStr = '';
+                try {
+                    const d = new Date(createdRaw);
+                    createdStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                } catch(_) {}
+
+                const card = document.createElement('div');
+                card.className = 'audio-gallery-item';
+                card.dataset.audioId = it.id;
+
+                const infoLine = [duration, bpm, keyscale].filter(Boolean).join(' · ');
+
+                card.innerHTML = `
+                    <div class="audio-gallery-icon"><i class="fas fa-compact-disc"></i></div>
+                    <div class="audio-gallery-info">
+                        <div class="audio-gallery-tags" title="${tags}">${tags}</div>
+                        <div class="audio-gallery-meta">${infoLine}${createdStr ? ' · ' + createdStr : ''}</div>
+                    </div>
+                    <div class="audio-gallery-actions">
+                        <button class="audio-play-btn chip-btn" type="button" title="재생"><i class="fas fa-play"></i></button>
+                        <a href="${it.url}" download class="chip-btn" title="다운로드"><i class="fas fa-download"></i></a>
+                        <button class="audio-delete-btn chip-btn chip-btn--danger" type="button" title="삭제"><i class="fas fa-trash"></i></button>
+                    </div>
+                    <audio class="audio-gallery-player" preload="none" src="${it.url}" style="display:none;"></audio>
+                `;
+
+                // Play/pause toggle
+                const playBtn = card.querySelector('.audio-play-btn');
+                const audioEl = card.querySelector('.audio-gallery-player');
+                const iconEl = card.querySelector('.audio-gallery-icon i');
+                playBtn.addEventListener('click', () => {
+                    // Stop all other playing audio in gallery
+                    document.querySelectorAll('.audio-gallery-player').forEach(a => {
+                        if (a !== audioEl && !a.paused) {
+                            a.pause();
+                            a.currentTime = 0;
+                        }
+                    });
+                    document.querySelectorAll('.audio-gallery-item').forEach(c => c.classList.remove('is-playing'));
+                    document.querySelectorAll('.audio-play-btn i').forEach(i => i.className = 'fas fa-play');
+
+                    if (audioEl.paused) {
+                        audioEl.play();
+                        playBtn.querySelector('i').className = 'fas fa-pause';
+                        card.classList.add('is-playing');
+                    } else {
+                        audioEl.pause();
+                        playBtn.querySelector('i').className = 'fas fa-play';
+                        card.classList.remove('is-playing');
+                    }
+                });
+                audioEl.addEventListener('ended', () => {
+                    playBtn.querySelector('i').className = 'fas fa-play';
+                    card.classList.remove('is-playing');
+                });
+
+                // Delete
+                const delBtn = card.querySelector('.audio-delete-btn');
+                delBtn.addEventListener('click', async () => {
+                    if (!confirm('이 음악을 삭제할까요?')) return;
+                    try {
+                        const res = await fetch(`/api/v1/audio/${it.id}/delete`, { method: 'POST' });
+                        if (res.ok) {
+                            card.remove();
+                            showStatus('음악이 삭제되었습니다.', 'success');
+                        }
+                    } catch(_) {}
+                });
+
+                frag.appendChild(card);
+            });
             gallery.grid.appendChild(frag);
         }
 
@@ -4627,7 +4982,8 @@
         async function doBatchDelete() {
             if (!pendingBatchIds.length) return;
             try {
-                const tasks = pendingBatchIds.map(id => fetch(`/api/v1/images/${id}/delete`, { method: 'POST' }));
+                const delEndpoint = gallerySource === 'inputs' ? '/api/v1/inputs' : gallerySource === 'audio' ? '/api/v1/audio' : '/api/v1/images';
+                const tasks = pendingBatchIds.map(id => fetch(`${delEndpoint}/${id}/delete`, { method: 'POST' }));
                 const results = await Promise.allSettled(tasks);
                 const failed = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
                 if (failed > 0) {

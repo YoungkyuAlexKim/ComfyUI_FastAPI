@@ -8,6 +8,7 @@ from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, COMF
 from .media_store import (
     _locate_input_png_path,
     _save_image_and_meta,
+    _save_audio_and_meta,
     _build_web_path,
 )
 
@@ -177,6 +178,14 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             self.input_image_id = d.get("input_image_id")
             self.input_image_ids = d.get("input_image_ids")
             self.input_image_filename = d.get("input_image_filename")
+            # ACE-Step (music/audio) fields
+            self.lyrics = d.get("lyrics")
+            self.bpm = d.get("bpm")
+            self.duration = d.get("duration")
+            self.steps = d.get("steps")
+            self.keyscale = d.get("keyscale")
+            self.timesignature = d.get("timesignature")
+            self.language = d.get("language")
 
     request = _Req(req_dict)
     # Ensure we always have a concrete seed so users can reproduce results later,
@@ -1243,7 +1252,8 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                     )
 
                 if image_node and image_filename:
-                    prompt_overrides[str(image_node)] = {"inputs": {str(input_field): image_filename}}
+                    prompt_overrides.setdefault(str(image_node), {"inputs": {}})
+                    prompt_overrides[str(image_node)]["inputs"][str(input_field)] = image_filename
                     try:
                         logger.info(
                             {
@@ -1291,7 +1301,95 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                     seen.add(tl)
                     merged.append(t)
                 merged_text = ", ".join(merged)
-                prompt_overrides[target_node] = {"inputs": {"text": merged_text}}
+                prompt_overrides.setdefault(str(target_node), {"inputs": {}})
+                prompt_overrides[str(target_node)]["inputs"]["text"] = merged_text
+        except Exception:
+            pass
+
+        # --- ACE-Step (music/audio) parameter injection ---
+        try:
+            if wf_cfg_effective.get("audio_workflow"):
+                ap = wf_cfg_effective.get("audio_params") or {}
+                rd = req_dict if isinstance(req_dict, dict) else {}
+
+                # Lyrics
+                lyrics_val = rd.get("lyrics") or ""
+                lyrics_node = ap.get("lyrics_node")
+                lyrics_key = ap.get("lyrics_key", "lyrics")
+                if lyrics_node:
+                    prompt_overrides.setdefault(str(lyrics_node), {"inputs": {}})
+                    prompt_overrides[str(lyrics_node)]["inputs"][str(lyrics_key)] = str(lyrics_val)
+
+                # BPM
+                bpm_val = rd.get("bpm")
+                bpm_node = ap.get("bpm_node")
+                bpm_key = ap.get("bpm_key", "bpm")
+                if bpm_node and bpm_val is not None:
+                    prompt_overrides.setdefault(str(bpm_node), {"inputs": {}})
+                    prompt_overrides[str(bpm_node)]["inputs"][str(bpm_key)] = int(bpm_val)
+
+                # Duration (inject into both TextEncode and LatentAudio nodes)
+                dur_val = rd.get("duration")
+                if dur_val is not None:
+                    dur_val = int(dur_val)
+                    for nk, kk in [
+                        ("duration_node_encode", "duration_key_encode"),
+                        ("duration_node_latent", "duration_key_latent"),
+                    ]:
+                        dn = ap.get(nk)
+                        dk = ap.get(kk)
+                        if dn and dk:
+                            prompt_overrides.setdefault(str(dn), {"inputs": {}})
+                            prompt_overrides[str(dn)]["inputs"][str(dk)] = dur_val
+
+                # Time signature
+                ts_val = rd.get("timesignature")
+                ts_node = ap.get("timesignature_node")
+                ts_key = ap.get("timesignature_key", "timesignature")
+                if ts_node and ts_val is not None:
+                    prompt_overrides.setdefault(str(ts_node), {"inputs": {}})
+                    prompt_overrides[str(ts_node)]["inputs"][str(ts_key)] = str(ts_val)
+
+                # Language
+                lang_val = rd.get("language")
+                lang_node = ap.get("language_node")
+                lang_key = ap.get("language_key", "language")
+                if lang_node and lang_val is not None:
+                    prompt_overrides.setdefault(str(lang_node), {"inputs": {}})
+                    prompt_overrides[str(lang_node)]["inputs"][str(lang_key)] = str(lang_val)
+
+                # Key/Scale
+                ks_val = rd.get("keyscale")
+                ks_node = ap.get("keyscale_node")
+                ks_key = ap.get("keyscale_key", "keyscale")
+                if ks_node and ks_val is not None:
+                    prompt_overrides.setdefault(str(ks_node), {"inputs": {}})
+                    prompt_overrides[str(ks_node)]["inputs"][str(ks_key)] = str(ks_val)
+
+                # Fixed params (cfg_scale, temperature, etc. — not user-facing)
+                fixed = wf_cfg_effective.get("audio_fixed_params") or {}
+                for fnode, fparams in fixed.items():
+                    if isinstance(fparams, dict):
+                        prompt_overrides.setdefault(str(fnode), {"inputs": {}})
+                        for fk, fv in fparams.items():
+                            prompt_overrides[str(fnode)]["inputs"][str(fk)] = fv
+
+                # Extra seed nodes (e.g. KSampler) + steps override
+                extra_seeds = wf_cfg_effective.get("extra_seed_nodes") or []
+                for es in extra_seeds:
+                    if isinstance(es, dict):
+                        es_node = es.get("node")
+                        es_key = es.get("key", "seed")
+                        if es_node and hasattr(request, "seed") and request.seed is not None:
+                            prompt_overrides.setdefault(str(es_node), {"inputs": {}})
+                            prompt_overrides[str(es_node)]["inputs"][str(es_key)] = request.seed
+
+                # Steps override on KSampler (node 3)
+                steps_val = rd.get("steps")
+                if steps_val is not None:
+                    steps_val = max(1, min(100, int(steps_val)))
+                    prompt_overrides.setdefault("3", {"inputs": {}})
+                    prompt_overrides["3"]["inputs"]["steps"] = steps_val
         except Exception:
             pass
 
@@ -1305,13 +1403,23 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
 
         images_data = client.get_images(prompt_id, on_progress=on_progress)
         if not images_data:
-            raise RuntimeError("Failed to receive generated images.")
+            is_audio = bool(wf_cfg_effective.get("audio_workflow"))
+            raise RuntimeError("Failed to receive generated audio." if is_audio else "Failed to receive generated images.")
 
         filename = list(images_data.keys())[0]
-        image_bytes = list(images_data.values())[0]
-        saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, filename)
-        web_path = _build_web_path(saved_image_path)
-        job.result["image_path"] = web_path
+        file_bytes = list(images_data.values())[0]
+
+        # For audio workflows, save via audio store (date-partitioned + metadata JSON)
+        is_audio_wf = bool(wf_cfg_effective.get("audio_workflow"))
+        if is_audio_wf:
+            audio_path, _ = _save_audio_and_meta(job.owner_id, file_bytes, request, filename)
+            web_path = _build_web_path(audio_path)
+            job.result["audio_path"] = web_path
+            job.result["is_audio"] = True
+        else:
+            saved_image_path, _ = _save_image_and_meta(job.owner_id, file_bytes, request, filename)
+            web_path = _build_web_path(saved_image_path)
+            job.result["image_path"] = web_path
     finally:
         # Best-effort cleanup of any uploaded inputs in ComfyUI input directory (single and multi)
         try:

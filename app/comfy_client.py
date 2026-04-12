@@ -446,11 +446,11 @@ class ComfyUIClient:
             # - VAEDecode: 디코딩된 최종 이미지(워크플로우에 Save/Preview가 없어도 여기서 선택 가능)
             # - LoadImage: 입력 원본이므로 최하위 (Img2Img에서 이것을 선택하면 "원본이 결과" 문제가 발생)
             ct = str(class_type or "")
-            if ct == "SaveImage":
+            if ct in ("SaveImage", "SaveAudioMP3", "SaveAudio"):
                 return 100
             if ct == "PreviewImage":
                 return 90
-            if ct in ("VAEDecode", "VAEDecodeTiled", "VAEDecodeTAESD"):
+            if ct in ("VAEDecode", "VAEDecodeTiled", "VAEDecodeTAESD", "VAEDecodeAudio"):
                 return 80
             if ct == "LoadImage":
                 return 0
@@ -459,7 +459,8 @@ class ComfyUIClient:
         for node_id, node_output in outputs.items():
             if not isinstance(node_output, dict):
                 continue
-            imgs = node_output.get("images")
+            # Support both image and audio outputs from ComfyUI
+            imgs = node_output.get("images") or node_output.get("audio")
             if not isinstance(imgs, list) or not imgs:
                 continue
             node_cfg = prompt_graph.get(str(node_id), {}) if isinstance(prompt_graph, dict) else {}

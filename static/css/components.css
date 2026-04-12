@@ -2318,6 +2318,13 @@
     gap: 14px;
 }
 
+#gallery-panel .gallery-grid.gallery-grid--audio {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    grid-template-columns: none;
+}
+
 #gallery-panel .gallery-date-group {
     display: flex;
     flex-direction: column;
@@ -2745,4 +2752,144 @@
 
 .aspect-ratio-btn .resolution { /* 해상도 숫자는 더 이상 표시되지 않으므로, 이 스타일은 더 이상 필요 없지만 만일을 위해 남겨둠 */
     display: none; /* 해상도 텍스트 숨김 */
+}
+
+/* ---- Music / Audio (ACE-Step) ---- */
+.audio-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+.audio-player-card {
+    width: 100%;
+    max-width: 480px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.audio-visual {
+    width: 120px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+}
+
+.audio-player-card audio {
+    border-radius: var(--radius-md);
+}
+
+/* Music tooltip */
+.music-tooltip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.music-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: normal;
+    width: max-content;
+    max-width: 280px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.music-tooltip:hover::after {
+    opacity: 1;
+}
+
+/* Lyrics enhance button — same position as translate-btn--icon but separate class */
+/* Tier 3 chips → music.css */
+
+/* Audio gallery items (list style, not grid) */
+.audio-gallery-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    margin-bottom: 6px;
+    transition: background 0.15s ease;
+}
+
+.audio-gallery-item:hover {
+    background: var(--bg-hover);
+}
+
+.audio-gallery-item.is-playing {
+    background: rgba(96, 165, 250, 0.12);
+}
+
+.audio-gallery-item.is-playing .audio-gallery-icon i {
+    animation: fa-spin 2s linear infinite;
+    color: var(--accent-primary);
+}
+
+.audio-gallery-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    flex-shrink: 0;
+    font-size: 16px;
+    color: var(--text-muted);
+}
+
+.audio-gallery-info {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.audio-gallery-tags {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.audio-gallery-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.audio-gallery-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.audio-gallery-actions .chip-btn {
+    padding: 6px 8px;
+    font-size: 12px;
+    min-height: unset;
 }

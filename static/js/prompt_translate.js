@@ -54,6 +54,12 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const formData = new FormData();
                 formData.append('text', originalText);
+                // Detect music mode: if the current workflow has musicMode, use music_tags mode
+                try {
+                    if (typeof isMusicWorkflow === 'function' && isMusicWorkflow() && targetId === 'user_prompt') {
+                        formData.append('mode', 'music_tags');
+                    }
+                } catch (_) {}
 
                 const ac = new AbortController();
                 const timer = setTimeout(() => {
