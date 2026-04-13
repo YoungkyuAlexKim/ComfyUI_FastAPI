@@ -398,6 +398,25 @@
                     </p>
                 </div>
 
+                <!-- SeeThrough params (resolution) -->
+                <div class="form-group" id="seethrough-params-wrap" style="display:none; margin:8px 0;">
+                    <label class="form-label" style="margin-bottom:8px;">
+                        <i class="fas fa-sliders"></i> 레이어 분리 설정
+                    </label>
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <div class="lora-row" style="display:flex; gap:12px; align-items:center;">
+                            <span class="badge" style="min-width:110px; text-align:center;">Resolution</span>
+                            <label style="display:flex; align-items:center; gap:6px; width:100%;">
+                                <input id="seethrough-resolution" type="range" min="768" max="1472" step="64" value="1472" style="flex:1;" />
+                                <input id="seethrough-resolution-num" type="number" min="768" max="1472" step="64" value="1472" style="width:90px;" />
+                            </label>
+                        </div>
+                    </div>
+                    <p class="hint" style="margin-top:8px; color:var(--text-muted); font-size:12px; line-height:1.25;">
+                        높을수록 세밀하지만 처리 시간이 길어집니다. 최대 해상도 기준 약 3~4분 소요됩니다.
+                    </p>
+                </div>
+
                 <div class="output-toolbar">
                     <button class="generate-btn" id="generate-btn">
                         <i class="fas fa-sparkles"></i> 이미지 생성하기

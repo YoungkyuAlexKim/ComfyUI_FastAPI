@@ -1604,6 +1604,40 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             },
         },
     },
+
+    "seethrough-basic": {
+        "display_name": "레이어 분리 (See-Through)",
+        "description": "이미지 1장을 넣으면 AI가 파츠별로 레이어를 분리하여 PSD 파일로 출력합니다.",
+        "hidden": False,
+
+        "default_user_prompt": "",
+        "style_prompt": "",
+        "negative_prompt": "",
+
+        "provider": "comfyui",
+
+        # Img2Img: 노드 27(LoadImage)에 이미지 주입
+        "image_input": {"image_node": "27", "input_field": "image"},
+
+        # SeeThrough 전용 플래그
+        "seethrough_workflow": True,
+
+        "ui": {
+            "icon": "layer-group",
+            "templateMode": "utility",
+            "showLora": False,
+            "showPromptTranslate": False,
+            "disableAspect": True,
+            "hideUserPrompt": True,
+            "generateLabel": "레이어 분리하기",
+            # 갤러리에서 제외
+            "excludeFromGallery": True,
+            # Resolution 슬라이더 노출
+            "seeThroughParams": {
+                "resolution": {"min": 768, "max": 1472, "step": 64, "default": 1280},
+            },
+        },
+    },
 }
 
 

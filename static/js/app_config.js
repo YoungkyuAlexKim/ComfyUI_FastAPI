@@ -168,6 +168,16 @@
         url: '/static/img/banner/img_banner_Flux2Klein_ImageEdit.png',
         showTitle: false,
         showDescription: false,
+      },
+      'seethrough-basic': {
+        url: '/static/img/banner/img_banner_SeeThrough.png',
+        showTitle: false,
+        showDescription: false,
+      },
+      'AceStep15XL': {
+        url: '/static/img/banner/img_banner_AceStep.png',
+        showTitle: false,
+        showDescription: false,
       }
     }
   };

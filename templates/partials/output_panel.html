@@ -37,6 +37,29 @@
                             </div>
                         </div>
                     </div>
+                    <!-- SeeThrough Result -->
+                    <div class="seethrough-container" id="result-seethrough-container" style="display:none;">
+                        <div class="seethrough-card" style="display:flex; flex-direction:column; gap:12px;">
+                            <!-- PSD Download -->
+                            <div class="seethrough-download" style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px; background:var(--bg-tertiary); border-radius:10px;">
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <i class="fas fa-file-image" style="font-size:20px; color:var(--accent-primary);"></i>
+                                    <span style="font-size:14px; font-weight:500;">레이어 PSD</span>
+                                    <span id="seethrough-psd-size" style="font-size:12px; color:var(--text-muted);"></span>
+                                </div>
+                                <a id="seethrough-psd-download" href="#" download="seethrough_output.psd" class="chip-btn" style="text-decoration:none;">
+                                    <i class="fas fa-download"></i> PSD 다운로드
+                                </a>
+                            </div>
+                            <!-- Parts Preview Grid -->
+                            <details class="seethrough-parts-details" id="seethrough-parts-details">
+                                <summary style="cursor:pointer; font-size:13px; color:var(--text-muted); padding:4px 0; user-select:none;">
+                                    <i class="fas fa-layer-group"></i> 분리된 레이어 (<span id="seethrough-parts-count">0</span>개)
+                                </summary>
+                                <div id="seethrough-parts-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:8px; margin-top:8px;"></div>
+                            </details>
+                        </div>
+                    </div>
                     <p class="result-hint" id="result-hint">이미지를 클릭하면 크게 볼 수 있습니다</p>
                 </div>
             </div>

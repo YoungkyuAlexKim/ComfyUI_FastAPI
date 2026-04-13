@@ -12,7 +12,9 @@
       "Bash(python -c \"from app.prompt_templates import PROMPT_TEMPLATES; print\\('AceStep15XL presets:', len\\(PROMPT_TEMPLATES.get\\('AceStep15XL', []\\)\\)\\)\")",
       "Bash(grep -n \"CREATE TABLE\" c:/Works/ComfyUI_FastAPI/app/*.py)",
       "Bash(python -c \"from app.prompt_templates import PROMPT_TEMPLATES; items = PROMPT_TEMPLATES.get\\('AceStep15XL',[]\\); print\\(f'Count: {len\\(items\\)}'\\); print\\('instrumental' in str\\(items\\)\\)\")",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(C:/Works/ComfyUI/python_embeded/python.exe -c \"import torch; print\\(torch.__version__, torch.cuda.is_available\\(\\)\\)\")",
+      "Bash(C:/Works/ComfyUI/python_embeded/python.exe -m pip install -r C:/Works/ComfyUI/ComfyUI/custom_nodes/ComfyUI-See-through/requirements.txt)"
     ]
   }
 }

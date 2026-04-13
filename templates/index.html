@@ -603,6 +603,7 @@
                 try { applyLoraUiForMode(); } catch(_) {}
                 try { applyCharacterMentionsUiForWorkflow(); } catch(_) {}
                 try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
+                try { applySeeThroughParamsUi(); } catch(_) {}
                 try { applyTurnaroundToolUiForWorkflow(); } catch(_) {}
                 try { applyExpressionToolUiForWorkflow(); } catch(_) {}
                 try { applyRelightToolUiForWorkflow(); } catch(_) {}
@@ -1293,6 +1294,47 @@
             } catch(_) {}
         }
 
+        let seeThroughUiBound = false;
+        function bindSeeThroughUiOnce() {
+            if (seeThroughUiBound) return;
+            seeThroughUiBound = true;
+            try {
+                const res = document.getElementById('seethrough-resolution');
+                const resNum = document.getElementById('seethrough-resolution-num');
+                if (!res || !resNum) return;
+                res.addEventListener('input', () => { resNum.value = res.value; });
+                resNum.addEventListener('change', () => {
+                    let v = parseInt(resNum.value || '1472', 10);
+                    v = Math.max(768, Math.min(1472, v));
+                    v = Math.round(v / 64) * 64;
+                    res.value = String(v);
+                    resNum.value = String(v);
+                });
+            } catch(_) {}
+        }
+
+        function applySeeThroughParamsUi() {
+            try {
+                bindSeeThroughUiOnce();
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const cfg = uiSchema.seeThroughParams || null;
+                const wrap = document.getElementById('seethrough-params-wrap');
+                if (!wrap) return;
+                wrap.style.display = cfg ? '' : 'none';
+                if (!cfg) return;
+
+                const resCfg = cfg.resolution || { min: 768, max: 1472, step: 64, default: 1472 };
+                const res = document.getElementById('seethrough-resolution');
+                const resNum = document.getElementById('seethrough-resolution-num');
+                if (res && resNum) {
+                    [res, resNum].forEach(el => { el.min = String(resCfg.min); el.max = String(resCfg.max); el.step = String(resCfg.step); });
+                    res.value = String(resCfg.default);
+                    resNum.value = String(resCfg.default);
+                }
+            } catch(_) {}
+        }
+
         function applyPromptTranslateUiForMode() {
             try {
                 const targetWf = getTargetWorkflowForMode();
@@ -1484,16 +1526,80 @@
             ui.resultSection.style.display = 'block';
         }
 
+        function displaySeeThrough(data) {
+            const imgContainer = document.getElementById('result-image-container');
+            const audioContainer = document.getElementById('result-audio-container');
+            const stContainer = document.getElementById('result-seethrough-container');
+            const resultImg = document.getElementById('result-image');
+            const downloadBtn = document.getElementById('result-download-btn');
+
+            if (audioContainer) audioContainer.style.display = 'none';
+            if (stContainer) stContainer.style.display = '';
+
+            // Show preview image (base64 data URL — 디스크에 저장되지 않음)
+            if (data.preview_data_url && imgContainer && resultImg) {
+                imgContainer.style.display = '';
+                if (downloadBtn) downloadBtn.style.display = 'none';
+                resultImg.src = data.preview_data_url;
+            } else if (imgContainer) {
+                imgContainer.style.display = 'none';
+            }
+
+            // PSD download
+            const psdLink = document.getElementById('seethrough-psd-download');
+            const psdSize = document.getElementById('seethrough-psd-size');
+            if (psdLink && data.psd_path) {
+                psdLink.href = data.psd_path;
+                psdLink.download = 'seethrough_output.psd';
+            }
+            if (psdSize && data.psd_size_bytes) {
+                const mb = (data.psd_size_bytes / 1024 / 1024).toFixed(1);
+                psdSize.textContent = mb + ' MB';
+            }
+
+            // Parts grid (base64 data URL — 디스크에 저장되지 않음)
+            const partsGrid = document.getElementById('seethrough-parts-grid');
+            const partsCount = document.getElementById('seethrough-parts-count');
+            const partsDetails = document.getElementById('seethrough-parts-details');
+            if (partsGrid && data.parts && data.parts.length > 0) {
+                partsGrid.innerHTML = '';
+                if (partsCount) partsCount.textContent = String(data.parts.length);
+                data.parts.forEach(function(part) {
+                    const cell = document.createElement('div');
+                    cell.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px; background:var(--bg-tertiary); border-radius:8px; overflow:hidden;';
+                    const img = document.createElement('img');
+                    img.src = part.data_url;
+                    img.alt = part.name;
+                    img.style.cssText = 'width:100%; aspect-ratio:1; object-fit:contain; background:repeating-conic-gradient(#808080 0% 25%, transparent 0% 50%) 50%/16px 16px;';
+                    const label = document.createElement('span');
+                    label.textContent = part.name;
+                    label.style.cssText = 'font-size:11px; color:var(--text-muted); text-align:center; word-break:break-all;';
+                    cell.appendChild(img);
+                    cell.appendChild(label);
+                    partsGrid.appendChild(cell);
+                });
+                if (partsDetails) partsDetails.style.display = '';
+            } else if (partsDetails) {
+                partsDetails.style.display = 'none';
+            }
+
+            ui.placeholderSection.style.display = 'none';
+            ui.resultSection.style.display = 'block';
+        }
+
         function resetOutputForMode() {
             // When switching workflows, reset the output panel to the correct mode
             const imgContainer = document.getElementById('result-image-container');
             const audioContainer = document.getElementById('result-audio-container');
+            const stContainer = document.getElementById('result-seethrough-container');
             if (isMusicWorkflow()) {
                 if (imgContainer) imgContainer.style.display = 'none';
                 if (audioContainer) audioContainer.style.display = 'none';
+                if (stContainer) stContainer.style.display = 'none';
             } else {
                 if (imgContainer) imgContainer.style.display = '';
                 if (audioContainer) audioContainer.style.display = 'none';
+                if (stContainer) stContainer.style.display = 'none';
             }
         }
 
@@ -2665,6 +2771,8 @@
             try { applyLoraUiForMode(); } catch(_) {}
             // RMBG2 params (mask blur / mask offset)
             applyRmbgParamsUiForWorkflow();
+            // SeeThrough params (resolution)
+            applySeeThroughParamsUi();
             // 추천 프롬프트 템플릿 chips (사용자 입력란 아래)
             try {
                 const wrap = document.getElementById('prompt-templates');
@@ -2752,6 +2860,7 @@
             try { applyCharacterMentionsUiForWorkflow(); } catch(_) {}
             try { applySeedVisibilityForWorkflow(); } catch(_) {}
             try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
+            try { applySeeThroughParamsUi(); } catch(_) {}
             try { applyTurnaroundToolUiForWorkflow(); } catch(_) {}
             try { applyExpressionToolUiForWorkflow(); } catch(_) {}
             try { applyRelightToolUiForWorkflow(); } catch(_) {}
@@ -2778,6 +2887,7 @@
             try { applyPromptVisibilityForWorkflow(); } catch(_) {}
             try { applySeedVisibilityForWorkflow(); } catch(_) {}
             try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
+            try { applySeeThroughParamsUi(); } catch(_) {}
             // Update main action button label (e.g., background removal)
             try { if (!ui.generateBtn.disabled) setGenerationState(false, '이미지 생성하기'); } catch(_) {}
         }
@@ -3575,10 +3685,15 @@
             if (data.status === 'running') { setGenerationState(true, 'AI 생성 중...'); hideQueueInfo(); }
             if (data.status === 'complete') {
                 const _isAudio = !!data.is_audio || !!data.audio_path;
-                const _genLabel = _isAudio ? '음악 생성하기' : '이미지 생성하기';
-                showStatus(_isAudio ? '🎵 음악 생성 완료!' : '🎉 이미지 생성 완료!', 'success');
+                const _isSeeThrough = !!data.is_seethrough;
+                const _genLabel = _isAudio ? '음악 생성하기' : (_isSeeThrough ? '레이어 분리하기' : '이미지 생성하기');
+                showStatus(_isSeeThrough ? '레이어 분리 완료!' : (_isAudio ? '음악 생성 완료!' : '이미지 생성 완료!'), 'success');
                 updateProgress(0);
-                if (_isAudio && data.audio_path) {
+                if (_isSeeThrough) {
+                    displaySeeThrough(data);
+                    hidePreviewOverlay();
+                    setGenerationState(false, _genLabel);
+                } else if (_isAudio && data.audio_path) {
                     displayAudio(data.audio_path);
                     hidePreviewOverlay();
                     setGenerationState(false, _genLabel);
@@ -3968,6 +4083,16 @@
                     if (Number.isFinite(mo)) requestData.rmbg_mask_offset = mo;
                 }
             } catch (_) {}
+            // SeeThrough resolution param
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                if (uiSchema && uiSchema.seeThroughParams) {
+                    const resEl = document.getElementById('seethrough-resolution-num') || document.getElementById('seethrough-resolution');
+                    const resVal = resEl ? parseInt(resEl.value || '1472', 10) : null;
+                    if (Number.isFinite(resVal)) requestData.seethrough_resolution = resVal;
+                }
+            } catch (_) {}
             // LoRA strengths payload (single value per slot, if visible)
             try {
                 const wrap = document.getElementById('lora-strengths-wrap');
@@ -4150,12 +4275,17 @@
                     stopQueuePolling();
                     const _r = (data && data.result) || data || {};
                     const _isAudio2 = !!_r.is_audio || !!_r.audio_path;
-                    const _genLabel2 = _isAudio2 ? '음악 생성하기' : '이미지 생성하기';
-                    showStatus(_isAudio2 ? '🎵 음악 생성 완료!' : '🎉 이미지 생성 완료!', 'success');
+                    const _isST2 = !!_r.is_seethrough;
+                    const _genLabel2 = _isAudio2 ? '음악 생성하기' : (_isST2 ? '레이어 분리하기' : '이미지 생성하기');
+                    showStatus(_isST2 ? '레이어 분리 완료!' : (_isAudio2 ? '음악 생성 완료!' : '이미지 생성 완료!'), 'success');
                     updateProgress(0);
                     const audioPath = _r.audio_path || null;
                     const imagePath = _r.image_path || (data && data.image_path) || null;
-                    if (_isAudio2 && audioPath) {
+                    if (_isST2) {
+                        displaySeeThrough(_r);
+                        hidePreviewOverlay();
+                        setGenerationState(false, _genLabel2);
+                    } else if (_isAudio2 && audioPath) {
                         displayAudio(audioPath);
                         hidePreviewOverlay();
                         setGenerationState(false, _genLabel2);

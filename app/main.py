@@ -199,6 +199,8 @@ class GenerateRequest(BaseModel):
     keyscale: Optional[str] = None
     timesignature: Optional[str] = None
     language: Optional[str] = None
+    # --- SeeThrough (layer separation) params ---
+    seethrough_resolution: Optional[int] = None
 
 WORKFLOW_DIR = "./workflows/"
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
@@ -939,3 +941,79 @@ async def on_startup():
     except Exception as e:
         logger.debug({"event": "job_manager_env_apply_failed", "error": str(e)})
     job_manager.start()
+
+    # --- ComfyUI 헬스체크 워치독 ---
+    # ComfyUI가 크래시하면 실행 중인 작업이 영원히 대기하는 문제를 방지
+    async def _comfyui_health_watchdog():
+        """15초마다 ComfyUI 상태를 확인. 연결 불가 시 실행 중인 ComfyUI 작업을 자동 실패 처리."""
+        consecutive_failures = 0
+        FAIL_THRESHOLD = 2  # 연속 2회 실패 시 (30초간 응답 없음)
+        while True:
+            await asyncio.sleep(15)
+            try:
+                import requests as _req
+                r = _req.get(f"http://{SERVER_ADDRESS}/system_stats", timeout=5)
+                if r.status_code == 200:
+                    consecutive_failures = 0
+                    continue
+            except Exception:
+                pass
+            consecutive_failures += 1
+            if consecutive_failures >= FAIL_THRESHOLD:
+                # ComfyUI 응답 없음 — 실행 중인 ComfyUI 작업 강제 실패
+                try:
+                    for jm in [_comfy_job_manager]:
+                        with jm._lock:
+                            for job in list(jm._jobs.values()):
+                                if job.status == "running":
+                                    jm._cancel_requests.add(job.id)
+                                    cancel = jm._cancel_handles.get(job.id)
+                                    if cancel:
+                                        try:
+                                            cancel()
+                                        except Exception:
+                                            pass
+                    logger.warning({
+                        "event": "comfyui_watchdog_triggered",
+                        "consecutive_failures": consecutive_failures,
+                        "action": "cancel_running_comfy_jobs",
+                    })
+                except Exception:
+                    pass
+
+    asyncio.create_task(_comfyui_health_watchdog())
+
+    # --- SeeThrough 임시 파일 자동 정리 (24시간 경과 시 삭제) ---
+    async def _seethrough_cleanup_loop():
+        """30분마다 실행: 24시간 지난 SeeThrough PSD + 파츠 파일 삭제"""
+        import glob as _glob
+        SEETHROUGH_TTL_HOURS = 24
+        while True:
+            await asyncio.sleep(30 * 60)  # 30분 간격
+            try:
+                now = time.time()
+                ttl_sec = SEETHROUGH_TTL_HOURS * 3600
+                output_base = SERVER_CONFIG.get("output_dir", "./outputs/")
+                if not os.path.isdir(output_base):
+                    continue
+                removed_files = 0
+                for root, dirs, files in os.walk(output_base):
+                    for fname in files:
+                        if not fname.lower().endswith(".psd"):
+                            continue
+                        fpath = os.path.join(root, fname)
+                        try:
+                            if now - os.path.getmtime(fpath) > ttl_sec:
+                                os.remove(fpath)
+                                removed_files += 1
+                        except Exception:
+                            pass
+                if removed_files:
+                    logger.info({
+                        "event": "seethrough_cleanup",
+                        "removed_psd_files": removed_files,
+                    })
+            except Exception:
+                pass
+
+    asyncio.create_task(_seethrough_cleanup_loop())

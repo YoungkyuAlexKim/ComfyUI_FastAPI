@@ -5,7 +5,7 @@ from typing import Callable, List, Optional
 
 from ..logging_utils import setup_logging
 from ..comfy_client import ComfyUIClient
-from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, COMFY_INPUT_DIR, JOB_DB_PATH, get_workflow_default_prompt
+from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, COMFY_INPUT_DIR, COMFY_OUTPUT_DIR, JOB_DB_PATH, get_workflow_default_prompt
 from .media_store import (
     _locate_input_png_path,
     _save_image_and_meta,
@@ -188,6 +188,8 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             self.keyscale = d.get("keyscale")
             self.timesignature = d.get("timesignature")
             self.language = d.get("language")
+            # SeeThrough fields
+            self.seethrough_resolution = d.get("seethrough_resolution")
 
     request = _Req(req_dict)
     # Ensure we always have a concrete seed so users can reproduce results later,
@@ -1395,6 +1397,37 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         except Exception:
             pass
 
+        # --- SeeThrough parameter injection ---
+        is_seethrough = bool(wf_cfg_effective.get("seethrough_workflow"))
+        if is_seethrough:
+            try:
+                rd = req_dict if isinstance(req_dict, dict) else {}
+                # Resolution → node 24 (SeeThrough_GenerateLayers)
+                res_val = rd.get("seethrough_resolution")
+                if res_val is not None:
+                    res_val = max(768, min(1472, int(res_val)))
+                    prompt_overrides.setdefault("24", {"inputs": {}})
+                    prompt_overrides["24"]["inputs"]["resolution"] = res_val
+                # Seed → node 23 (GenerateDepth) + node 24 (GenerateLayers)
+                # See-through 노드는 seed 최대값이 4294967295 (32비트)
+                seed_val = getattr(request, "seed", None)
+                if seed_val is not None:
+                    seed_val = int(seed_val) % 4294967295
+                    for sn in ("23", "24"):
+                        prompt_overrides.setdefault(sn, {"inputs": {}})
+                        prompt_overrides[sn]["inputs"]["seed"] = seed_val
+                # filename_prefix → node 21 (SeeThrough_SavePSD): job ID를 포함시켜 파일 식별
+                seethrough_prefix = f"seethrough_{job.id}"
+                if COMFY_OUTPUT_DIR:
+                    import os as _os
+                    seethrough_out_dir = _os.path.join(COMFY_OUTPUT_DIR, "seethrough")
+                    _os.makedirs(seethrough_out_dir, exist_ok=True)
+                    seethrough_prefix = _os.path.join(seethrough_out_dir, f"st_{job.id}")
+                prompt_overrides.setdefault("21", {"inputs": {}})
+                prompt_overrides["21"]["inputs"]["filename_prefix"] = seethrough_prefix
+            except Exception:
+                pass
+
         resp = client.queue_prompt(workflow_path, prompt_overrides)
         prompt_id = resp.get('prompt_id') if isinstance(resp, dict) else None
         if not prompt_id:
@@ -1404,29 +1437,130 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             progress_cb(p)
 
         images_data = client.get_images(prompt_id, on_progress=on_progress)
-        if not images_data:
+
+        # --- SeeThrough 전용 후처리 ---
+        if is_seethrough:
+            from .psd_builder import build_psd_from_seethrough, collect_seethrough_parts, cleanup_seethrough_output
+            import glob as _glob
+
+            # seethrough_psd_info.log 또는 job ID로 layers.json 찾기
+            layers_json_path = None
+            search_dirs = []
+            if COMFY_OUTPUT_DIR:
+                search_dirs.append(os.path.join(COMFY_OUTPUT_DIR, "seethrough"))
+                search_dirs.append(COMFY_OUTPUT_DIR)
+            # fallback: ComfyUI 기본 output 디렉토리
+            search_dirs.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", ".."))
+
+            for sd in search_dirs:
+                pattern = os.path.join(sd, f"**/*{job.id}*_layers.json")
+                matches = _glob.glob(pattern, recursive=True)
+                if matches:
+                    layers_json_path = matches[0]
+                    break
+
+            # fallback: seethrough_psd_info.log
+            if not layers_json_path and COMFY_OUTPUT_DIR:
+                log_path = os.path.join(COMFY_OUTPUT_DIR, "seethrough_psd_info.log")
+                if os.path.exists(log_path):
+                    with open(log_path, "r") as lf:
+                        info_name = lf.read().strip()
+                    # info_name could be absolute or relative
+                    if os.path.isabs(info_name) and os.path.exists(info_name):
+                        layers_json_path = info_name
+                    else:
+                        candidate = os.path.join(COMFY_OUTPUT_DIR, info_name)
+                        if os.path.exists(candidate):
+                            layers_json_path = candidate
+
+            if not layers_json_path:
+                raise RuntimeError("SeeThrough 레이어 데이터를 찾을 수 없습니다.")
+
+            # 1) PSD 빌드
+            psd_bytes = build_psd_from_seethrough(layers_json_path)
+
+            # 2) PSD를 서비스 outputs에 저장
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
+            user_dir = os.path.join(SERVER_CONFIG["output_dir"], job.owner_id)
+            dated_dir = os.path.join(user_dir, now.strftime("%Y-%m-%d"))
+            os.makedirs(dated_dir, exist_ok=True)
+
+            import uuid as _uuid
+            psd_id = _uuid.uuid4().hex
+            psd_filename = f"{psd_id}.psd"
+            psd_path = os.path.join(dated_dir, psd_filename)
+            with open(psd_path, "wb") as pf:
+                pf.write(psd_bytes)
+            psd_web_path = _build_web_path(psd_path)
+
+            # 3) 파츠 프리뷰 수집 (base64 — 디스크 저장 없이 WebSocket으로만 전달)
+            import base64 as _b64
+            parts = collect_seethrough_parts(layers_json_path)
+            parts_info = []
+            for part in parts:
+                b64 = _b64.b64encode(part["png_bytes"]).decode("ascii")
+                parts_info.append({
+                    "name": part["name"],
+                    "data_url": f"data:image/png;base64,{b64}",
+                })
+
+            # 4) 프리뷰 이미지 (base64 — 디스크 저장 없음)
+            preview_data_url = None
+            if images_data:
+                preview_bytes = list(images_data.values())[0]
+                b64_preview = _b64.b64encode(preview_bytes).decode("ascii")
+                preview_data_url = f"data:image/png;base64,{b64_preview}"
+
+            # 5) job.result에 결과 설정
+            job.result["is_seethrough"] = True
+            job.result["psd_path"] = psd_web_path
+            job.result["psd_size_bytes"] = len(psd_bytes)
+            job.result["parts"] = parts_info
+            if preview_data_url:
+                job.result["preview_data_url"] = preview_data_url
+
+            # 6) ComfyUI output 정리
+            try:
+                cleanup_seethrough_output(layers_json_path)
+            except Exception:
+                pass
+
+            try:
+                logger.info({
+                    "event": "seethrough_complete",
+                    "job_id": job.id,
+                    "psd_path": psd_web_path,
+                    "psd_size": len(psd_bytes),
+                    "layers_count": len(parts_info),
+                })
+            except Exception:
+                pass
+
+        elif not images_data:
             is_audio = bool(wf_cfg_effective.get("audio_workflow"))
             raise RuntimeError("Failed to receive generated audio." if is_audio else "Failed to receive generated images.")
 
-        filename = list(images_data.keys())[0]
-        file_bytes = list(images_data.values())[0]
-
-        # For audio workflows, save via audio store (date-partitioned + metadata JSON)
-        is_audio_wf = bool(wf_cfg_effective.get("audio_workflow"))
-        if is_audio_wf:
-            audio_path, _ = _save_audio_and_meta(job.owner_id, file_bytes, request, filename)
-            # Auto-mastering (EQ + Compressor + Limiter) — overwrites in-place
-            try:
-                _master_audio_file(audio_path)
-            except Exception:
-                pass
-            web_path = _build_web_path(audio_path)
-            job.result["audio_path"] = web_path
-            job.result["is_audio"] = True
         else:
-            saved_image_path, _ = _save_image_and_meta(job.owner_id, file_bytes, request, filename)
-            web_path = _build_web_path(saved_image_path)
-            job.result["image_path"] = web_path
+            filename = list(images_data.keys())[0]
+            file_bytes = list(images_data.values())[0]
+
+            # For audio workflows, save via audio store (date-partitioned + metadata JSON)
+            is_audio_wf = bool(wf_cfg_effective.get("audio_workflow"))
+            if is_audio_wf:
+                audio_path, _ = _save_audio_and_meta(job.owner_id, file_bytes, request, filename)
+                # Auto-mastering (EQ + Compressor + Limiter) — overwrites in-place
+                try:
+                    _master_audio_file(audio_path)
+                except Exception:
+                    pass
+                web_path = _build_web_path(audio_path)
+                job.result["audio_path"] = web_path
+                job.result["is_audio"] = True
+            else:
+                saved_image_path, _ = _save_image_and_meta(job.owner_id, file_bytes, request, filename)
+                web_path = _build_web_path(saved_image_path)
+                job.result["image_path"] = web_path
     finally:
         # Best-effort cleanup of any uploaded inputs in ComfyUI input directory (single and multi)
         try:

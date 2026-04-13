@@ -1,0 +1,115 @@
+{
+  "20": {
+    "inputs": {
+      "tblr_split": true,
+      "use_lama": true,
+      "layers_depth": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "SeeThrough_PostProcess",
+    "_meta": {
+      "title": "SeeThrough Post Process"
+    }
+  },
+  "21": {
+    "inputs": {
+      "filename_prefix": "C:\\Works\\ComfyUI\\ComfyUI\\output\\parts\\parts",
+      "Download PSD": "Download PSD",
+      "Download Depth PSD": "Download Depth PSD",
+      "parts": [
+        "20",
+        0
+      ]
+    },
+    "class_type": "SeeThrough_SavePSD",
+    "_meta": {
+      "title": "SeeThrough Save PSD"
+    }
+  },
+  "22": {
+    "inputs": {
+      "images": [
+        "20",
+        1
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "23": {
+    "inputs": {
+      "seed": 1,
+      "resolution_depth": -1,
+      "layers": [
+        "24",
+        0
+      ],
+      "depth_model": [
+        "25",
+        0
+      ]
+    },
+    "class_type": "SeeThrough_GenerateDepth",
+    "_meta": {
+      "title": "SeeThrough Generate Depth"
+    }
+  },
+  "24": {
+    "inputs": {
+      "seed": 1,
+      "resolution": 1472,
+      "num_inference_steps": 30,
+      "image": [
+        "27",
+        0
+      ],
+      "layerdiff_model": [
+        "26",
+        0
+      ]
+    },
+    "class_type": "SeeThrough_GenerateLayers",
+    "_meta": {
+      "title": "SeeThrough Generate Layers"
+    }
+  },
+  "25": {
+    "inputs": {
+      "model": "layerdifforg/seethroughv0.0.1_marigold",
+      "quant_mode": "none",
+      "cache_tag_embeds": true,
+      "group_offload": false
+    },
+    "class_type": "SeeThrough_LoadDepthModel",
+    "_meta": {
+      "title": "SeeThrough Load Depth Model"
+    }
+  },
+  "26": {
+    "inputs": {
+      "model": "layerdifforg/seethroughv0.0.2_layerdiff3d",
+      "vae_ckpt": "",
+      "unet_ckpt": "",
+      "quant_mode": "none",
+      "cache_tag_embeds": true,
+      "group_offload": false
+    },
+    "class_type": "SeeThrough_LoadLayerDiffModel",
+    "_meta": {
+      "title": "SeeThrough Load LayerDiff Model"
+    }
+  },
+  "27": {
+    "inputs": {
+      "image": "example.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  }
+}

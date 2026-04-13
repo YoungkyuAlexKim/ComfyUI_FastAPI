@@ -37,6 +37,7 @@ SERVER_CONFIG = {
 # --- 3.0 ComfyUI local paths (optional) ---
 # Used for housekeeping, e.g., deleting uploaded control images after job completion
 COMFY_INPUT_DIR = os.getenv("COMFY_INPUT_DIR", None)
+COMFY_OUTPUT_DIR = os.getenv("COMFY_OUTPUT_DIR", None)
 
 # --- 3.1 큐/타임아웃 환경 설정 ---
 QUEUE_CONFIG = {
