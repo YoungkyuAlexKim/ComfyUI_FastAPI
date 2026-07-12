@@ -638,6 +638,7 @@ def _save_image_and_meta(anon_id: str, image_bytes: bytes, req, original_filenam
         "workflow_id": getattr(req, "workflow_id", None),
         "aspect_ratio": getattr(req, "aspect_ratio", None),
         "image_size": getattr(req, "image_size", None),
+        "image_model": getattr(req, "image_model", None),
         "seed": getattr(req, "seed", None),
         "prompt": getattr(req, "user_prompt", None),
         # Optional: NanoBanana character mentions (@Name)

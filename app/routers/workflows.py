@@ -5,6 +5,7 @@ from fastapi import APIRouter, Query
 from ..logging_utils import setup_logging
 from ..config import WORKFLOW_CONFIGS
 from ..schemas.api_models import WorkflowsResponse
+from ..services.openrouter_client import public_image_model_options
 
 
 logger = setup_logging()
@@ -41,6 +42,13 @@ async def get_workflows(
                     node_count = len(json.load(f))
             except Exception as e:
                 logger.warning({"event": "workflow_list_error", "workflow": json_path, "error": str(e)})
+        ui_schema = dict(config.get("ui", {}) or {})
+        if provider == "openrouter":
+            openrouter_cfg = config.get("openrouter", {}) or {}
+            ui_schema["hostedImageGeneration"] = {
+                "default_model": str(openrouter_cfg.get("model") or "google/gemini-3-pro-image"),
+                "models": public_image_model_options(),
+            }
         workflows.append({
             "id": workflow_id,
             "name": config.get("display_name", workflow_id.replace("_", " ").title()),
@@ -52,7 +60,7 @@ async def get_workflows(
             "negative_prompt": config.get("negative_prompt", ""),
             "recommended_prompt": config.get("recommended_prompt", ""),
             # expose ui schema & capabilities for flexible frontend rendering
-            "ui": config.get("ui", {}),
+            "ui": ui_schema,
             "sizes": config.get("sizes", {}),
             "image_input": config.get("image_input", None),
             # LoRA slots metadata (if provided)

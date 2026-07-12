@@ -88,6 +88,40 @@ class OpenRouterClientTests(unittest.TestCase):
             b"png",
         )
 
+    def test_image_model_and_resolution_allowlist(self):
+        model, resolution = openrouter_client.resolve_image_model_and_resolution(
+            requested_model="google/gemini-3.1-flash-image",
+            requested_resolution="2k",
+            default_model="google/gemini-3-pro-image",
+        )
+        self.assertEqual(model, "google/gemini-3.1-flash-image")
+        self.assertEqual(resolution, "2K")
+
+    def test_lite_defaults_to_1k(self):
+        model, resolution = openrouter_client.resolve_image_model_and_resolution(
+            requested_model="google/gemini-3.1-flash-lite-image",
+            requested_resolution=None,
+            default_model="google/gemini-3-pro-image",
+        )
+        self.assertEqual(model, "google/gemini-3.1-flash-lite-image")
+        self.assertEqual(resolution, "1K")
+
+    def test_lite_rejects_2k(self):
+        with self.assertRaises(RuntimeError):
+            openrouter_client.resolve_image_model_and_resolution(
+                requested_model="google/gemini-3.1-flash-lite-image",
+                requested_resolution="2K",
+                default_model="google/gemini-3-pro-image",
+            )
+
+    def test_unknown_image_model_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            openrouter_client.resolve_image_model_and_resolution(
+                requested_model="unknown/provider-model",
+                requested_resolution="1K",
+                default_model="google/gemini-3-pro-image",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

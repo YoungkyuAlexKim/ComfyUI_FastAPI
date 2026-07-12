@@ -32,6 +32,45 @@
     color: var(--lc-primary);
 }
 
+.hosted-image-options-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(120px, 0.8fr);
+    gap: var(--space-md);
+}
+
+.hosted-image-option {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+.hosted-image-option > span {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.hosted-image-option .form-input {
+    min-height: 44px;
+    padding-top: 9px;
+    padding-bottom: 9px;
+}
+
+.hosted-image-model-hint {
+    margin: -4px 0 0;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1.45;
+}
+
+@media (max-width: 560px) {
+    .hosted-image-options-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .label-row {
     display: flex;
     align-items: center;

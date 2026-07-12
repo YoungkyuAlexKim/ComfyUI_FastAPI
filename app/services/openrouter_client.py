@@ -12,6 +12,29 @@ logger = setup_logging()
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_TEXT_MODEL = "google/gemini-3.1-flash-lite"
 
+# Server-side allowlist for user-selectable hosted image models. Keep this
+# authoritative: the browser receives a public copy but cannot add model IDs.
+IMAGE_MODEL_OPTIONS: Dict[str, Dict[str, Any]] = {
+    "google/gemini-3-pro-image": {
+        "label": "Nano Banana Pro",
+        "description": "고품질 · 1K와 2K 출력 비용 동일",
+        "resolutions": ["1K", "2K"],
+        "default_resolution": "2K",
+    },
+    "google/gemini-3.1-flash-image": {
+        "label": "Nano Banana 2",
+        "description": "균형형 · 빠른 생성과 해상도별 과금",
+        "resolutions": ["1K", "2K"],
+        "default_resolution": "1K",
+    },
+    "google/gemini-3.1-flash-lite-image": {
+        "label": "Nano Banana 2 Lite",
+        "description": "경제형 · 빠른 초안 및 반복 작업",
+        "resolutions": ["1K"],
+        "default_resolution": "1K",
+    },
+}
+
 
 class OpenRouterUpstreamError(RuntimeError):
     """Safe, classified OpenRouter error for UI and operations logging."""
@@ -37,6 +60,38 @@ class OpenRouterUpstreamError(RuntimeError):
 
 def is_configured() -> bool:
     return bool(str(os.getenv("OPENROUTER_API_KEY") or "").strip())
+
+
+def public_image_model_options() -> List[Dict[str, Any]]:
+    return [
+        {
+            "id": model_id,
+            "label": cfg["label"],
+            "description": cfg["description"],
+            "resolutions": list(cfg["resolutions"]),
+            "default_resolution": cfg["default_resolution"],
+        }
+        for model_id, cfg in IMAGE_MODEL_OPTIONS.items()
+    ]
+
+
+def resolve_image_model_and_resolution(
+    *,
+    requested_model: Optional[str],
+    requested_resolution: Optional[str],
+    default_model: str,
+) -> Tuple[str, str]:
+    model = str(requested_model or default_model or "").strip()
+    cfg = IMAGE_MODEL_OPTIONS.get(model)
+    if not cfg:
+        raise RuntimeError("선택한 이미지 모델은 현재 사용할 수 없습니다. 모델을 다시 선택해 주세요.")
+
+    resolution = str(requested_resolution or cfg["default_resolution"] or "").strip().upper()
+    allowed = cfg.get("resolutions") or []
+    if resolution not in allowed:
+        allowed_text = ", ".join(str(v) for v in allowed)
+        raise RuntimeError(f"선택한 모델은 {resolution} 출력을 지원하지 않습니다. 지원 해상도: {allowed_text}")
+    return model, resolution
 
 
 def _get_api_key() -> str:

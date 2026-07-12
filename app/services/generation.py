@@ -173,6 +173,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             self.workflow_id = d.get("workflow_id")
             self.seed = d.get("seed")
             self.image_size = d.get("image_size")
+            self.image_model = d.get("image_model")
             # RMBG2 optional params
             self.rmbg_mask_blur = d.get("rmbg_mask_blur")
             self.rmbg_mask_offset = d.get("rmbg_mask_offset")
@@ -293,6 +294,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             OpenRouterUpstreamError,
             build_image_prompt,
             generate_image,
+            resolve_image_model_and_resolution,
         )
 
         def _record_openrouter_provider_error(e: OpenRouterUpstreamError, *, context: str) -> None:
@@ -605,13 +607,14 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         if cancel_event.is_set():
             raise RuntimeError("생성이 취소되었습니다.")
 
-        chosen_model = str(model or "").strip()
-
-        # 정책: NanoBanana 계열은 출력 메타 기록을 위해 image_size를 2K로 고정(서버 기준)
-        # (UI 선택지는 없음)
-        req_size = "2K"
+        chosen_model, req_size = resolve_image_model_and_resolution(
+            requested_model=getattr(request, "image_model", None),
+            requested_resolution=getattr(request, "image_size", None),
+            default_model=str(model or "").strip(),
+        )
         try:
             request.image_size = req_size
+            request.image_model = chosen_model
         except Exception:
             pass
 

@@ -42,7 +42,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
     "NanoBanana": {
         "display_name": "기본 워크플로우",
-        "description": "OpenRouter의 Nano Banana Pro로 자연어 프롬프트 이미지를 생성합니다.",
+        "description": "Nano Banana 계열 모델을 선택해 자연어 프롬프트 이미지를 생성합니다.",
         "hidden": False,
 
         # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
@@ -52,7 +52,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # Provider routing (handled in app/services/generation.py)
         "provider": "openrouter",
-        # 정책: 나노바나나는 항상 Nano Banana Pro(3 Pro Image) + 2K 출력으로 고정
+        # UI 기본값은 Nano Banana Pro 2K이며, 요청 시 허용된 모델/해상도로 변경할 수 있습니다.
         "openrouter": {"model": "google/gemini-3-pro-image", "mode": "text-to-image"},
 
         "ui": {

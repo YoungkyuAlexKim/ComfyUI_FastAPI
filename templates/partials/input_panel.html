@@ -337,6 +337,23 @@
                     <p class="hint" id="lora-hint" title="LoRA 강도 힌트" style="margin-top:6px; color:var(--text-muted); font-size:12px; line-height:1.25; display:none;">워크플로우에 따라 LoRA 강도 조절이 제공됩니다.</p>
                 </div>
 
+                <div class="form-group" id="hosted-image-options-wrap" style="display:none;">
+                    <label class="form-label">
+                        <i class="fas fa-wand-magic-sparkles"></i> AI 이미지 모델
+                    </label>
+                    <div class="hosted-image-options-grid">
+                        <label class="hosted-image-option">
+                            <span>모델</span>
+                            <select id="hosted-image-model" class="form-input" aria-label="AI 이미지 모델"></select>
+                        </label>
+                        <label class="hosted-image-option">
+                            <span>출력 해상도</span>
+                            <select id="hosted-image-resolution" class="form-input" aria-label="출력 해상도"></select>
+                        </label>
+                    </div>
+                    <p class="hosted-image-model-hint" id="hosted-image-model-hint"></p>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label">
                         <i class="fas fa-crop-alt"></i> 이미지 비율

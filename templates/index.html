@@ -412,7 +412,7 @@
             if (nanobanana.length > 0) {
                 html += `
                 <div class="workflow-group">
-                    <div class="workflow-group-label">나노바나나 Pro</div>
+                    <div class="workflow-group-label">AI 이미지 생성</div>
                     ${nanobanana.map(renderItem).join('')}
                 </div>`;
             }
@@ -597,6 +597,7 @@
                     if (inWrap) inWrap.style.display = needImg ? '' : 'none';
                 } catch(_) {}
                 applyAspectUiForMode();
+                applyHostedImageOptionsUi();
                 applyPromptTranslateUiForMode();
                 try { applyPromptVisibilityForWorkflow(); } catch(_) {}
                 try { applySeedVisibilityForWorkflow(); } catch(_) {}
@@ -785,6 +786,81 @@
                     }
                 });
             } catch(_) {}
+        }
+
+        function getHostedImageGenerationConfig() {
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const provider = String((targetWf && targetWf.provider) || '').trim().toLowerCase();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const cfg = uiSchema.hostedImageGeneration || null;
+                if (provider !== 'openrouter' || !cfg || !Array.isArray(cfg.models) || !cfg.models.length) return null;
+                return cfg;
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function populateHostedImageResolutions(modelId, useSavedValue) {
+            const cfg = getHostedImageGenerationConfig();
+            const resolutionEl = document.getElementById('hosted-image-resolution');
+            const hintEl = document.getElementById('hosted-image-model-hint');
+            if (!cfg || !resolutionEl) return;
+            const model = cfg.models.find((item) => String(item.id || '') === String(modelId || '')) || cfg.models[0];
+            const resolutions = Array.isArray(model.resolutions) ? model.resolutions : [];
+            resolutionEl.replaceChildren();
+            resolutions.forEach((resolution) => resolutionEl.add(new Option(String(resolution), String(resolution))));
+
+            let selected = '';
+            if (useSavedValue) {
+                try { selected = localStorage.getItem(`hostedImageResolution:${model.id}`) || ''; } catch (_) {}
+            }
+            if (!resolutions.includes(selected)) selected = String(model.default_resolution || resolutions[0] || '');
+            resolutionEl.value = selected;
+            resolutionEl.disabled = resolutions.length <= 1;
+            if (hintEl) {
+                const resolutionNote = resolutions.length <= 1 ? ' · 이 모델은 1K 전용입니다.' : '';
+                hintEl.textContent = `${String(model.description || '')}${resolutionNote}`;
+            }
+        }
+
+        function applyHostedImageOptionsUi() {
+            try {
+                const wrap = document.getElementById('hosted-image-options-wrap');
+                const modelEl = document.getElementById('hosted-image-model');
+                const resolutionEl = document.getElementById('hosted-image-resolution');
+                const cfg = getHostedImageGenerationConfig();
+                if (!wrap || !modelEl || !resolutionEl) return;
+                wrap.style.display = cfg ? '' : 'none';
+                if (!cfg) return;
+
+                modelEl.replaceChildren();
+                cfg.models.forEach((model) => modelEl.add(new Option(String(model.label || model.id), String(model.id || ''))));
+                let selectedModel = '';
+                try { selectedModel = localStorage.getItem('hostedImageModel') || ''; } catch (_) {}
+                if (!cfg.models.some((model) => String(model.id || '') === selectedModel)) {
+                    selectedModel = String(cfg.default_model || cfg.models[0].id || '');
+                }
+                modelEl.value = selectedModel;
+                populateHostedImageResolutions(selectedModel, true);
+
+                if (!modelEl.dataset.bound) {
+                    modelEl.addEventListener('change', () => {
+                        try { localStorage.setItem('hostedImageModel', modelEl.value || ''); } catch (_) {}
+                        populateHostedImageResolutions(modelEl.value, true);
+                    });
+                    modelEl.dataset.bound = '1';
+                }
+                if (!resolutionEl.dataset.bound) {
+                    resolutionEl.addEventListener('change', () => {
+                        try {
+                            const currentModel = document.getElementById('hosted-image-model')?.value || '';
+                            if (currentModel) localStorage.setItem(`hostedImageResolution:${currentModel}`, resolutionEl.value || '');
+                        } catch (_) {}
+                    });
+                    resolutionEl.dataset.bound = '1';
+                }
+            } catch (_) {}
         }
 
         function applyPromptVisibilityForWorkflow() {
@@ -2856,6 +2932,7 @@
 
             // 비율 옵션 및 프롬프트 변환 버튼 표시/숨김은 현재 모드 기준으로 갱신
             applyAspectUiForMode();
+            applyHostedImageOptionsUi();
             applyPromptTranslateUiForMode();
             try { applyCharacterMentionsUiForWorkflow(); } catch(_) {}
             try { applySeedVisibilityForWorkflow(); } catch(_) {}
@@ -2884,6 +2961,7 @@
             } catch(_) {}
             // Update aspect/prompt visibility based on schema
             try { applyAspectUiForMode(); } catch(_) {}
+            try { applyHostedImageOptionsUi(); } catch(_) {}
             try { applyPromptVisibilityForWorkflow(); } catch(_) {}
             try { applySeedVisibilityForWorkflow(); } catch(_) {}
             try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
@@ -3838,6 +3916,17 @@
                 })(),
                 seed: ui.seedInput.value ? parseInt(ui.seedInput.value, 10) : null
             };
+            // Hosted image model and resolution (server validates both against its allowlist).
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const provider = String((targetWf && targetWf.provider) || '').trim().toLowerCase();
+                const modelEl = document.getElementById('hosted-image-model');
+                const resolutionEl = document.getElementById('hosted-image-resolution');
+                if (provider === 'openrouter' && modelEl && resolutionEl) {
+                    requestData.image_model = String(modelEl.value || '');
+                    requestData.image_size = String(resolutionEl.value || '');
+                }
+            } catch (_) {}
             // If seed is empty, generate one so the result can be reproduced later.
             // Default behavior: change seed every run when empty.
             try {

@@ -179,6 +179,8 @@ class GenerateRequest(BaseModel):
     # Optional output image size (for supported providers/workflows, e.g. Nano Banana)
     # Allowed examples: "1K", "2K"
     image_size: Optional[str] = None
+    # Hosted image model override. The server validates this against an allowlist.
+    image_model: Optional[str] = None
     # RMBG2 (Background Removal) params - only used when workflow supports it
     rmbg_mask_blur: Optional[int] = None
     rmbg_mask_offset: Optional[int] = None
