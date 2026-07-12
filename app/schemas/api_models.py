@@ -24,7 +24,7 @@ class WorkflowItem(BaseModel):
     description: str
     node_count: int
     hidden: Optional[bool] = None
-    # Workflow provider routing hint (e.g., "comfyui" or "google")
+    # Workflow provider routing hint (e.g., "comfyui" or "openrouter")
     provider: Optional[str] = None
     style_prompt: str
     negative_prompt: str

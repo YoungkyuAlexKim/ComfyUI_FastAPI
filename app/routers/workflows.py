@@ -1,5 +1,6 @@
 import os
 import json
+from typing import Optional
 from fastapi import APIRouter, Query
 from ..logging_utils import setup_logging
 from ..config import WORKFLOW_CONFIGS
@@ -14,16 +15,23 @@ WORKFLOW_DIR = "./workflows/"
 
 @router.get("/api/v1/workflows", response_model=WorkflowsResponse)
 async def get_workflows(
-    include_google: bool = Query(
+    include_openrouter: bool = Query(
         default=True,
-        description="true면 Google(provider=google) 워크플로우도 목록에 포함합니다.",
+        description="true면 OpenRouter 워크플로우도 목록에 포함합니다.",
+    ),
+    include_google: Optional[bool] = Query(
+        default=None,
+        deprecated=True,
+        description="이전 클라이언트 호환용입니다. include_openrouter를 사용하세요.",
     ),
 ):
+    if include_google is not None:
+        include_openrouter = bool(include_google)
     workflows = []
     for workflow_id, config in WORKFLOW_CONFIGS.items():
         provider = str(config.get("provider", "comfyui") or "comfyui").strip().lower()
-        # 기본 목록에서는 비용이 드는 Google(NanoBanana) 워크플로우를 숨깁니다.
-        if provider == "google" and not include_google:
+        # 필요하면 비용이 드는 외부 API 워크플로우를 목록에서 숨깁니다.
+        if provider == "openrouter" and not include_openrouter:
             continue
         json_path = os.path.join(WORKFLOW_DIR, f"{workflow_id}.json")
         node_count = 0

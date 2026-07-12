@@ -244,17 +244,16 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     except Exception:
         pass
 
-    # --- Provider routing (Google vs ComfyUI) ---
+    # --- Provider routing (OpenRouter vs ComfyUI) ---
     wf_cfg = WORKFLOW_CONFIGS.get(request.workflow_id, {}) if isinstance(WORKFLOW_CONFIGS, dict) else {}
     provider = (wf_cfg.get("provider", "comfyui") if isinstance(wf_cfg, dict) else "comfyui") or "comfyui"
     provider = str(provider).strip().lower()
-    if provider == "google":
+    if provider == "openrouter":
         import threading
-        import base64
 
         cancel_event = threading.Event()
 
-        def _cancel_google() -> bool:
+        def _cancel_openrouter() -> bool:
             try:
                 cancel_event.set()
             except Exception:
@@ -262,7 +261,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             return True
 
         try:
-            set_cancel_handle(_cancel_google)
+            set_cancel_handle(_cancel_openrouter)
         except Exception:
             pass
 
@@ -271,13 +270,13 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         if cancel_event.is_set():
             raise RuntimeError("생성이 취소되었습니다.")
 
-        google_cfg = wf_cfg.get("google") if isinstance(wf_cfg, dict) else None
+        openrouter_cfg = wf_cfg.get("openrouter") if isinstance(wf_cfg, dict) else None
         model = None
         mode = None
         try:
-            if isinstance(google_cfg, dict):
-                model = google_cfg.get("model")
-                mode = google_cfg.get("mode")
+            if isinstance(openrouter_cfg, dict):
+                model = openrouter_cfg.get("model")
+                mode = openrouter_cfg.get("mode")
         except Exception:
             model = None
             mode = None
@@ -290,21 +289,19 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         if cancel_event.is_set():
             raise RuntimeError("생성이 취소되었습니다.")
 
-        from .google_nano_banana import (
-            NanoBananaUpstreamError,
-            build_google_prompt,
-            generate_text_to_image,
-            generate_image_edit,
+        from .openrouter_client import (
+            OpenRouterUpstreamError,
+            build_image_prompt,
+            generate_image,
         )
 
-        def _record_google_provider_error(e: NanoBananaUpstreamError, *, context: str) -> None:
+        def _record_openrouter_provider_error(e: OpenRouterUpstreamError, *, context: str) -> None:
             try:
                 job.result["provider_error"] = {
-                    "provider": "google",
+                    "provider": "openrouter",
                     "kind": getattr(e, "kind", None),
                     "http_status": getattr(e, "http_status", None),
-                    "upstream_status": getattr(e, "upstream_status", None),
-                    "reason": getattr(e, "reason", None),
+                    "upstream_code": getattr(e, "upstream_code", None),
                     "retry_after": getattr(e, "retry_after", None),
                     "context": str(context or ""),
                 }
@@ -313,15 +310,14 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             try:
                 logger.warning(
                     {
-                        "event": "nanobanana_user_facing_error",
+                        "event": "openrouter_user_facing_error",
                         "job_id": job.id,
                         "owner_id": job.owner_id,
                         "workflow_id": getattr(request, "workflow_id", None),
                         "context": str(context or ""),
                         "kind": getattr(e, "kind", None),
                         "http_status": getattr(e, "http_status", None),
-                        "upstream_status": getattr(e, "upstream_status", None),
-                        "reason": getattr(e, "reason", None),
+                        "upstream_code": getattr(e, "upstream_code", None),
                         "message": str(getattr(e, "public_message", str(e))),
                     }
                 )
@@ -360,7 +356,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             try:
                 logger.info(
                     {
-                        "event": "google_image_input_resolved",
+                        "event": "openrouter_image_input_resolved",
                         "job_id": job.id,
                         "owner_id": anon_id,
                         "input_image_id": image_id,
@@ -455,7 +451,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             except Exception:
                 raise RuntimeError(f"{ordinal}번째 숨김 레퍼런스 이미지를 읽지 못했습니다. 파일 형식을 확인해 주세요.")
 
-        # --- Character mentions (@Name) => auto-switch to Google image-edit with reference sheets (txt2img only) ---
+        # --- Character mentions (@Name) => attach reference sheets (txt2img only) ---
         ref_sheet_bytes_list: list[bytes] | None = None
         mention_names: list[str] = []
         try:
@@ -582,7 +578,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         # --- Hidden reference images (tool workflows): auto-switch to image-edit even on txt2img ---
         hidden_ref_bytes_list: list[bytes] | None = None
         try:
-            hidden_paths = wf_cfg.get("google_hidden_reference_images") if isinstance(wf_cfg, dict) else None
+            hidden_paths = wf_cfg.get("openrouter_hidden_reference_images") if isinstance(wf_cfg, dict) else None
         except Exception:
             hidden_paths = None
         try:
@@ -595,7 +591,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                 if out_hidden:
                     hidden_ref_bytes_list = out_hidden
                     try:
-                        request.google_hidden_reference_images = [str(x or "") for x in hidden_paths[:4]]
+                        request.openrouter_hidden_reference_images = [str(x or "") for x in hidden_paths[:4]]
                     except Exception:
                         pass
         except RuntimeError:
@@ -603,7 +599,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         except Exception:
             hidden_ref_bytes_list = None
 
-        final_prompt = build_google_prompt(request, wf_cfg)
+        final_prompt = build_image_prompt(request, wf_cfg)
 
         progress_cb(45)
         if cancel_event.is_set():
@@ -620,43 +616,43 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             pass
 
         if is_txt2img:
-            # Map UI aspect ratio -> Gemini API aspectRatio
+            # Map UI aspect ratio -> OpenRouter image aspect_ratio
             ar = str(getattr(request, "aspect_ratio", "") or "").strip().lower()
-            google_aspect = "1:1"
+            output_aspect = "1:1"
             if ar == "landscape":
-                google_aspect = "16:9"
+                output_aspect = "16:9"
             elif ar == "portrait":
-                google_aspect = "9:16"
+                output_aspect = "9:16"
             else:
-                google_aspect = "1:1"
+                output_aspect = "1:1"
 
             if ref_sheet_bytes_list or hidden_ref_bytes_list:
                 # Auto-switch to image-edit when we have any attached reference images.
                 # IMPORTANT: do not mix "hidden refs" with character mention sheets; it would break sheet ordering.
                 images_for_edit = ref_sheet_bytes_list if ref_sheet_bytes_list else hidden_ref_bytes_list
                 try:
-                    image_bytes = generate_image_edit(
+                    image_bytes = generate_image(
                         model=chosen_model,
                         prompt=final_prompt,
                         images=images_for_edit,
-                        aspect_ratio=google_aspect,
-                        image_size=req_size,
+                        aspect_ratio=output_aspect,
+                        resolution=req_size,
                         timeout=(5.0, 90.0),
                     )
-                except NanoBananaUpstreamError as e:
-                    _record_google_provider_error(e, context="imgedit_auto")
+                except OpenRouterUpstreamError as e:
+                    _record_openrouter_provider_error(e, context="imgedit_auto")
                     raise RuntimeError(getattr(e, "public_message", str(e)))
             else:
                 try:
-                    image_bytes = generate_text_to_image(
+                    image_bytes = generate_image(
                         model=chosen_model,
                         prompt=final_prompt,
-                        aspect_ratio=google_aspect,
-                        image_size=req_size,
+                        aspect_ratio=output_aspect,
+                        resolution=req_size,
                         timeout=(5.0, 90.0),
                     )
-                except NanoBananaUpstreamError as e:
-                    _record_google_provider_error(e, context="txt2img")
+                except OpenRouterUpstreamError as e:
+                    _record_openrouter_provider_error(e, context="txt2img")
                     raise RuntimeError(getattr(e, "public_message", str(e)))
         elif is_img2img:
             # Phase C: 멀티 입력 이미지 편집(img2img)
@@ -719,28 +715,28 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
 
             # 출력 비율 옵션:
             # - "auto": 입력 비율 유지(기본/권장) => aspectRatio 생략
-            # - square/landscape/portrait => Gemini API aspectRatio로 전달
+            # - square/landscape/portrait => OpenRouter aspect_ratio로 전달
             ar = str(getattr(request, "aspect_ratio", "") or "").strip().lower()
-            google_aspect = None
+            output_aspect = None
             if ar and ar != "auto":
                 if ar == "landscape":
-                    google_aspect = "16:9"
+                    output_aspect = "16:9"
                 elif ar == "portrait":
-                    google_aspect = "9:16"
+                    output_aspect = "9:16"
                 else:
-                    google_aspect = "1:1"
+                    output_aspect = "1:1"
 
             try:
-                image_bytes = generate_image_edit(
+                image_bytes = generate_image(
                     model=chosen_model,
                     prompt=final_prompt,
                     images=input_png_bytes_list,
-                    aspect_ratio=google_aspect,
-                    image_size=req_size,
+                    aspect_ratio=output_aspect,
+                    resolution=req_size,
                     timeout=(5.0, 90.0),
                 )
-            except NanoBananaUpstreamError as e:
-                _record_google_provider_error(e, context="imgedit_user")
+            except OpenRouterUpstreamError as e:
+                _record_openrouter_provider_error(e, context="imgedit_user")
                 raise RuntimeError(getattr(e, "public_message", str(e)))
         else:
             raise RuntimeError("이 나노바나나 워크플로우의 모드 설정이 올바르지 않습니다. 서버 워크플로우 설정을 확인해 주세요.")
@@ -750,7 +746,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             raise RuntimeError("생성이 취소되었습니다.")
 
         progress_cb(95)
-        saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, f"google:{chosen_model or 'gemini'}")
+        saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, f"openrouter:{chosen_model or 'image'}")
         web_path = _build_web_path(saved_image_path)
         job.result["image_path"] = web_path
         progress_cb(100)

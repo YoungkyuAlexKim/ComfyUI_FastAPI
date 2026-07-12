@@ -88,6 +88,7 @@ celerybeat-schedule
 
 # Environments
 .env
+오픈라우터API키.txt
 .venv
 env/
 venv/

@@ -423,24 +423,24 @@ class JobManager:
 
 class RoutingJobManager:
     """
-    Route jobs to separate managers (e.g., ComfyUI vs NanoBanana/Google).
+    Route jobs to separate managers (local ComfyUI vs external OpenRouter).
 
     Motivation:
     - ComfyUI is effectively single-lane on one machine; queue must be managed strictly.
-    - NanoBanana (provider=google) can run concurrently; we cap concurrent workers and keep a separate queue
+    - OpenRouter jobs can run concurrently; we cap concurrent workers and keep a separate queue
       to avoid interleaving/queue confusion with ComfyUI jobs.
     """
 
-    def __init__(self, comfy: JobManager, nanobanana: JobManager, workflow_configs: Dict[str, Dict[str, Any]]):
+    def __init__(self, comfy: JobManager, external: JobManager, workflow_configs: Dict[str, Dict[str, Any]]):
         self._comfy = comfy
-        self._nano = nanobanana
+        self._external = external
         self._wf = workflow_configs or {}
 
-    def _is_google_workflow(self, workflow_id: str) -> bool:
+    def _is_external_workflow(self, workflow_id: str) -> bool:
         try:
             cfg = self._wf.get(workflow_id) if isinstance(self._wf, dict) else None
             provider = str((cfg or {}).get("provider", "comfyui") or "comfyui").strip().lower()
-            return provider == "google"
+            return provider == "openrouter"
         except Exception:
             return False
 
@@ -450,28 +450,28 @@ class RoutingJobManager:
             wf_id = str(wf_id or "").strip()
         except Exception:
             wf_id = ""
-        if wf_id and self._is_google_workflow(wf_id):
-            return self._nano
+        if wf_id and self._is_external_workflow(wf_id):
+            return self._external
         return self._comfy
 
     # ---- registration / lifecycle ----
     def register_processor(self, job_type: str, processor: Callable[[Job, Callable[[float], None]], None]):
         self._comfy.register_processor(job_type, processor)
-        self._nano.register_processor(job_type, processor)
+        self._external.register_processor(job_type, processor)
 
     def set_notifier(self, notify: Callable[[str, Dict[str, Any]], None]):
         self._comfy.set_notifier(notify)
-        self._nano.set_notifier(notify)
+        self._external.set_notifier(notify)
 
     def start(self):
         self._comfy.start()
-        self._nano.start()
+        self._external.start()
 
     def stop(self):
         try:
             self._comfy.stop()
         finally:
-            self._nano.stop()
+            self._external.stop()
 
     # ---- enqueue / status / cancel ----
     def enqueue(self, owner_id: str, job_type: str, payload: Dict[str, Any]) -> Job:
@@ -482,20 +482,20 @@ class RoutingJobManager:
         j = self._comfy.get(job_id)
         if j:
             return j
-        return self._nano.get(job_id)
+        return self._external.get(job_id)
 
     def get_position(self, job_id: str) -> Optional[int]:
         j = self._comfy.get(job_id)
         if j:
             return self._comfy.get_position(job_id)
-        j2 = self._nano.get(job_id)
+        j2 = self._external.get(job_id)
         if j2:
-            return self._nano.get_position(job_id)
+            return self._external.get_position(job_id)
         return None
 
     def list_jobs(self, limit: int = 100) -> list[dict]:
         a = self._comfy.list_jobs(limit=limit)
-        b = self._nano.list_jobs(limit=limit)
+        b = self._external.list_jobs(limit=limit)
         merged = (a or []) + (b or [])
         try:
             merged.sort(key=lambda j: j.get("created_at", 0) or 0, reverse=True)
@@ -506,40 +506,40 @@ class RoutingJobManager:
     def cancel(self, job_id: str) -> bool:
         if self._comfy.get(job_id):
             return self._comfy.cancel(job_id)
-        if self._nano.get(job_id):
-            return self._nano.cancel(job_id)
+        if self._external.get(job_id):
+            return self._external.cancel(job_id)
         return False
 
     def set_cancel_handle(self, job_id: str, handle: Optional[Callable[[], bool]]):
         if self._comfy.get(job_id):
             return self._comfy.set_cancel_handle(job_id, handle)
-        if self._nano.get(job_id):
-            return self._nano.set_cancel_handle(job_id, handle)
+        if self._external.get(job_id):
+            return self._external.set_cancel_handle(job_id, handle)
         return None
 
     # Backward-compatible passthrough
     def set_active_cancel_handle(self, handle: Optional[Callable[[], bool]]):
-        # Prefer comfy (single worker), otherwise nano.
+        # Prefer comfy (single worker), otherwise external.
         try:
             self._comfy.set_active_cancel_handle(handle)
         except Exception:
             pass
         try:
-            self._nano.set_active_cancel_handle(handle)
+            self._external.set_active_cancel_handle(handle)
         except Exception:
             pass
 
     def is_cancel_requested(self, job_id: str) -> bool:
         if self._comfy.get(job_id):
             return self._comfy.is_cancel_requested(job_id)
-        if self._nano.get(job_id):
-            return self._nano.is_cancel_requested(job_id)
+        if self._external.get(job_id):
+            return self._external.is_cancel_requested(job_id)
         return False
 
     def get_active_for_owner(self, owner_id: str) -> Optional[Job]:
         # If both exist (rare), prefer the most recently started.
         c = self._comfy.get_active_for_owner(owner_id)
-        n = self._nano.get_active_for_owner(owner_id)
+        n = self._external.get_active_for_owner(owner_id)
         if c and n:
             try:
                 cs = float(c.started_at or 0)
@@ -564,7 +564,7 @@ class RoutingJobManager:
         except Exception:
             pass
         try:
-            jobs.extend(list(getattr(self._nano, "_jobs", {}).values()))
+            jobs.extend(list(getattr(self._external, "_jobs", {}).values()))
         except Exception:
             pass
         completed = [j for j in jobs if j.status == "complete" and j.started_at and j.ended_at]

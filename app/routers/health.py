@@ -56,11 +56,11 @@ def healthz():
         results["disk"]["reason"] = str(e)
         status_code = 503
     try:
-        # Optional component: prompt translation (external Gemini API)
-        api_key_present = bool(os.getenv("GOOGLE_AI_STUDIO_API_KEY") or os.getenv("GEMINI_API_KEY"))
+        # Optional component: prompt translation and hosted image models via OpenRouter
+        api_key_present = bool(os.getenv("OPENROUTER_API_KEY"))
         results["llm"]["ok"] = api_key_present
         if not api_key_present:
-            results["llm"]["reason"] = "GOOGLE_AI_STUDIO_API_KEY not set"
+            results["llm"]["reason"] = "OPENROUTER_API_KEY not set"
     except Exception as e:
         results["llm"]["reason"] = str(e)
     overall_ok = results["comfyui"]["ok"] and results["db"]["ok"] and results["disk"]["ok"]

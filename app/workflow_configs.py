@@ -42,7 +42,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
     "NanoBanana": {
         "display_name": "기본 워크플로우",
-        "description": "Google Gemini 기반 자연어 프롬프트로 이미지를 생성합니다.",
+        "description": "OpenRouter의 Nano Banana Pro로 자연어 프롬프트 이미지를 생성합니다.",
         "hidden": False,
 
         # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
@@ -51,9 +51,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "negative_prompt": "",
 
         # Provider routing (handled in app/services/generation.py)
-        "provider": "google",
+        "provider": "openrouter",
         # 정책: 나노바나나는 항상 Nano Banana Pro(3 Pro Image) + 2K 출력으로 고정
-        "google": {"model": "gemini-3-pro-image-preview", "mode": "text-to-image"},
+        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "text-to-image"},
 
         "ui": {
             "icon": "magic",
@@ -78,12 +78,12 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "style_prompt": "",
         "negative_prompt": "",
 
-        "provider": "google",
-        "google": {"model": "gemini-3-pro-image-preview", "mode": "image-edit"},
+        "provider": "openrouter",
+        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "image-edit"},
 
         # 존재만으로 UI가 '입력 이미지 필요'로 인지하도록 둡니다.
-        # (ComfyUI workflow JSON에는 주입하지 않으며, google provider 경로에서만 사용)
-        "image_input": {"image_node": "_google", "input_field": "image"},
+        # (ComfyUI workflow JSON에는 주입하지 않으며, OpenRouter provider 경로에서만 사용)
+        "image_input": {"image_node": "_openrouter", "input_field": "image"},
 
         "ui": {
             "icon": "edit",
@@ -125,11 +125,11 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         ),
         "negative_prompt": "",
 
-        "provider": "google",
-        "google": {"model": "gemini-3-pro-image-preview", "mode": "image-edit"},
+        "provider": "openrouter",
+        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "image-edit"},
 
         # 입력 이미지가 필수인 도구
-        "image_input": {"image_node": "_google", "input_field": "image"},
+        "image_input": {"image_node": "_openrouter", "input_field": "image"},
 
         "ui": {
             "templateMode": "nanobanana",
@@ -179,11 +179,11 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         ),
         "negative_prompt": "",
 
-        "provider": "google",
-        "google": {"model": "gemini-3-pro-image-preview", "mode": "image-edit"},
+        "provider": "openrouter",
+        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "image-edit"},
 
         # 입력 이미지가 필수인 도구
-        "image_input": {"image_node": "_google", "input_field": "image"},
+        "image_input": {"image_node": "_openrouter", "input_field": "image"},
 
         "ui": {
             "templateMode": "nanobanana",
@@ -233,11 +233,11 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         ),
         "negative_prompt": "",
 
-        "provider": "google",
-        "google": {"model": "gemini-3-pro-image-preview", "mode": "image-edit"},
+        "provider": "openrouter",
+        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "image-edit"},
 
         # 입력 이미지가 필수인 도구
-        "image_input": {"image_node": "_google", "input_field": "image"},
+        "image_input": {"image_node": "_openrouter", "input_field": "image"},
 
         "ui": {
             "icon": "sun",
@@ -460,11 +460,11 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         ),
         "negative_prompt": "",
 
-        "provider": "google",
-        "google": {"model": "gemini-3-pro-image-preview", "mode": "image-edit"},
+        "provider": "openrouter",
+        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "image-edit"},
 
-        # 입력 이미지가 필수인 도구 (google provider 경로에서만 사용)
-        "image_input": {"image_node": "_google", "input_field": "image"},
+        # 입력 이미지가 필수인 도구 (OpenRouter provider 경로에서만 사용)
+        "image_input": {"image_node": "_openrouter", "input_field": "image"},
 
         "ui": {
             "templateMode": "nanobanana",
@@ -529,10 +529,10 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         ),
         "negative_prompt": "",
 
-        "provider": "google",
-        "google": {"model": "gemini-3-pro-image-preview", "mode": "image-edit"},
+        "provider": "openrouter",
+        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "image-edit"},
 
-        "image_input": {"image_node": "_google", "input_field": "image"},
+        "image_input": {"image_node": "_openrouter", "input_field": "image"},
 
         "ui": {
             "templateMode": "nanobanana",
@@ -566,15 +566,15 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         ),
         "negative_prompt": "",
 
-        "provider": "google",
+        "provider": "openrouter",
         # Internally we will attach a hidden reference image and call image-edit.
         # Keep this workflow as txt2img from the UI perspective.
-        "google": {"model": "gemini-3-pro-image-preview", "mode": "text-to-image"},
+        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "text-to-image"},
 
         # Hidden reference image(s) that are automatically attached server-side.
         # Path is relative to repo root unless absolute.
         # NOTE: 이 파일은 브라우저에서 직접 접근되지 않는 "서버 전용" 경로에 둡니다.
-        "google_hidden_reference_images": ["app/resources/refs/chainsaw_juice_king_reference.png"],
+        "openrouter_hidden_reference_images": ["app/resources/refs/chainsaw_juice_king_reference.png"],
 
         "ui": {
             "icon": "crown",

@@ -257,14 +257,14 @@
         // Track the latest job started by this client
         let currentJobId = null;
         // Provider hint for the current job (used to customize queue messages)
-        // - 'nanobanana': Google(provider=google) workflows
+        // - 'nanobanana': Nano Banana workflows routed through OpenRouter
         // - 'comfyui': ComfyUI(local) workflows
         let currentJobQueueKind = null;
         let queueTimer = null;
         function inferQueueKindFromWorkflow(wf){
             try {
                 const provider = String((wf && wf.provider) ? wf.provider : '').trim().toLowerCase();
-                return provider === 'google' ? 'nanobanana' : 'comfyui';
+                return provider === 'openrouter' ? 'nanobanana' : 'comfyui';
             } catch (_) {
                 return null;
             }
@@ -801,8 +801,8 @@
                 const targetWf = getTargetWorkflowForMode();
                 const uiSchema = (targetWf && targetWf.ui) || {};
                 const provider = String((targetWf && targetWf.provider) ? targetWf.provider : '').trim().toLowerCase();
-                // Google(NanoBanana) workflows do not support deterministic seed in our current integration.
-                const hideSeed = (provider === 'google') || !!uiSchema.hideSeed;
+                // Hosted Nano Banana workflows do not support deterministic seed in our current integration.
+                const hideSeed = (provider === 'openrouter') || !!uiSchema.hideSeed;
                 const row = document.getElementById('seed-row');
                 if (row) row.style.display = hideSeed ? 'none' : 'flex';
             } catch(_) {}
@@ -1621,7 +1621,7 @@
                 const targetWf = getTargetWorkflowForMode();
                 if (!targetWf) return false;
                 const provider = String(targetWf.provider || '').trim().toLowerCase();
-                if (provider !== 'google') return false;
+                if (provider !== 'openrouter') return false;
                 const uiSchema = (targetWf && targetWf.ui) || {};
                 const templateMode = String(uiSchema.templateMode || '').trim().toLowerCase();
                 if (templateMode !== 'nanobanana') return false;
@@ -3759,9 +3759,9 @@
                 const strictOk = !!(data && data.ok === true);
                 if (strictOk) return true;
 
-                // Google(NanoBanana) workflows do NOT require ComfyUI to be running.
+                // OpenRouter workflows do NOT require ComfyUI to be running.
                 // For those workflows, accept health when DB/Disk are OK and an API key exists.
-                if (provider === 'google') {
+                if (provider === 'openrouter') {
                     const c = (data && data.components) ? data.components : {};
                     const dbOk = !!(c && c.db && c.db.ok === true);
                     const diskOk = !!(c && c.disk && c.disk.ok === true);

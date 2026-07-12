@@ -15,7 +15,6 @@ import hashlib
 from io import BytesIO
 import sqlite3
 import shutil
-import requests
 
 try:
     from PIL import Image
@@ -56,6 +55,7 @@ from .ws.manager import manager
 from .ws.routes import router as ws_router
 from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActiveResponse, TranslateResponse
 from .services.generation import run_generation_processor
+from .services.openrouter_client import OpenRouterUpstreamError, generate_text, is_configured as openrouter_is_configured
 from .beta_access import beta_enabled, is_request_authed, beta_cookie_name, expected_cookie_value
 from .auth.user_management import _parse_bool as _parse_bool_cookie_secure
 from .rate_limiter import SlidingWindowRateLimiter
@@ -176,7 +176,7 @@ class GenerateRequest(BaseModel):
     aspect_ratio: str  # 'width', 'height' 대신 'aspect_ratio' 사용
     workflow_id: str
     seed: Optional[int] = None
-    # Optional output image size (for supported providers/workflows, e.g. Google Nano Banana)
+    # Optional output image size (for supported providers/workflows, e.g. Nano Banana)
     # Allowed examples: "1K", "2K"
     image_size: Optional[str] = None
     # RMBG2 (Background Removal) params - only used when workflow supports it
@@ -214,8 +214,8 @@ Imports above wire them in; local duplicates removed to reduce main.py size.
 """
 
 _comfy_job_manager = JobManager(worker_count=1)
-_nano_job_manager = JobManager(worker_count=4)  # env에서 startup 시 재설정
-job_manager = RoutingJobManager(_comfy_job_manager, _nano_job_manager, WORKFLOW_CONFIGS)
+_external_job_manager = JobManager(worker_count=4)  # env에서 startup 시 재설정
+job_manager = RoutingJobManager(_comfy_job_manager, _external_job_manager, WORKFLOW_CONFIGS)
 job_store = JobStore(JOB_DB_PATH)
 from .feed_store import FeedStore
 feed_store = FeedStore(JOB_DB_PATH)
@@ -346,7 +346,7 @@ async def landing(request: Request):
 @app.get("/create", response_class=HTMLResponse, tags=["Page"])
 async def create_page(request: Request):
     default_values = get_default_values()
-    api_key_present = bool(os.getenv("GOOGLE_AI_STUDIO_API_KEY") or os.getenv("GEMINI_API_KEY"))
+    api_key_present = openrouter_is_configured()
     prompt_translate_enabled = _parse_bool_cookie_secure(
         os.getenv("ENABLE_PROMPT_TRANSLATE"),
         api_key_present,
@@ -595,10 +595,9 @@ async def cancel_active_for_user(request: Request):
 
 @app.post("/api/v1/translate-prompt", tags=["Prompt Translation"], response_model=TranslateResponse)
 async def translate_prompt_endpoint(text: str = Form(...), mode: str = Form("image"), language: str = Form("ko"), context: str = Form("")):
-    api_key = os.getenv("GOOGLE_AI_STUDIO_API_KEY") or os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="번역 기능(API)이 설정되지 않았습니다. 서버 .env에 GOOGLE_AI_STUDIO_API_KEY를 설정해 주세요.")
-    model = os.getenv("PROMPT_TRANSLATE_GOOGLE_MODEL") or "gemma-4-26b-a4b-it"
+    if not openrouter_is_configured():
+        raise HTTPException(status_code=503, detail="번역 기능(API)이 설정되지 않았습니다. 서버 .env에 OPENROUTER_API_KEY를 설정해 주세요.")
+    model = os.getenv("OPENROUTER_TEXT_MODEL") or "google/gemini-3.1-flash-lite"
     raw = (text or "").strip()
     if not raw:
         raise HTTPException(status_code=400, detail="번역할 내용을 입력해주세요.")
@@ -682,139 +681,33 @@ async def translate_prompt_endpoint(text: str = Form(...), mode: str = Form("ima
             f"한국어 원문:\n{raw}\n"
         )
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     try:
-        resp = requests.post(
-            url,
-            params={"key": api_key},
-            json={
-                "contents": [
-                    {"role": "user", "parts": [{"text": instruction}]}
-                ],
-                "generationConfig": {
-                    "temperature": 0.7 if mode.startswith("music") else 0.2,
-                    "topP": 0.95,
-                    "maxOutputTokens": 1024 if mode == "music_lyrics" else 256,
-                },
-            },
+        out = generate_text(
+            prompt=instruction,
+            model=model,
+            temperature=0.7 if mode.startswith("music") else 0.2,
+            top_p=0.95,
+            max_tokens=1024 if mode == "music_lyrics" else 256,
             timeout=(5.0, 30.0),
         )
-    except Exception as e:
+    except OpenRouterUpstreamError as e:
         logger.warning({"event": "prompt_translate_upstream_error", "error": str(e)})
-        raise HTTPException(status_code=502, detail="번역 API 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.")
-
-    if not resp.ok:
-        detail = None
-        err_status = None
-        err_reason = None
-        try:
-            data = resp.json()
-            err = (data.get("error") or {}) if isinstance(data, dict) else {}
-            if isinstance(err, dict):
-                detail = err.get("message")
-                err_status = err.get("status")
-                # Try to detect a structured reason, e.g. API_KEY_INVALID
-                try:
-                    details = err.get("details") or []
-                    if isinstance(details, list):
-                        for d in details:
-                            if not isinstance(d, dict):
-                                continue
-                            r = d.get("reason")
-                            if isinstance(r, str) and r:
-                                err_reason = r
-                                break
-                            # google.rpc.ErrorInfo form
-                            r2 = d.get("reason") or (d.get("metadata") or {}).get("reason")
-                            if isinstance(r2, str) and r2:
-                                err_reason = r2
-                                break
-                except Exception:
-                    err_reason = None
-        except Exception:
-            detail = None
-            err_status = None
-            err_reason = None
-
-        s = int(resp.status_code)
-        low = str(detail or "").lower()
-        reason = str(err_reason or "").upper()
-        status_txt = str(err_status or "").upper()
-
-        def _looks_like_key_issue() -> bool:
-            # Google APIs sometimes return 400 even when the API key is invalid.
-            if s in (401, 403):
-                return True
-            if "api key" in low or "apikey" in low or "api_key" in low:
-                return True
-            if "key not valid" in low or "invalid api key" in low or "invalid api-key" in low:
-                return True
-            if "permission" in low or "unauth" in low or "forbidden" in low:
-                return True
-            if "billing" in low:
-                return True
-            if reason in ("API_KEY_INVALID", "API_KEY_EXPIRED", "API_KEY_SERVICE_BLOCKED", "API_KEY_HTTP_REFERRER_BLOCKED", "API_KEY_IP_ADDRESS_BLOCKED"):
-                return True
-            if status_txt in ("PERMISSION_DENIED", "UNAUTHENTICATED"):
-                return True
-            return False
-
-        def _looks_like_quota_issue() -> bool:
-            if s == 429:
-                return True
-            if "quota" in low or "rate limit" in low or "resource exhausted" in low:
-                return True
-            if status_txt == "RESOURCE_EXHAUSTED":
-                return True
-            return False
-
-        # User-friendly messages (avoid leaking upstream internal details)
-        if _looks_like_key_issue():
-            msg = "번역 API 키(권한)가 올바르지 않거나 비활성화되었습니다. 서버 .env의 GOOGLE_AI_STUDIO_API_KEY를 확인한 뒤 서버를 재시작해 주세요."
-            out_status = 401
-        elif _looks_like_quota_issue():
-            msg = "요청이 너무 많거나 사용량 한도를 초과했습니다. 잠시 후 다시 시도해 주세요."
-            out_status = 429
-        elif s == 400:
-            msg = "요청 내용이 올바르지 않습니다. 문장을 조금 더 자세히 적어주세요."
-            out_status = 400
+        status = getattr(e, "http_status", None)
+        if getattr(e, "kind", "") == "openrouter_auth":
+            status = 401
+        elif getattr(e, "kind", "") in ("openrouter_rate_limited", "openrouter_credits_exhausted"):
+            status = 429
+        elif getattr(e, "kind", "") == "openrouter_bad_request":
+            status = 400
         else:
-            msg = detail or f"번역 API 오류 (HTTP {s})"
-            out_status = 502
-
-        logger.warning({
-            "event": "prompt_translate_bad_status",
-            "status": s,
-            "out_status": out_status,
-            "upstream_status": err_status,
-            "reason": err_reason,
-            "message": msg,
-        })
-        raise HTTPException(status_code=out_status, detail=msg)
-
-    try:
-        data = resp.json()
-    except Exception:
-        raise HTTPException(status_code=502, detail="번역 API 응답을 해석하지 못했습니다.")
-
-    out = ""
-    try:
-        candidates = data.get("candidates") if isinstance(data, dict) else None
-        content = (candidates[0] or {}).get("content") if isinstance(candidates, list) and candidates else None
-        parts = content.get("parts") if isinstance(content, dict) else None
-        out = (parts[0] or {}).get("text") if isinstance(parts, list) and parts else ""
-    except Exception:
-        out = ""
-
-    out = (out or "").strip()
-    if not out:
-        raise HTTPException(status_code=502, detail="번역 결과가 비어 있습니다. 잠시 후 다시 시도해 주세요.")
+            status = 502
+        raise HTTPException(status_code=status, detail=getattr(e, "public_message", str(e)))
 
     if mode in ("music_lyrics", "music_tags"):
         # Music modes: keep multi-line, clean up LLM thinking artifacts
         out = out.strip()
-        # Gemma 4 is a thinking model — it may prepend reasoning lines
-        # (e.g., "* Source text: ...", "* The user wants...", bullet analysis)
+        raw_model_out = out
+        # Some hosted models may prepend reasoning/meta lines; strip them defensively.
         cleaned_lines = []
         for line in out.splitlines():
             stripped = line.strip()
@@ -837,11 +730,10 @@ async def translate_prompt_endpoint(text: str = Form(...), mode: str = Form("ima
         # For music_tags: if still empty after filtering, fall back to full output
         if not out and mode == "music_tags":
             # Try to find the last substantial paragraph (likely the actual description)
-            paragraphs = [p.strip() for p in (out or "").split("\n\n") if p.strip()]
+            paragraphs = [p.strip() for p in raw_model_out.split("\n\n") if p.strip()]
             if not paragraphs:
                 # Re-parse from original
-                raw_out = (parts[0] or {}).get("text", "") if isinstance(parts, list) and parts else ""
-                paragraphs = [p.strip() for p in raw_out.split("\n\n") if p.strip() and not p.strip().startswith("*")]
+                paragraphs = [p.strip() for p in raw_model_out.split("\n\n") if p.strip() and not p.strip().startswith("*")]
             if paragraphs:
                 out = paragraphs[-1].strip()
     else:
@@ -923,21 +815,21 @@ async def on_startup():
         _comfy_job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
         _comfy_job_manager.job_timeout_seconds = float(QUEUE_CONFIG.get("job_timeout_seconds", 180))
 
-        # NanoBanana lane: 동시 실행(풀) + 사용자 대기열 길이만 별도 env로 제어
+        # OpenRouter lane: 동시 실행(풀) + 사용자 대기열 길이만 별도 env로 제어
         try:
-            nano_workers = int(os.getenv("NANOBANANA_MAX_CONCURRENT", "4") or "4")
+            external_workers = int(os.getenv("OPENROUTER_MAX_CONCURRENT", "4") or "4")
         except Exception:
-            nano_workers = 4
-        nano_workers = max(1, min(32, int(nano_workers)))
-        _nano_job_manager.worker_count = nano_workers
+            external_workers = 4
+        external_workers = max(1, min(32, int(external_workers)))
+        _external_job_manager.worker_count = external_workers
         try:
-            nano_q = int(os.getenv("NANOBANANA_MAX_PER_USER_QUEUE", "5") or "5")
+            external_q = int(os.getenv("OPENROUTER_MAX_PER_USER_QUEUE", "5") or "5")
         except Exception:
-            nano_q = 5
-        _nano_job_manager.max_per_user_queue = max(0, min(50, int(nano_q)))
+            external_q = 5
+        _external_job_manager.max_per_user_queue = max(0, min(50, int(external_q)))
         # Per-user concurrent stays aligned with existing policy (default 1)
-        _nano_job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
-        _nano_job_manager.job_timeout_seconds = float(QUEUE_CONFIG.get("job_timeout_seconds", 180))
+        _external_job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
+        _external_job_manager.job_timeout_seconds = float(QUEUE_CONFIG.get("job_timeout_seconds", 180))
     except Exception as e:
         logger.debug({"event": "job_manager_env_apply_failed", "error": str(e)})
     job_manager.start()

@@ -446,8 +446,8 @@ async def admin_usage(request: Request, days: int = 30):
           SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) AS complete,
           SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error,
           SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
-          SUM(CASE WHEN json_extract(result_json, '$.provider_error.kind') = 'nanobanana_quota_exhausted' THEN 1 ELSE 0 END) AS nanobanana_quota_exhausted,
-          SUM(CASE WHEN json_extract(result_json, '$.provider_error.kind') = 'nanobanana_rate_limited' THEN 1 ELSE 0 END) AS nanobanana_rate_limited
+          SUM(CASE WHEN json_extract(result_json, '$.provider_error.kind') IN ('nanobanana_quota_exhausted', 'openrouter_credits_exhausted') THEN 1 ELSE 0 END) AS nanobanana_quota_exhausted,
+          SUM(CASE WHEN json_extract(result_json, '$.provider_error.kind') IN ('nanobanana_rate_limited', 'openrouter_rate_limited') THEN 1 ELSE 0 END) AS nanobanana_rate_limited
         FROM jobs
         WHERE type = 'generate' AND created_at IS NOT NULL AND created_at >= ?
         GROUP BY day
@@ -540,7 +540,7 @@ async def admin_usage(request: Request, days: int = 30):
                 "complete": int(complete or 0),
                 "error": int(error or 0),
                 "cancelled": int(cancelled or 0),
-                # NanoBanana(Google) quota/limit errors (best-effort; only rows that recorded provider_error)
+                # Nano Banana/OpenRouter credit and rate-limit errors (legacy field names retained for UI compatibility)
                 "nanobanana_quota_exhausted": nb_q,
                 "nanobanana_rate_limited": nb_r,
                 "nanobanana_quota": nb_q + nb_r,
