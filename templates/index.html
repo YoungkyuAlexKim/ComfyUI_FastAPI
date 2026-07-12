@@ -5536,6 +5536,10 @@
             }
             function isOpen(){ return root.classList.contains('gallery-open'); }
             toggle.addEventListener('click', ()=>{ isOpen() ? closeDrawer() : openDrawer(); });
+            const studioShortcut = document.querySelector('.studio-gallery-shortcut');
+            if (studioShortcut) {
+                studioShortcut.addEventListener('click', openDrawer);
+            }
             const closeBtn = document.getElementById('gallery-close');
             if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
             // ESC closes on small screens when overlay mode
