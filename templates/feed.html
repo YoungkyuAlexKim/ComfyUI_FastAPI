@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}쇼케이스{% endblock %}
 {% block head_extra %}
-  <link href="/static/css/feed.css?v=20251217_08" rel="stylesheet">
+  <link href="/static/css/feed.css?v=20260712_03" rel="stylesheet">
 {% endblock %}
 {% block content %}
   <div class="app-container" data-anon-id="{{ anon_id }}">
@@ -12,10 +12,32 @@
         <div class="feed-wrap">
           <div class="feed-header">
             <div>
-              <h2 class="feed-title"><i class="fas fa-images"></i> 쇼케이스</h2>
+              <span class="feed-kicker">COMMUNITY CANVAS</span>
+              <h2 class="feed-title">쇼케이스</h2>
               <p class="feed-subtitle">공유된 이미지 모음입니다. 정렬을 바꿔서 원하는 순서로 볼 수 있어요.</p>
             </div>
             <div class="feed-header-actions">
+              <div class="feed-density-control" title="쇼케이스 썸네일 크기">
+                <i class="fas fa-grip" aria-hidden="true"></i>
+                <label for="feed-density">썸네일</label>
+                <div class="feed-density-slider-wrap">
+                  <input
+                    id="feed-density"
+                    class="feed-density-slider"
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="1"
+                    value="1"
+                    aria-label="쇼케이스 썸네일 크기"
+                    aria-valuetext="아주 작게"
+                  >
+                  <div class="feed-density-ticks" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span><span></span>
+                  </div>
+                </div>
+                <output id="feed-density-label" for="feed-density">아주 작게</output>
+              </div>
               <label class="feed-sort">
                 <span class="feed-sort-label">정렬</span>
                 <select id="feed-sort" class="feed-sort-select" aria-label="정렬 선택">
@@ -57,7 +79,7 @@
 {% endblock %}
 
 {% block scripts %}
-  <script src="/static/js/feed.js?v=20251217_07"></script>
+  <script src="/static/js/feed.js?v=20260712_03"></script>
 {% endblock %}
 
 

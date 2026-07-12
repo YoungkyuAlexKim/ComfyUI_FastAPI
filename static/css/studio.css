@@ -871,3 +871,272 @@ input[type="range"]::-webkit-slider-thumb {
         transition: none;
     }
 }
+
+/* --------------------------------------------------------------------------
+   Phase 2 — adaptive studio shell and meaningful motion
+   -------------------------------------------------------------------------- */
+
+.sidebar,
+.app-layout,
+.main-content {
+    transition:
+        width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+        padding 280ms cubic-bezier(0.22, 1, 0.36, 1),
+        grid-template-columns 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.studio-sidebar-collapse {
+    position: fixed;
+    top: 68px;
+    left: calc(var(--sidebar-width) - 13px);
+    z-index: 60;
+    width: 27px;
+    height: 27px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #343b45;
+    border-radius: 50%;
+    background: #161a1f;
+    color: #8e97a4;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.34);
+    font-size: 10px;
+    transition:
+        left 280ms cubic-bezier(0.22, 1, 0.36, 1),
+        color 160ms ease,
+        background 160ms ease,
+        transform 160ms ease;
+}
+
+.studio-sidebar-collapse:hover {
+    color: #eef2f8;
+    background: #20262e;
+    transform: scale(1.06);
+}
+
+body.studio-sidebar-collapsed .sidebar {
+    width: 72px;
+    overflow-x: hidden;
+}
+
+body.studio-sidebar-collapsed .app-layout {
+    padding-left: 72px;
+}
+
+body.studio-sidebar-collapsed .studio-sidebar-collapse {
+    left: 59px;
+}
+
+body.studio-sidebar-collapsed .sidebar-header {
+    padding-inline: 8px;
+}
+
+body.studio-sidebar-collapsed .brand-banner::before {
+    background-size: 245px 70px;
+    background-position: 3px center;
+}
+
+body.studio-sidebar-collapsed .sidebar-tabs {
+    flex-direction: column;
+    margin: 12px 8px 16px;
+    padding: 4px;
+}
+
+body.studio-sidebar-collapsed .sidebar-tab {
+    width: 100%;
+    min-height: 38px;
+    padding: 8px;
+}
+
+body.studio-sidebar-collapsed .sidebar-tab-label,
+body.studio-sidebar-collapsed .workflow-group-label,
+body.studio-sidebar-collapsed .workflow-item-info,
+body.studio-sidebar-collapsed .sidebar-footer .workflow-info > :not(i) {
+    display: none;
+}
+
+body.studio-sidebar-collapsed .workflow-list {
+    padding-inline: 8px;
+}
+
+body.studio-sidebar-collapsed .workflow-group {
+    padding-inline: 0;
+}
+
+body.studio-sidebar-collapsed .workflow-item {
+    min-height: 42px;
+    padding: 7px;
+}
+
+body.studio-sidebar-collapsed .workflow-item-header {
+    justify-content: center;
+}
+
+body.studio-sidebar-collapsed .workflow-icon,
+body.studio-sidebar-collapsed .workflow-item:hover .workflow-icon,
+body.studio-sidebar-collapsed .workflow-item.selected .workflow-icon {
+    width: 29px;
+    height: 29px;
+}
+
+body.studio-sidebar-collapsed .workflow-item::before {
+    top: 7px;
+    bottom: 7px;
+}
+
+body.studio-sidebar-collapsed .sidebar-footer {
+    display: none;
+}
+
+.studio-output-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.studio-focus-toggle,
+.studio-gallery-shortcut {
+    min-height: 34px;
+    padding: 7px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: 1px solid #303741;
+    border-radius: 7px;
+    background: #15191e;
+    color: #aeb5bf;
+    font-size: 11px;
+    font-weight: 650;
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.studio-focus-toggle:hover,
+.studio-gallery-shortcut:hover,
+.studio-focus-toggle.active {
+    border-color: #465b7d;
+    color: #eef3fb;
+    background: #1b2637;
+}
+
+body.studio-focus-mode .main-content:not(.main-content--feed) {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+body.studio-focus-mode .input-panel {
+    display: none;
+}
+
+body.studio-focus-mode .output-panel {
+    grid-column: 1;
+    animation: studioCanvasExpand 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes studioCanvasExpand {
+    from {
+        opacity: 0.72;
+        transform: scale(0.988);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Panels arrive as a workspace, not as a collection of unrelated cards. */
+.studio-ready .input-card {
+    animation: studioPanelIn 440ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.studio-ready .output-card {
+    animation: studioPanelIn 500ms 55ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes studioPanelIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.studio-workflow-changing .workflow-banner::before {
+    animation: studioBannerChange 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.studio-workflow-changing .card-content {
+    animation: studioControlsChange 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes studioBannerChange {
+    0% {
+        opacity: 0.25;
+        transform: scale(1.035);
+    }
+    100% {
+        opacity: var(--wf-banner-hasimg, 0);
+        transform: scale(1.015);
+    }
+}
+
+@keyframes studioControlsChange {
+    0% {
+        opacity: 0.45;
+        transform: translateY(7px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.result-section[style*="display: block"] .result-card {
+    animation: studioResultReveal 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes studioResultReveal {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.992);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+#gallery-panel.gallery-panel {
+    transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (max-width: 767px) {
+    .studio-sidebar-collapse,
+    .studio-focus-toggle {
+        display: none;
+    }
+
+    body.studio-sidebar-collapsed .sidebar {
+        width: 100%;
+    }
+
+    body.studio-sidebar-collapsed .app-layout {
+        padding-left: 0;
+    }
+
+    .sidebar {
+        min-height: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .studio-ready .input-card,
+    .studio-ready .output-card,
+    .studio-workflow-changing .workflow-banner::before,
+    .studio-workflow-changing .card-content,
+    .result-section[style*="display: block"] .result-card,
+    body.studio-focus-mode .output-panel {
+        animation: none;
+    }
+}

@@ -561,6 +561,44 @@
   let loading = false;
   let hasMore = true;
   let sortKey = "newest";
+  const DENSITY_KEY = "feedDensity:v1";
+  const DENSITY_LABELS = ["아주 작게", "작게", "기본", "크게", "아주 크게"];
+
+  function clampDensity(value) {
+    const n = Math.round(Number(value));
+    return Number.isFinite(n) ? Math.min(5, Math.max(1, n)) : 3;
+  }
+
+  function applyDensity(value, persist) {
+    const density = clampDensity(value);
+    document.body.setAttribute("data-feed-density", String(density));
+    const slider = document.getElementById("feed-density");
+    const label = document.getElementById("feed-density-label");
+    const text = DENSITY_LABELS[density - 1];
+    if (slider) {
+      slider.value = String(density);
+      slider.setAttribute("aria-valuetext", text);
+      slider.style.setProperty("--density-progress", `${((density - 1) / 4) * 100}%`);
+    }
+    if (label) label.textContent = text;
+    if (persist) {
+      try {
+        localStorage.setItem(DENSITY_KEY, String(density));
+      } catch (_) {}
+    }
+  }
+
+  function setupDensityControl() {
+    const slider = document.getElementById("feed-density");
+    if (!slider) return;
+    let initial = 1;
+    try {
+      initial = clampDensity(localStorage.getItem(DENSITY_KEY) || 1);
+    } catch (_) {}
+    applyDensity(initial, false);
+    slider.addEventListener("input", () => applyDensity(slider.value, true));
+    slider.addEventListener("change", () => applyDensity(slider.value, true));
+  }
 
   function renderSkeletonCard() {
     const card = el("div", { class: "feed-card feed-card--skeleton" });
@@ -590,7 +628,13 @@
   }
 
   function renderCard(it) {
-    const card = el("div", { class: "feed-card", "data-feed-post-id": it.post_id });
+    const card = el("article", {
+      class: "feed-card",
+      "data-feed-post-id": it.post_id,
+      tabindex: "0",
+      role: "button",
+      "aria-label": `${safeText(it.author_display, "-")}님의 작품 열기`,
+    });
 
     const media = el("div", { class: "feed-media" });
     const img = el(
@@ -604,6 +648,11 @@
       }
     );
     img.addEventListener("click", () => openModal(it.post_id));
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      openModal(it.post_id);
+    });
     media.appendChild(img);
 
     const overlay = el("div", { class: "feed-overlay" });
@@ -676,7 +725,15 @@
       const grid = document.getElementById("feed-grid");
       if (!grid) return;
       if (reset) grid.innerHTML = "";
-      items.forEach((it) => grid.appendChild(renderCard(it)));
+      const rendered = items.map((it, index) => {
+        const card = renderCard(it);
+        card.style.setProperty("--feed-order", String(index));
+        grid.appendChild(card);
+        return card;
+      });
+      window.requestAnimationFrame(() => {
+        rendered.forEach((card) => card.classList.add("is-visible"));
+      });
 
       if (reset) {
         const total = Number.isFinite(Number(data.total)) ? Number(data.total) : 0;
@@ -712,6 +769,7 @@
     const btnMore = document.getElementById("feed-load-more");
     const btnRefresh = document.getElementById("feed-refresh");
     const sortSel = document.getElementById("feed-sort");
+    setupDensityControl();
     if (btnMore) btnMore.addEventListener("click", () => loadPage(false));
     if (btnRefresh) btnRefresh.addEventListener("click", () => loadPage(true));
 
