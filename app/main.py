@@ -55,7 +55,12 @@ from .ws.manager import manager
 from .ws.routes import router as ws_router
 from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActiveResponse, TranslateResponse
 from .services.generation import run_generation_processor
-from .services.openrouter_client import OpenRouterUpstreamError, generate_text, is_configured as openrouter_is_configured
+from .services.openrouter_client import (
+    OpenRouterUpstreamError,
+    generate_text,
+    gpt_image_timeout_seconds,
+    is_configured as openrouter_is_configured,
+)
 from .beta_access import beta_enabled, is_request_authed, beta_cookie_name, expected_cookie_value
 from .auth.user_management import _parse_bool as _parse_bool_cookie_secure
 from .rate_limiter import SlidingWindowRateLimiter
@@ -181,6 +186,8 @@ class GenerateRequest(BaseModel):
     image_size: Optional[str] = None
     # Hosted image model override. The server validates this against an allowlist.
     image_model: Optional[str] = None
+    # Model-specific quality option (currently GPT Image 2: low/medium/high).
+    image_quality: Optional[str] = None
     # RMBG2 (Background Removal) params - only used when workflow supports it
     rmbg_mask_blur: Optional[int] = None
     rmbg_mask_offset: Optional[int] = None
@@ -831,7 +838,20 @@ async def on_startup():
         _external_job_manager.max_per_user_queue = max(0, min(50, int(external_q)))
         # Per-user concurrent stays aligned with existing policy (default 1)
         _external_job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
-        _external_job_manager.job_timeout_seconds = float(QUEUE_CONFIG.get("job_timeout_seconds", 180))
+        try:
+            external_timeout = float(os.getenv("OPENROUTER_JOB_TIMEOUT_SECONDS", "330") or "330")
+        except Exception:
+            external_timeout = 330.0
+        external_timeout = max(90.0, min(900.0, external_timeout))
+        minimum_external_timeout = gpt_image_timeout_seconds() + 30.0
+        if external_timeout < minimum_external_timeout:
+            logger.warning({
+                "event": "openrouter_job_timeout_adjusted",
+                "configured_seconds": external_timeout,
+                "minimum_seconds": minimum_external_timeout,
+            })
+            external_timeout = minimum_external_timeout
+        _external_job_manager.job_timeout_seconds = external_timeout
     except Exception as e:
         logger.debug({"event": "job_manager_env_apply_failed", "error": str(e)})
     job_manager.start()

@@ -122,11 +122,6 @@
         showTitle: false,
         showDescription: false,
       },
-      NanoBanana_WhatsNextVariations: {
-        url: '/static/img/banner/img_banner_Banana_WhatsNext.png',
-        showTitle: false,
-        showDescription: false,
-      },
       NanoBanana_ChainsawJuiceKingCharacter: {
         // TODO: 선생님이 추가하실 전용 배너 이미지로 교체 예정
         url: '/static/img/banner/img_banner_Banana_CJKCharacterSheet.png',
@@ -149,18 +144,8 @@
         showTitle: false,
         showDescription: false
       },
-      'OHDstyle_Qwen': {
-        url: '/static/img/banner/img_banner_workflow_OHDStyle_QWEN.png',
-        showTitle: false,
-        showDescription: false
-      },
       'RMBG2': {
         url: '/static/img/banner/img_banner_RMBG2.png',
-        showTitle: false,
-        showDescription: false
-      },
-      'CJKStyle_Klein_Character': {
-        url: '/static/img/banner/img_banner_workflow_CJKStyle_Klein.png',
         showTitle: false,
         showDescription: false
       },

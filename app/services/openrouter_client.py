@@ -20,18 +20,39 @@ IMAGE_MODEL_OPTIONS: Dict[str, Dict[str, Any]] = {
         "description": "고품질 · 1K와 2K 출력 비용 동일",
         "resolutions": ["1K", "2K"],
         "default_resolution": "2K",
+        "zdr": True,
+        "max_input_references": 14,
     },
     "google/gemini-3.1-flash-image": {
         "label": "Nano Banana 2",
         "description": "균형형 · 빠른 생성과 해상도별 과금",
         "resolutions": ["1K", "2K"],
         "default_resolution": "1K",
+        "zdr": True,
+        "max_input_references": 14,
     },
     "google/gemini-3.1-flash-lite-image": {
         "label": "Nano Banana 2 Lite",
         "description": "경제형 · 빠른 초안 및 반복 작업",
         "resolutions": ["1K"],
         "default_resolution": "1K",
+        "zdr": True,
+        "max_input_references": 14,
+    },
+    "openai/gpt-image-2": {
+        "label": "GPT Image 2",
+        "description": "OpenAI · 정교한 지시 이행과 이미지 편집",
+        "resolutions": ["1K", "2K"],
+        "default_resolution": "1K",
+        "qualities": [
+            {"value": "low", "label": "Low · 빠른 초안"},
+            {"value": "medium", "label": "Medium · 일반 작업"},
+            {"value": "high", "label": "High · 최종 품질"},
+        ],
+        "default_quality": "medium",
+        "zdr": False,
+        "max_input_references": 16,
+        "privacy_notice": "ZDR 미지원 · 데이터 수집 거부 설정은 유지됩니다.",
     },
 }
 
@@ -62,6 +83,14 @@ def is_configured() -> bool:
     return bool(str(os.getenv("OPENROUTER_API_KEY") or "").strip())
 
 
+def gpt_image_timeout_seconds() -> float:
+    try:
+        value = float(os.getenv("GPT_IMAGE_2_TIMEOUT_SECONDS", "300") or "300")
+    except Exception:
+        value = 300.0
+    return max(60.0, min(600.0, value))
+
+
 def public_image_model_options() -> List[Dict[str, Any]]:
     return [
         {
@@ -70,17 +99,23 @@ def public_image_model_options() -> List[Dict[str, Any]]:
             "description": cfg["description"],
             "resolutions": list(cfg["resolutions"]),
             "default_resolution": cfg["default_resolution"],
+            "qualities": list(cfg.get("qualities") or []),
+            "default_quality": cfg.get("default_quality"),
+            "zdr": bool(cfg.get("zdr", True)),
+            "privacy_notice": str(cfg.get("privacy_notice") or ""),
+            "max_input_references": int(cfg.get("max_input_references") or 0),
         }
         for model_id, cfg in IMAGE_MODEL_OPTIONS.items()
     ]
 
 
-def resolve_image_model_and_resolution(
+def resolve_image_model_options(
     *,
     requested_model: Optional[str],
     requested_resolution: Optional[str],
+    requested_quality: Optional[str],
     default_model: str,
-) -> Tuple[str, str]:
+) -> Tuple[str, str, Optional[str]]:
     model = str(requested_model or default_model or "").strip()
     cfg = IMAGE_MODEL_OPTIONS.get(model)
     if not cfg:
@@ -91,7 +126,21 @@ def resolve_image_model_and_resolution(
     if resolution not in allowed:
         allowed_text = ", ".join(str(v) for v in allowed)
         raise RuntimeError(f"선택한 모델은 {resolution} 출력을 지원하지 않습니다. 지원 해상도: {allowed_text}")
-    return model, resolution
+    quality_options = cfg.get("qualities") or []
+    allowed_qualities = [str(item.get("value") or "") for item in quality_options if isinstance(item, dict)]
+    if allowed_qualities:
+        quality = str(requested_quality or cfg.get("default_quality") or "").strip().lower()
+        if quality not in allowed_qualities:
+            allowed_text = ", ".join(allowed_qualities)
+            raise RuntimeError(f"선택한 모델은 {quality or '빈'} 품질 옵션을 지원하지 않습니다. 지원 품질: {allowed_text}")
+    else:
+        quality = None
+    return model, resolution, quality
+
+
+def image_model_max_references(model: str) -> int:
+    cfg = IMAGE_MODEL_OPTIONS.get(str(model or "").strip()) or {}
+    return max(1, min(16, int(cfg.get("max_input_references") or 14)))
 
 
 def _get_api_key() -> str:
@@ -122,16 +171,41 @@ def _headers() -> Dict[str, str]:
     return headers
 
 
-def _provider_preferences(*, require_parameters: bool) -> Dict[str, Any]:
+def _provider_preferences(*, require_parameters: bool, model: Optional[str] = None) -> Dict[str, Any]:
     prefs: Dict[str, Any] = {
         "data_collection": "deny",
         "require_parameters": bool(require_parameters),
     }
-    # Nano Banana Pro currently has a ZDR-capable route. This can be disabled
-    # later for a model that has no ZDR route (for example via OPENROUTER_ZDR=false).
+    # Respect the global privacy default, except for explicitly allowlisted
+    # models that currently have no ZDR-capable route (GPT Image 2).
     zdr = str(os.getenv("OPENROUTER_ZDR", "true") or "true").strip().lower()
-    prefs["zdr"] = zdr not in ("0", "false", "no", "off")
+    global_zdr = zdr not in ("0", "false", "no", "off")
+    model_cfg = IMAGE_MODEL_OPTIONS.get(str(model or "").strip())
+    # A model may force ZDR off when no compatible route exists. Otherwise the
+    # operator's global OPENROUTER_ZDR setting remains authoritative.
+    prefs["zdr"] = False if model_cfg and model_cfg.get("zdr") is False else global_zdr
     return prefs
+
+
+def _gpt_image_size(resolution: str, aspect_ratio: Optional[str]) -> str:
+    resolution = str(resolution or "1K").strip().upper()
+    aspect = str(aspect_ratio or "1:1").strip()
+    sizes = {
+        "1K": {
+            "1:1": "1024x1024",
+            "16:9": "1536x1024",
+            "9:16": "1024x1536",
+        },
+        "2K": {
+            "1:1": "2048x2048",
+            "16:9": "2048x1152",
+            "9:16": "1152x2048",
+        },
+    }
+    by_aspect = sizes.get(resolution)
+    if not by_aspect:
+        raise RuntimeError(f"GPT Image 2가 지원하지 않는 해상도입니다: {resolution}")
+    return by_aspect.get(aspect, by_aspect["1:1"])
 
 
 def _parse_error(resp: requests.Response) -> Tuple[Optional[str], Optional[str]]:
@@ -157,7 +231,10 @@ def _raise_for_response(resp: requests.Response, *, context: str) -> None:
     except Exception:
         pass
 
-    if status in (401, 403):
+    if str(code or "").lower() == "moderation_blocked" or "moderation_blocked" in low:
+        kind = "openrouter_moderation_blocked"
+        message = "안전 정책으로 인해 이미지를 만들 수 없어요. 표현을 조금 바꿔 다시 시도해 주세요."
+    elif status in (401, 403):
         kind = "openrouter_auth"
         message = "OpenRouter 연결 설정에 문제가 있어요. 운영자에게 문의해 주세요."
     elif status == 402 or "credit" in low or "balance" in low:
@@ -203,6 +280,23 @@ def _post(path: str, payload: Dict[str, Any], *, timeout: Tuple[float, float], c
             json=payload,
             timeout=timeout,
         )
+    except requests.exceptions.ReadTimeout as exc:
+        logger.warning({
+            "event": "openrouter_read_timeout",
+            "context": context,
+            "read_timeout_seconds": timeout[1] if isinstance(timeout, tuple) and len(timeout) > 1 else None,
+            "error": str(exc),
+        })
+        timeout_message = (
+            "이미지 생성 시간이 길어 응답 제한시간을 초과했어요. 잠시 후 다시 시도해 주세요."
+            if context == "image"
+            else "외부 AI 응답 시간이 길어 제한시간을 초과했어요. 잠시 후 다시 시도해 주세요."
+        )
+        raise OpenRouterUpstreamError(
+            timeout_message,
+            kind="openrouter_timeout",
+            upstream_message=str(exc),
+        ) from exc
     except Exception as exc:
         logger.warning({"event": "openrouter_network_error", "context": context, "error": str(exc)})
         raise OpenRouterUpstreamError(
@@ -271,6 +365,7 @@ def generate_image(
     images: Optional[List[bytes]] = None,
     aspect_ratio: Optional[str] = None,
     resolution: Optional[str] = None,
+    quality: Optional[str] = None,
     timeout: Tuple[float, float] = (5.0, 90.0),
 ) -> bytes:
     model = str(model or "").strip()
@@ -280,12 +375,17 @@ def generate_image(
         "model": model,
         "prompt": str(prompt or ""),
         "n": 1,
-        "provider": _provider_preferences(require_parameters=True),
+        "provider": _provider_preferences(require_parameters=True, model=model),
     }
-    if aspect_ratio:
-        payload["aspect_ratio"] = str(aspect_ratio).strip()
-    if resolution:
-        payload["resolution"] = str(resolution).strip().upper()
+    if model == "openai/gpt-image-2":
+        payload["size"] = _gpt_image_size(str(resolution or "1K"), aspect_ratio)
+        payload["quality"] = str(quality or "medium").strip().lower()
+        payload["background"] = "opaque"
+    else:
+        if aspect_ratio:
+            payload["aspect_ratio"] = str(aspect_ratio).strip()
+        if resolution:
+            payload["resolution"] = str(resolution).strip().upper()
     refs: List[Dict[str, Any]] = []
     for raw in images or []:
         if isinstance(raw, (bytes, bytearray)) and raw:
@@ -296,8 +396,15 @@ def generate_image(
                 },
             })
     if refs:
+        max_refs = image_model_max_references(model)
+        if len(refs) > max_refs:
+            raise RuntimeError(f"선택한 모델은 참조 이미지를 최대 {max_refs}장까지 지원합니다.")
         payload["input_references"] = refs
-    return _extract_image(_post("images", payload, timeout=timeout, context="image"))
+    data = _post("images", payload, timeout=timeout, context="image")
+    usage = data.get("usage") if isinstance(data, dict) else None
+    if isinstance(usage, dict):
+        logger.info({"event": "openrouter_image_usage", "model": model, "usage": usage})
+    return _extract_image(data)
 
 
 def generate_text(
@@ -316,7 +423,7 @@ def generate_text(
         "temperature": float(temperature),
         "top_p": float(top_p),
         "max_tokens": int(max_tokens),
-        "provider": _provider_preferences(require_parameters=False),
+        "provider": _provider_preferences(require_parameters=False, model=chosen_model),
     }
     data = _post("chat/completions", payload, timeout=timeout, context="text")
     choices = data.get("choices")

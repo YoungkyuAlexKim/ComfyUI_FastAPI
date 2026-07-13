@@ -47,7 +47,13 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
         "default_user_prompt": "",
-        "style_prompt": "",
+        "style_prompt_position": "prepend",
+        "style_prompt": (
+            "TASK: Create one finished image that follows the USER REQUEST.\n"
+            "PRIORITY: Follow the user's explicit subject, action, composition, style, and output requirements.\n"
+            "REFERENCE IMAGES: When references are attached, use them only for the identities, designs, or visual details requested by the user; do not reproduce a reference-sheet layout unless requested.\n"
+            "OUTPUT: Return one clean final image. Do not add unrequested text, captions, logos, borders, or watermarks."
+        ),
         "negative_prompt": "",
 
         # Provider routing (handled in app/services/generation.py)
@@ -74,8 +80,15 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "기본 워크플로우 — 편집",
         "description": "이미지를 입력으로 받아 자연어로 편집합니다. (단일 입력)",
 
-        "default_user_prompt": "Remove the logo and make it look like watercolor",
-        "style_prompt": "",
+        "default_user_prompt": "Edit the provided image according to the requested changes.",
+        "style_prompt_position": "prepend",
+        "style_prompt": (
+            "TASK: Edit the provided image or images according to the USER REQUEST.\n"
+            "INPUT ROLES: Treat Image 1 as the base image unless the user explicitly assigns different roles. Treat additional images as references or source elements in their provided order.\n"
+            "EDIT BOUNDARY: Change only what the user requests. Keep everything else the same unless a requested change logically requires a local adjustment.\n"
+            "PRESERVE: Maintain unrequested subject identity, facial features, body proportions, composition, camera angle, geometry, background, palette, lighting, rendering style, and existing text or design elements.\n"
+            "OUTPUT: Return one clean edited image. Do not add unrequested text, captions, logos, borders, or watermarks."
+        ),
         "negative_prompt": "",
 
         "provider": "openrouter",
@@ -108,20 +121,17 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
         # 사용자가 아무 설명을 안 해도 일단 결과가 나오도록 기본 프롬프트 제공
         # (툴 워크플로우에서는 프롬프트 입력창을 숨기므로, 내부 프롬프트는 영어로 고정하는 것이 안정적입니다.)
-        "default_user_prompt": (
-            "Create a character turnaround sheet based on the provided character image.\n"
-            "Keep the original character identity and style consistent across all views."
-        ),
+        "default_user_prompt": "Create a character turnaround sheet from the provided character reference.",
         "style_prompt_position": "prepend",
         "style_prompt": (
-            "You are making a character turnaround sheet for a game art pipeline.\n"
-            "Use the provided character image as the identity reference.\n"
-            "Output a clean turnaround sheet in ONE image: front, 3/4 front, side, back, 3/4 back.\n"
-            "Keep the character design consistent across all views (face, proportions, outfit, colors, accessories).\n"
-            "Use a simple neutral background, consistent lighting, and clear separation between views.\n"
-            "Characters/objects/outfits: use only what is present in the reference image.\n"
-            "Text elements: absent (captions, labels).\n"
-            "Branding: absent (watermark, logos)."
+            "GOAL: Create a production-ready character turnaround sheet for a game-art pipeline.\n"
+            "REFERENCE: Image 1 is the sole source of character identity and design.\n"
+            "VIEW SPECIFICATION: Follow the exact view count and ordered view list stated in the user requirements. Create each requested view exactly once; do not add, omit, or duplicate views.\n"
+            "CONSISTENCY: Preserve the same face, hairstyle, body proportions, outfit construction, colors, materials, accessories, and art style in every view. Preserve asymmetrical details on the correct side of the character.\n"
+            "POSE AND CAMERA: Neutral standing pose, arms relaxed where the design allows, full body visible with head and feet included, consistent scale, eye-level camera, and minimal perspective distortion.\n"
+            "LAYOUT: Place views in one horizontal sheet in the specified order, evenly spaced and clearly separated, on a simple neutral background with uniform neutral lighting.\n"
+            "BOUNDARY: Do not redesign, beautify, simplify, add, or remove character details.\n"
+            "OUTPUT: One clean sheet image. Do not add labels, captions, borders, logos, or watermarks."
         ),
         "negative_prompt": "",
 
@@ -162,20 +172,16 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         # 툴 워크플로우:
         # - 기본 동작은 "프롬프트 없이도" 결과가 나오도록 영어 기본 프롬프트를 둡니다.
         # - 사용자가 원하면 "화풍(스타일) 힌트"를 선택 입력으로 추가할 수 있도록 UI에서 프롬프트 입력을 엽니다.
-        "default_user_prompt": (
-            "Create a portrait expression sheet based on the provided character image.\n"
-            "Keep the original character identity and style consistent."
-        ),
+        "default_user_prompt": "Create a portrait expression sheet from the provided character reference.",
         "style_prompt_position": "prepend",
         "style_prompt": (
-            "You are making a portrait expression sheet for a game art pipeline.\n"
-            "Use the provided character image as the identity reference.\n"
-            "Keep the character design consistent across all portraits (face, proportions, outfit, colors, accessories).\n"
-            "Portrait framing: head and shoulders.\n"
-            "Use consistent lighting and a simple neutral background.\n"
-            "Style: match the reference image style unless a STYLE OVERRIDE is provided by the user.\n"
-            "Text elements: absent (captions, labels).\n"
-            "Branding: absent (watermark, logos)."
+            "GOAL: Create a production-ready character expression portrait sheet for a game-art pipeline.\n"
+            "REFERENCE: Image 1 is the source of character identity and design. Match its art style unless a STYLE OVERRIDE is explicitly provided.\n"
+            "EXPRESSION SPECIFICATION: Follow the exact portrait count, grid, and ordered expression list stated in the user requirements. Show each requested expression exactly once; do not add, omit, or duplicate portraits.\n"
+            "IDENTITY: Preserve facial structure, eye shape and color, hairstyle, age, body proportions, outfit, colors, materials, and accessories across every portrait. Change only expression-related facial muscles and subtle expression-appropriate head movement.\n"
+            "FRAMING: Head-and-shoulders portraits, near-front view, eyes visible where appropriate, consistent crop, head size, camera, background, and lighting in every cell.\n"
+            "LAYOUT: One evenly divided grid on a simple neutral background, with one centered portrait per cell.\n"
+            "OUTPUT: One clean sheet image. Do not add labels, captions, borders, logos, or watermarks."
         ),
         "negative_prompt": "",
 
@@ -220,16 +226,15 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "hidden": False,
 
         # 툴 워크플로우: 프롬프트 입력을 숨기므로, 기본 프롬프트는 간단한 영어로 고정합니다.
-        "default_user_prompt": "Relight the provided image. Change lighting only.",
+        "default_user_prompt": "Relight the provided image according to the selected lighting requirements.",
         "style_prompt_position": "prepend",
         "style_prompt": (
-            "You are relighting an existing image.\n"
-            "Keep the original subject identity and style consistent.\n"
-            "Composition/camera/background: keep unchanged.\n"
-            "Characters/outfits/objects: keep unchanged.\n"
-            "Output: one single clean image.\n"
-            "Text elements: absent.\n"
-            "Branding: absent."
+            "TASK: Perform a controlled, surgical relighting of Image 1.\n"
+            "CHANGE ONLY: Illumination direction, intensity, softness, shadow behavior, highlights, reflections, and the explicitly selected color mood.\n"
+            "PRESERVE EXACTLY: Subject identity, facial features, pose, anatomy, outfit, objects, object positions, shapes, textures, composition, crop, camera angle, perspective, background structure, and rendering style.\n"
+            "Do not redraw, restyle, beautify, add, remove, move, or replace scene content. Preserve existing text and logos; do not add new ones.\n"
+            "Make light and shadows physically coherent with the scene geometry and selected light direction.\n"
+            "OUTPUT: One clean relit image with the original framing and aspect ratio."
         ),
         "negative_prompt": "",
 
@@ -420,43 +425,27 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "default_user_prompt": "",
         "style_prompt_position": "prepend",
         "style_prompt": (
-            "ROLE: film trailer director, cinematographer, storyboard artist\n"
-            "TASK: storyboard cutboard (single image grid) for a 10–15 second cinematic sequence\n"
-            "INPUT: 1 reference image\n"
+            "GOAL: Create a storyboard cutboard in one image for a coherent 10–15 second cinematic sequence.\n"
+            "REFERENCE: Image 1 establishes the characters, designs, location, visual style, time of day, and starting situation.\n"
             "\n"
-            "ANALYSIS:\n"
-            "- Identify subjects, positions, environment, time of day, lighting\n"
-            "\n"
-            "STYLE:\n"
-            "- Match reference image style exactly (linework, shading/rendering, proportions, palette)\n"
-            "\n"
-            "CHARACTER:\n"
-            "- Keep the same identity/design across all panels (face, hair, outfit, colors)\n"
-            "\n"
-            "SCENE:\n"
-            "- Use the characters/objects/outfits/locations already present in the reference image\n"
-            "- Keep environment, time of day, lighting style consistent\n"
-            "- Keep a consistent cinematic color grade\n"
+            "CONTINUITY:\n"
+            "- Preserve character identity, face, hair, body proportions, outfit, colors, object design, location, art style, and cinematic color grade across all panels.\n"
+            "- Maintain screen direction, spatial relationships, prop continuity, and believable action progression between adjacent panels.\n"
+            "- Introduce new characters, objects, or location details only when the STORY explicitly requires them.\n"
             "\n"
             "ALLOWED CHANGES:\n"
-            "- framing, camera angle, camera distance\n"
-            "- lens feel and depth of field (wide: deeper DOF, close-up: shallower DOF)\n"
-            "- implied camera motion through composition\n"
-            "- subtle plausible action within the same scene\n"
+            "- Character action, expression, and staging required by the STORY.\n"
+            "- Framing, camera angle, camera distance, lens feel, depth of field, and implied camera motion.\n"
             "\n"
-            "STORY ARC:\n"
-            "- Setup → Escalation → Turning Point → Resolution\n"
+            "SEQUENCE:\n"
+            "- Read chronologically from left to right, then top to bottom.\n"
+            "- Create exactly the requested number of panels, each showing one distinct consecutive moment; do not duplicate or omit panels.\n"
+            "- Build a clear setup → escalation → turning point → resolution arc that follows the STORY rather than inventing a different plot.\n"
             "\n"
             "FORMAT:\n"
-            "- output: 1 image\n"
-            "- layout: grid, panels edge-to-edge, border=0, gutter=0, padding=0, margin=0\n"
-            "- text: absent\n"
-            "- branding: absent\n"
-            "\n"
-            "USER FIELDS (provided below):\n"
-            "- STORY: one short sentence describing what happens\n"
-            "- CUTS: 6 or 9\n"
-            "- GRID: 2x3 or 3x3\n"
+            "- One image containing the exact requested grid.\n"
+            "- Panels edge-to-edge with no outer padding, captions, labels, logos, or watermarks.\n"
+            "- Keep panel boundaries visually clear without decorative frames.\n"
         ),
         "negative_prompt": "",
 
@@ -483,67 +472,10 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
                 ],
                 "defaultCuts": "9",
             },
-        },
-    },
-
-    "NanoBanana_WhatsNextVariations": {
-        "display_name": "다음 장면 바리에이션 (4개)",
-        "description": "입력 이미지 1장을 기준으로, 같은 화풍/같은 캐릭터로 ‘다음에 벌어질 법한 상황’ 4가지를 2×2 그리드 한 장으로 보여줍니다.",
-        "hidden": False,
-
-        "default_user_prompt": "",
-        "style_prompt_position": "prepend",
-        "style_prompt": (
-            "ROLE: film director, cinematographer, storyboard artist\n"
-            "TASK: next-beat variations (multiple plausible continuations) in one grid image\n"
-            "INPUT: 1 reference image\n"
-            "\n"
-            "ANALYSIS:\n"
-            "- Identify subjects, positions, environment, time of day, lighting\n"
-            "\n"
-            "STYLE:\n"
-            "- Match reference image style exactly (linework, shading/rendering, proportions, palette)\n"
-            "\n"
-            "CHARACTER:\n"
-            "- Keep the same identity/design across all panels (face, hair, outfit, colors)\n"
-            "\n"
-            "SCENE CONTINUITY:\n"
-            "- Keep location and time of day consistent\n"
-            "- Keep lighting style unchanged\n"
-            "- Keep a consistent cinematic color grade\n"
-            "\n"
-            "VARIATIONS:\n"
-            "- Create 4 distinct plausible next situations after the reference moment\n"
-            "- Keep changes believable within the same world\n"
-            "- Keep the same cast\n"
-            "\n"
-            "FORMAT:\n"
-            "- output: 1 image\n"
-            "- grid: 2x2\n"
-            "- layout: panels edge-to-edge, border=0, gutter=0, padding=0, margin=0\n"
-            "- text: absent\n"
-            "- branding: absent\n"
-            "\n"
-            "USER FIELDS (provided below):\n"
-            "- STORY: one short sentence describing what happens next\n"
-        ),
-        "negative_prompt": "",
-
-        "provider": "openrouter",
-        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "image-edit"},
-
-        "image_input": {"image_node": "_openrouter", "input_field": "image"},
-
-        "ui": {
-            "templateMode": "nanobanana",
-            "showLora": False,
-            "showPromptTranslate": False,
-            "generateLabel": "다음 장면 4개 만들기",
-            # 기본 목적이 "자동으로 다음 전개를 상상"이므로 프롬프트 입력은 숨김(선택 입력이 필요하면 추후 고급 토글로 열 수 있음)
-            "hideUserPrompt": True,
-            # 항상 2x2 그리드(정사각)로 고정하므로 비율 선택 UI는 숨김
-            "disableAspect": True,
-            "whatsNextTool": {"enabled": True},
+            "hostedModelRecommendation": {
+                "title": "GPT Image 2 권장",
+                "message": "컷 간 연속성과 구도 정확도를 안정적으로 확보하려면 GPT Image 2 사용을 권장합니다.",
+            },
         },
     },
 
@@ -579,8 +511,6 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "ui": {
             "icon": "crown",
             "templateMode": "nanobanana",
-            # 실험적/임시 성격의 워크플로우 표시용 뱃지
-            "badges": ["EXP"],
             "showLora": False,
             # 이 워크플로우는 한글 컨셉 입력이 더 잘 먹히는 경우가 있어 기본은 번역 버튼을 숨깁니다.
             "showPromptTranslate": False,
@@ -588,6 +518,10 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "userPromptPlaceholder": "어떤 컨셉인가요? (예: 일본애니 판타지 컨셉, 인어공주 동화 스타일) — 비워두면 기본: 일상 캐주얼 스타일",
             # Aspect ratio will be forced to square in frontend for this tool.
             "disableAspect": True,
+            "hostedModelRecommendation": {
+                "title": "GPT Image 2 권장",
+                "message": "이 워크플로우의 캐릭터 구조와 8×8 의상 시트를 정확하게 구현하려면 GPT Image 2 사용을 권장합니다.",
+            },
         },
     },
 
@@ -710,247 +644,6 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "character": ""
         }
     },
-
-    "CJKStyle_Klein_Character": {
-        "display_name": "CJK 아트생성",
-        "description": "CJK 아트 생성 워크플로우입니다. 상단 탭에서 캐릭터/펫을 전환할 수 있습니다.",
-
-        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
-        "default_user_prompt": "",
-
-        # 프롬프트: CLIPTextEncode(107).inputs.text
-        "prompt_node": "107",
-        "prompt_input_key": "text",
-
-        # 스타일 토큰/룰(숨김 마스터 프롬프트): 항상 프롬프트 앞에 붙습니다.
-        # - 트리거 워드 + 캐릭터 핵심 규칙(필수)
-        "style_prompt": "CJKUnit., An armless character with simple dot eyes, featuring tiny black legs.",
-        "style_prompt_position": "prepend",
-        "negative_prompt": "",
-
-        # Seed: RandomNoise(104).inputs.noise_seed
-        "seed_node": "104",
-        "seed_input_key": "noise_seed",
-
-        # 비율 기반 사이즈 (프론트는 square/landscape/portrait 선택)
-        "sizes": {
-            "square": {"width": 1024, "height": 1024},
-            "landscape": {"width": 1344, "height": 768},
-            "portrait": {"width": 768, "height": 1344},
-        },
-
-        # 이 워크플로우는 width/height가 PrimitiveInt 노드(122/123)에서 결정됩니다.
-        # 서버는 이 노드들의 inputs.value만 업데이트하면, 연결된 모든 노드가 동일한 크기를 참조하게 됩니다.
-        "size_nodes": {"width_node": "122", "height_node": "123", "value_key": "value"},
-
-        # LoRA: LoraLoaderModelOnly(117).inputs.strength_model
-        "loras": {
-            "style": {
-                "node": "117",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                # LoraLoaderModelOnly는 clip strength가 없으므로 동일 키로 매핑
-                "clip_input": "strength_model",
-                "defaults": {"unet": 1.0, "clip": 1.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            }
-        },
-        "lora_hint": {
-            "style": "강도를 높일수록 CJK 스타일 성향이 강해집니다.",
-            "character": "",
-        },
-
-        # 사용자 입력 이미지 없이, ComfyUI input 폴더에 미리 존재하는 레퍼런스 이미지를 사용합니다.
-        # (없으면 서버가 친절한 에러로 안내합니다.)
-        "required_comfy_inputs": ["CJKCharacterBase.png"],
-
-        # UI 힌트
-        "ui": {
-            # 컵/음료(주스) 느낌 아이콘
-            "icon": "glass-water",
-            "showLora": True,
-            "showStyleLora": True,
-            "showCharacterLora": False,
-            "showPromptTranslate": True,
-            "userPromptPlaceholder": "원하는 캐릭터를 간단히 설명해 주세요. (예: 세라복을 입은 학교 소녀, 연두색 머리, 별 모양 머리장식)",
-            "templateMode": "natural",
-            # 내부 뎁스(탭) 분기:
-            # - 기본(Txt2Img) 탭: 캐릭터 생성
-            # - 보조(Img2Img) 탭: 펫 생성 (입력 이미지를 요구하지 않는 Txt2Img 워크플로우지만, UI 탭 구조를 재사용합니다)
-            "related": {"img2img": "CJKStyle_Klein_Pet", "items": "CJKStyle_Klein_Items"},
-            "modeTabLabels": {"txt2img": "캐릭터생성", "img2img": "펫생성", "items": "아이템생성"},
-            "modeTabIcons": {"txt2img": "🧑", "img2img": "🐾", "items": "🪚"},
-        },
-    },
-
-    "CJKStyle_Klein_Pet": {
-        # 좌측 목록에서는 숨기고, CJK 아트생성 내부 탭에서만 사용합니다.
-        "hidden": True,
-        "display_name": "CJK 아트생성 (펫)",
-        "description": "Klein(Flux2) 기반 CJK 펫 아트 생성 워크플로우입니다. 메인(펫) LoRA + 서브(톤 맞춤) LoRA를 함께 사용합니다.",
-
-        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
-        "default_user_prompt": "",
-
-        # 프롬프트: CLIPTextEncode(94).inputs.text
-        "prompt_node": "94",
-        "prompt_input_key": "text",
-
-        # 트리거: CJKPet.
-        "style_prompt": "CJKPet.",
-        "style_prompt_position": "prepend",
-        "negative_prompt": "",
-
-        # Seed: RandomNoise(92).inputs.noise_seed
-        "seed_node": "92",
-        "seed_input_key": "noise_seed",
-
-        # Size: PrimitiveInt(90/91).inputs.value
-        "sizes": {
-            "square": {"width": 768, "height": 768},
-            "landscape": {"width": 1024, "height": 576},
-            "portrait": {"width": 576, "height": 1024},
-        },
-        "size_nodes": {"width_node": "90", "height_node": "91", "value_key": "value"},
-
-        # LoRA 매핑:
-        # - 메인(펫) LoRA: node 100 (CJKStyle_pet.safetensors)
-        # - 서브(톤 맞춤) LoRA: node 102 (CJKStyle_ver3.safetensors, 기본 0.3 유지 권장)
-        #
-        # UI에서 슬롯 이름은 기존 구조를 재사용합니다:
-        # - style => 메인(펫)
-        # - character => 서브(톤 맞춤)
-        "loras": {
-            "style": {
-                "node": "100",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_model",
-                "defaults": {"unet": 1.0, "clip": 1.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            },
-            "character": {
-                "node": "102",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_model",
-                "defaults": {"unet": 0.3, "clip": 0.3},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            },
-        },
-        "lora_hint": {
-            "style": "메인(펫) LoRA 강도입니다. 기본값 1.0을 기준으로 조절하세요.",
-            "character": "서브(톤 맞춤) LoRA입니다. 기본값 0.3을 유지하는 것을 권장합니다.",
-        },
-
-        "ui": {
-            "showLora": True,
-            "showStyleLora": True,
-            "showCharacterLora": True,
-            "showPromptTranslate": True,
-            "userPromptPlaceholder": "원하는 펫을 간단히 설명해 주세요. (예: 작은 강아지, 뿔 1개, 두 톤 털색, 단순한 배경)",
-            "templateMode": "natural",
-            # LoRA 라벨 커스텀(기존 CSS/DOM 구조 유지)
-            "loraLabels": {
-                "style": "Pet LoRA (main)",
-                "character": "Style LoRA (sub)",
-            },
-            # 기본값(0.3)을 보존하기 위해, 서브 LoRA는 "고급 토글"로 잠금(기본: 숨김)
-            "loraAdvanced": {
-                "enableCharacterToggle": True,
-                "defaultUnlocked": False,
-                "label": "서브 LoRA 조절(고급 · 기본 0.3 유지 권장)",
-            },
-        },
-    },
-
-    "CJKStyle_Klein_Items": {
-        # 좌측 목록에서는 숨기고, CJK 아트생성 내부 탭에서만 사용합니다.
-        "hidden": True,
-        "display_name": "CJK 아트생성 (아이템)",
-        "description": "Klein(Flux2) 기반 CJK 아이템/오브젝트 어셋 생성 워크플로우입니다. 메인(아이템) LoRA + 서브(톤 맞춤) LoRA를 함께 사용합니다.",
-
-        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
-        "default_user_prompt": "",
-
-        # 프롬프트: CLIPTextEncode(94).inputs.text
-        "prompt_node": "94",
-        "prompt_input_key": "text",
-
-        # 트리거: 워크플로우 JSON에선 CJKUnit. 로 구성되어 있어 그대로 사용합니다.
-        "style_prompt": "CJKUnit.",
-        "style_prompt_position": "prepend",
-        "negative_prompt": "",
-
-        # Seed: RandomNoise(92).inputs.noise_seed
-        "seed_node": "92",
-        "seed_input_key": "noise_seed",
-
-        # Size: PrimitiveInt(90/91).inputs.value
-        "sizes": {
-            "square": {"width": 768, "height": 768},
-            "landscape": {"width": 1024, "height": 576},
-            "portrait": {"width": 576, "height": 1024},
-        },
-        "size_nodes": {"width_node": "90", "height_node": "91", "value_key": "value"},
-
-        # LoRA 매핑:
-        # - 메인(아이템) LoRA: node 100 (CJKItems_001.safetensors)
-        # - 서브(톤 맞춤) LoRA: node 102 (CJKStyle_ver3.safetensors, 기본 0.3 유지 권장)
-        "loras": {
-            "style": {
-                "node": "100",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_model",
-                "defaults": {"unet": 1.0, "clip": 1.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            },
-            "character": {
-                "node": "102",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_model",
-                "defaults": {"unet": 0.3, "clip": 0.3},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            },
-        },
-        "lora_hint": {
-            "style": "메인(아이템) LoRA 강도입니다. 기본값 1.0을 기준으로 조절하세요.",
-            "character": "서브(톤 맞춤) LoRA입니다. 기본값 0.3을 유지하는 것을 권장합니다.",
-        },
-
-        "ui": {
-            "showLora": True,
-            "showStyleLora": True,
-            "showCharacterLora": True,
-            "showPromptTranslate": True,
-            "userPromptPlaceholder": "원하는 아이템/오브젝트를 간단히 설명해 주세요. (예: 보석이 박힌 검, 포션 병, 황금 열쇠)",
-            "templateMode": "natural",
-            # 라벨 커스텀(기존 CSS/DOM 구조 유지)
-            "loraLabels": {
-                "style": "Item LoRA (main)",
-                "character": "Style LoRA (sub)",
-            },
-            # 기본값(0.3)을 보존하기 위해, 서브 LoRA는 "고급 토글"로 잠금(기본: 숨김)
-            "loraAdvanced": {
-                "enableCharacterToggle": True,
-                "defaultUnlocked": False,
-                "label": "서브 LoRA 조절(고급 · 기본 0.3 유지 권장)",
-            },
-        },
-    },
-
 
     "LOSstyle_Qwen": {
         "display_name": "LOS 스타일",
@@ -1154,213 +847,6 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         },
     },
 
-    "OHDstyle_Qwen": {
-        "display_name": "OHD 스타일",
-        "description": "Qwen 이미지 베이스 + Lightning LoRA 고정, 스타일 LoRA 조절형(컨트롤넷 없음)",
-
-        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
-        "default_user_prompt": "",
-
-        # 노드 ID 매핑 (OHDstyle_Qwen.json 기준)
-        "prompt_node": "6",
-        "negative_prompt_node": "7",
-        "seed_node": "3",
-        "latent_image_node": "58",
-
-        # 시스템 스타일 프롬프트
-        "style_prompt": "OHDart, Cute cozy cartoon style with thick clean outlines and soft pastel coloring",
-        "negative_prompt": "",
-
-        # 권장 해상도: 정사각 1280x1280
-        "sizes": {
-            "square": {"width": 1280, "height": 1280},
-            "landscape": {"width": 1280, "height": 720},
-            "portrait": {"width": 720, "height": 1280},
-        },
-
-        # UI 힌트: 컨트롤넷 비노출, 스타일 LoRA만 노출(캐릭터 LoRA는 숨김)
-        "ui": {
-            "icon": "dog",
-            "showLora": True,
-            "showStyleLora": True,
-            "showCharacterLora": False,
-            # OHD 스타일: 한국어 자연어 → 이미지 생성용 영어 프롬프트 변환 버튼 사용
-            "showPromptTranslate": True,
-            "userPromptPlaceholder": "어떤 장면을 만들고 싶으신가요? 한 문장으로 적어주세요. (예: 따뜻한 실내, 귀여운 캐릭터, 파스텔 톤)",
-            "templateMode": "natural",
-            # Img2Img는 Klein 워크플로우로 연결
-            "related": {"img2img": "OHDStyle_Klein_Img2Img"},
-        },
-
-        # LoRA 매핑: Lightning(고정), 스타일(조절), 캐릭터(0.0, 비노출)
-        # Qwen 워크플로우는 LoraLoaderModelOnly를 사용하므로 strength_clip이 없습니다.
-        "loras": {
-            "style": {
-                "node": "75",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_model",
-                "defaults": {"unet": 1.0, "clip": 1.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            },
-            "character": {
-                "node": "76",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_model",
-                "defaults": {"unet": 0.0, "clip": 0.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            },
-        },
-
-        # 사용자 안내 문구
-        "lora_hint": {
-            "style": "강도를 높일수록 OHD 스타일 성향이 강해집니다.",
-            "character": "캐릭터 LoRA는 현재 숨김 상태입니다. 필요 시만 사용하세요.",
-        },
-    },
-
-    "OHDStyle_Klein_Img2Img": {
-        "hidden": True,
-        "display_name": "OHD 스타일 — 편집 (Klein)",
-        "description": "Klein 기반 Flux2 Img2Img 편집 워크플로우입니다. (OHD 스타일 편집 대체)",
-
-        # 입력 이미지 1장/2장에 따라 내부 워크플로우(JSON)를 자동 선택합니다.
-        # - 1장: 기존 single-input 워크플로우(이 엔트리 자체)
-        # - 2장: dual-input 워크플로우(아래 hidden 엔트리)
-        "comfy_variants_by_input_count": {
-            1: "OHDStyle_Klein_Img2Img",
-            2: "OHDStyle_Klein_Img2Img_dualInput",
-        },
-
-        # 프롬프트: 단일 positive conditioning만 사용 (negative는 ConditioningZeroOut 기반)
-        # - CLIPTextEncode(107) inputs.text
-        "prompt_node": "107",
-        "prompt_input_key": "text",
-        # Negative prompt node 없음(워크플로우 구조상 별도 네거티브 텍스트 인코딩을 쓰지 않음)
-        # "negative_prompt_node": 없음
-
-        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
-        "default_user_prompt": "",
-
-        # 워크플로우 기본 스타일 토큰 (유저 프롬프트와 함께 positive 텍스트로 들어감)
-        "style_prompt": "OHDart.",
-        "negative_prompt": "",
-
-        # Seed: RandomNoise(104) inputs.noise_seed
-        "seed_node": "104",
-        "seed_input_key": "noise_seed",
-
-        # 입력 이미지 매핑(필수): LoadImage(81) inputs.image
-        "image_input": {"image_node": "81", "input_field": "image"},
-
-        # LoRA: 스타일 LoRA 강도 조절(노드 117). (name은 고정이지만 슬라이더로 strength_model 조절)
-        "loras": {
-            "style": {
-                "node": "117",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                # LoraLoaderModelOnly는 clip strength가 없으므로 동일 키로 매핑
-                "clip_input": "strength_model",
-                "defaults": {"unet": 1.0, "clip": 1.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            }
-        },
-        "lora_hint": {
-            "style": "강도를 높일수록 Klein 스타일 성향이 강해집니다.",
-            "character": "",
-        },
-
-        # UI 힌트: Img2Img에서는 입력 비율을 따르므로 비율 UI 비활성
-        "ui": {
-            "showLora": True,
-            "showStyleLora": True,
-            "showCharacterLora": False,
-            "showPromptTranslate": True,
-            "templateMode": "natural",
-            "disableAspect": True,
-            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요? (예: 파란 슬라임을 제거하고 다른 동물로 바꿔 주세요)",
-            # 1~2장까지 선택 UI(썸네일 그리드)를 활성화합니다.
-            "imageInputMulti": {"enabled": True, "max": 2},
-        },
-    },
-
-    "OHDStyle_Klein_Img2Img_dualInput": {
-        # OHDStyle_Klein_Img2Img wrapper에서만 사용되는 내부 워크플로우(목록 비노출)
-        "hidden": True,
-        "display_name": "OHD 스타일 — 편집 (Klein) — 2장",
-        "description": "입력 이미지 2장을 기반으로 OHD 스타일 Klein(Flux2) Img2Img 편집을 수행합니다.",
-
-        "default_user_prompt": "",
-        "style_prompt": "OHDart.",
-        "negative_prompt": "",
-
-        # Prompt: CLIPTextEncode(92:74).inputs.text
-        "prompt_node": "92:74",
-        "prompt_input_key": "text",
-
-        # Seed: Seed (rgthree)(100).inputs.seed -> RandomNoise(92:73)가 이를 참조
-        "seed_node": "100",
-        "seed_input_key": "seed",
-
-        # Dual input images:
-        # - 1번째 이미지: LoadImage(76).inputs.image
-        # - 2번째 이미지: LoadImage(81).inputs.image
-        "image_inputs": [
-            {"ordinal": 1, "image_node": "76", "input_field": "image"},
-            {"ordinal": 2, "image_node": "81", "input_field": "image"},
-        ],
-        # UI gate only
-        "image_input": {"image_node": "76", "input_field": "image"},
-
-        # LoRA: 스타일 LoRA 강도 조절(노드 92:88)
-        "loras": {
-            "style": {
-                "node": "92:88",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                # LoraLoaderModelOnly는 clip strength가 없으므로 동일 키로 매핑
-                "clip_input": "strength_model",
-                "defaults": {"unet": 1.0, "clip": 1.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            }
-        },
-        "lora_hint": {
-            "style": "강도를 높일수록 Klein 스타일 성향이 강해집니다.",
-            "character": "",
-        },
-
-        "ui": {
-            "showLora": True,
-            "showStyleLora": True,
-            "showCharacterLora": False,
-            "showPromptTranslate": True,
-            "templateMode": "natural",
-            "disableAspect": True,
-            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요?",
-            # 내부 워크플로우를 직접 선택할 일은 없지만, 안전하게 동일 설정 유지
-            "imageInputMulti": {"enabled": True, "max": 2},
-        },
-    },
-
-    # --- Flux2 Klein: 기본 이미지 편집(Img2Img) ---
-    #
-    # 목적:
-    # - LoRA 없이 Klein(Flux2) 모델만으로 "이미지 편집" 도구를 제공
-    # - 입력 이미지 1장/2장에 따라 내부적으로 서로 다른 ComfyUI 워크플로우(JSON)를 로드
-    #
-    # UI는 wrapper(workflow id: Flux2Klein_ImageEdit)만 노출하고,
-    # 서버는 input_image_ids 개수에 따라 아래 variant로 자동 라우팅합니다:
-    # - 1장 => Flux2Klein_i2i_singleInput.json
-    # - 2장 => Flux2Klein_i2i_dualInput.json
     "Flux2Klein_ImageEdit": {
         "display_name": "간단 이미지 편집",
         "description": "이미지 1장(또는 2장)을 넣고, 원하는 변경을 글로 적으면 Klein(Flux2)로 편집합니다.",

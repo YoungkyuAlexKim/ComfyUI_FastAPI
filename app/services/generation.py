@@ -174,6 +174,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             self.seed = d.get("seed")
             self.image_size = d.get("image_size")
             self.image_model = d.get("image_model")
+            self.image_quality = d.get("image_quality")
             # RMBG2 optional params
             self.rmbg_mask_blur = d.get("rmbg_mask_blur")
             self.rmbg_mask_offset = d.get("rmbg_mask_offset")
@@ -294,7 +295,9 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             OpenRouterUpstreamError,
             build_image_prompt,
             generate_image,
-            resolve_image_model_and_resolution,
+            gpt_image_timeout_seconds,
+            image_model_max_references,
+            resolve_image_model_options,
         )
 
         def _record_openrouter_provider_error(e: OpenRouterUpstreamError, *, context: str) -> None:
@@ -607,16 +610,20 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         if cancel_event.is_set():
             raise RuntimeError("생성이 취소되었습니다.")
 
-        chosen_model, req_size = resolve_image_model_and_resolution(
+        chosen_model, req_size, req_quality = resolve_image_model_options(
             requested_model=getattr(request, "image_model", None),
             requested_resolution=getattr(request, "image_size", None),
+            requested_quality=getattr(request, "image_quality", None),
             default_model=str(model or "").strip(),
         )
         try:
             request.image_size = req_size
             request.image_model = chosen_model
+            request.image_quality = req_quality
         except Exception:
             pass
+
+        image_timeout = (5.0, gpt_image_timeout_seconds()) if chosen_model == "openai/gpt-image-2" else (5.0, 90.0)
 
         if is_txt2img:
             # Map UI aspect ratio -> OpenRouter image aspect_ratio
@@ -640,7 +647,8 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                         images=images_for_edit,
                         aspect_ratio=output_aspect,
                         resolution=req_size,
-                        timeout=(5.0, 90.0),
+                        quality=req_quality,
+                        timeout=image_timeout,
                     )
                 except OpenRouterUpstreamError as e:
                     _record_openrouter_provider_error(e, context="imgedit_auto")
@@ -652,7 +660,8 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                         prompt=final_prompt,
                         aspect_ratio=output_aspect,
                         resolution=req_size,
-                        timeout=(5.0, 90.0),
+                        quality=req_quality,
+                        timeout=image_timeout,
                     )
                 except OpenRouterUpstreamError as e:
                     _record_openrouter_provider_error(e, context="txt2img")
@@ -694,8 +703,8 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                 if isinstance(img_id, str) and img_id.strip():
                     ids = [img_id.strip()]
 
-            # Clamp to max 14
-            ids = ids[:14]
+            # Clamp to the selected provider model's advertised reference limit.
+            ids = ids[:image_model_max_references(chosen_model)]
 
             if not ids:
                 raise RuntimeError("편집할 입력 이미지가 없습니다. 먼저 이미지를 1장 이상 업로드/선택한 뒤 다시 시도해 주세요.")
@@ -729,6 +738,26 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                 else:
                     output_aspect = "1:1"
 
+            # GPT Image 2 requires an explicit size for the selected 1K/2K tier.
+            # When the edit UI is on Auto, infer the closest supported orientation
+            # from the first input image instead of silently forcing a square.
+            if chosen_model == "openai/gpt-image-2" and output_aspect is None and input_png_bytes_list:
+                try:
+                    from io import BytesIO
+                    from PIL import Image
+
+                    with Image.open(BytesIO(input_png_bytes_list[0])) as source_image:
+                        width, height = source_image.size
+                    ratio = (float(width) / float(height)) if height else 1.0
+                    if ratio > 1.15:
+                        output_aspect = "16:9"
+                    elif ratio < (1.0 / 1.15):
+                        output_aspect = "9:16"
+                    else:
+                        output_aspect = "1:1"
+                except Exception:
+                    output_aspect = "1:1"
+
             try:
                 image_bytes = generate_image(
                     model=chosen_model,
@@ -736,13 +765,14 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                     images=input_png_bytes_list,
                     aspect_ratio=output_aspect,
                     resolution=req_size,
-                    timeout=(5.0, 90.0),
+                    quality=req_quality,
+                    timeout=image_timeout,
                 )
             except OpenRouterUpstreamError as e:
                 _record_openrouter_provider_error(e, context="imgedit_user")
                 raise RuntimeError(getattr(e, "public_message", str(e)))
         else:
-            raise RuntimeError("이 나노바나나 워크플로우의 모드 설정이 올바르지 않습니다. 서버 워크플로우 설정을 확인해 주세요.")
+            raise RuntimeError("이 AI 이미지 워크플로우의 모드 설정이 올바르지 않습니다. 서버 워크플로우 설정을 확인해 주세요.")
 
         progress_cb(85)
         if cancel_event.is_set():

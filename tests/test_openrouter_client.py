@@ -89,38 +89,104 @@ class OpenRouterClientTests(unittest.TestCase):
         )
 
     def test_image_model_and_resolution_allowlist(self):
-        model, resolution = openrouter_client.resolve_image_model_and_resolution(
+        model, resolution, quality = openrouter_client.resolve_image_model_options(
             requested_model="google/gemini-3.1-flash-image",
             requested_resolution="2k",
+            requested_quality=None,
             default_model="google/gemini-3-pro-image",
         )
         self.assertEqual(model, "google/gemini-3.1-flash-image")
         self.assertEqual(resolution, "2K")
+        self.assertIsNone(quality)
 
     def test_lite_defaults_to_1k(self):
-        model, resolution = openrouter_client.resolve_image_model_and_resolution(
+        model, resolution, quality = openrouter_client.resolve_image_model_options(
             requested_model="google/gemini-3.1-flash-lite-image",
             requested_resolution=None,
+            requested_quality=None,
             default_model="google/gemini-3-pro-image",
         )
         self.assertEqual(model, "google/gemini-3.1-flash-lite-image")
         self.assertEqual(resolution, "1K")
+        self.assertIsNone(quality)
 
     def test_lite_rejects_2k(self):
         with self.assertRaises(RuntimeError):
-            openrouter_client.resolve_image_model_and_resolution(
+            openrouter_client.resolve_image_model_options(
                 requested_model="google/gemini-3.1-flash-lite-image",
                 requested_resolution="2K",
+                requested_quality=None,
                 default_model="google/gemini-3-pro-image",
             )
 
     def test_unknown_image_model_is_rejected(self):
         with self.assertRaises(RuntimeError):
-            openrouter_client.resolve_image_model_and_resolution(
+            openrouter_client.resolve_image_model_options(
                 requested_model="unknown/provider-model",
                 requested_resolution="1K",
+                requested_quality=None,
                 default_model="google/gemini-3-pro-image",
             )
+
+    def test_gpt_image_timeout_is_env_configurable_and_clamped(self):
+        with patch.dict(os.environ, {"GPT_IMAGE_2_TIMEOUT_SECONDS": "420"}, clear=False):
+            self.assertEqual(openrouter_client.gpt_image_timeout_seconds(), 420.0)
+        with patch.dict(os.environ, {"GPT_IMAGE_2_TIMEOUT_SECONDS": "9999"}, clear=False):
+            self.assertEqual(openrouter_client.gpt_image_timeout_seconds(), 600.0)
+
+    @patch("app.services.openrouter_client.requests.post")
+    def test_read_timeout_has_specific_error_kind(self, post):
+        post.side_effect = openrouter_client.requests.exceptions.ReadTimeout("slow image")
+
+        with self.assertRaises(openrouter_client.OpenRouterUpstreamError) as caught:
+            openrouter_client.generate_image(
+                model="openai/gpt-image-2",
+                prompt="test",
+                resolution="1K",
+                quality="low",
+                timeout=(5.0, 300.0),
+            )
+
+        self.assertEqual(caught.exception.kind, "openrouter_timeout")
+
+    def test_gpt_image_2_defaults_to_medium_1k(self):
+        model, resolution, quality = openrouter_client.resolve_image_model_options(
+            requested_model="openai/gpt-image-2",
+            requested_resolution=None,
+            requested_quality=None,
+            default_model="google/gemini-3-pro-image",
+        )
+        self.assertEqual(model, "openai/gpt-image-2")
+        self.assertEqual(resolution, "1K")
+        self.assertEqual(quality, "medium")
+        self.assertEqual(openrouter_client.image_model_max_references(model), 16)
+
+    @patch("app.services.openrouter_client.requests.post")
+    def test_gpt_image_2_uses_size_quality_and_zdr_exception(self, post):
+        response = Mock(ok=True, status_code=200)
+        response.json.return_value = {
+            "data": [{"b64_json": base64.b64encode(b"gpt-image").decode("ascii")}],
+            "usage": {"cost": 0.006},
+        }
+        post.return_value = response
+
+        result = openrouter_client.generate_image(
+            model="openai/gpt-image-2",
+            prompt="draw a fox",
+            aspect_ratio="16:9",
+            resolution="2K",
+            quality="low",
+        )
+
+        self.assertEqual(result, b"gpt-image")
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["size"], "2048x1152")
+        self.assertEqual(payload["quality"], "low")
+        self.assertEqual(payload["background"], "opaque")
+        self.assertFalse(payload["provider"]["zdr"])
+        self.assertEqual(payload["provider"]["data_collection"], "deny")
+        self.assertNotIn("resolution", payload)
+        self.assertNotIn("aspect_ratio", payload)
 
 
 if __name__ == "__main__":

@@ -182,16 +182,6 @@
                     </div>
                 </div>
 
-                <!-- NanoBanana Tool Options: What's Next Variations -->
-                <div class="form-group" id="whatsnext-options-wrap" style="display:none;">
-                    <label class="form-label">
-                        <i class="fas fa-wand-magic-sparkles"></i> 다음 장면 바리에이션
-                    </label>
-                    <p class="hint" style="margin:0; color:var(--text-muted); font-size:12px; line-height:1.35;">
-                        팁: 같은 화풍/같은 캐릭터로 “다음에 벌어질 법한 상황” 4가지를 2×2 그리드로 한 번에 만듭니다.
-                    </p>
-                </div>
-
                 <!-- ACE-Step Music Parameters -->
                 <div class="form-group" id="music-params-wrap" style="display:none;">
                     <div class="music-params">
@@ -350,8 +340,21 @@
                             <span>출력 해상도</span>
                             <select id="hosted-image-resolution" class="form-input" aria-label="출력 해상도"></select>
                         </label>
+                        <label class="hosted-image-option" id="hosted-image-quality-wrap" style="display:none;">
+                            <span>품질</span>
+                            <select id="hosted-image-quality" class="form-input" aria-label="이미지 품질"></select>
+                        </label>
                     </div>
                     <p class="hosted-image-model-hint" id="hosted-image-model-hint"></p>
+                    <div class="hosted-model-recommendation" id="hosted-model-recommendation" role="note" style="display:none;">
+                        <span class="hosted-model-recommendation-icon" aria-hidden="true">
+                            <i class="fas fa-star"></i>
+                        </span>
+                        <span class="hosted-model-recommendation-copy">
+                            <strong id="hosted-model-recommendation-title">GPT Image 2 권장</strong>
+                            <span id="hosted-model-recommendation-message"></span>
+                        </span>
+                    </div>
                 </div>
 
                 <div class="form-group">

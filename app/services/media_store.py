@@ -499,7 +499,7 @@ def _maybe_postprocess_grid_image(image_bytes: bytes, req) -> tuple[bytes, Optio
 
     wf_id = getattr(req, "workflow_id", None)
     wf_id = str(wf_id or "")
-    if wf_id not in ("NanoBanana_StoryboardCutboard", "NanoBanana_WhatsNextVariations"):
+    if wf_id != "NanoBanana_StoryboardCutboard":
         return image_bytes, None
 
     cols_rows = None
@@ -508,25 +508,22 @@ def _maybe_postprocess_grid_image(image_bytes: bytes, req) -> tuple[bytes, Optio
     except Exception:
         up = ""
 
-    if wf_id == "NanoBanana_WhatsNextVariations":
-        cols_rows = (2, 2)
-    else:
-        cols_rows = _parse_grid_from_prompt(str(up))
-        if not cols_rows:
-            # Best-effort fallback: infer from CUTS line.
-            try:
-                cuts = None
-                for line in str(up).splitlines():
-                    t = line.strip()
-                    if t.upper().startswith("CUTS:"):
-                        cuts = t.split(":", 1)[1].strip()
-                        break
-                if cuts == "6":
-                    cols_rows = (3, 2)
-                elif cuts == "9":
-                    cols_rows = (3, 3)
-            except Exception:
-                cols_rows = None
+    cols_rows = _parse_grid_from_prompt(str(up))
+    if not cols_rows:
+        # Best-effort fallback: infer from CUTS line.
+        try:
+            cuts = None
+            for line in str(up).splitlines():
+                t = line.strip()
+                if t.upper().startswith("CUTS:"):
+                    cuts = t.split(":", 1)[1].strip()
+                    break
+            if cuts == "6":
+                cols_rows = (3, 2)
+            elif cuts == "9":
+                cols_rows = (3, 3)
+        except Exception:
+            cols_rows = None
         if not cols_rows:
             cols_rows = (3, 3)
 
@@ -639,6 +636,7 @@ def _save_image_and_meta(anon_id: str, image_bytes: bytes, req, original_filenam
         "aspect_ratio": getattr(req, "aspect_ratio", None),
         "image_size": getattr(req, "image_size", None),
         "image_model": getattr(req, "image_model", None),
+        "image_quality": getattr(req, "image_quality", None),
         "seed": getattr(req, "seed", None),
         "prompt": getattr(req, "user_prompt", None),
         # Optional: NanoBanana character mentions (@Name)
