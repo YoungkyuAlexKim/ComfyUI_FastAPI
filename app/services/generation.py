@@ -9,6 +9,7 @@ from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, COMF
 from .media_store import (
     _locate_input_png_path,
     _save_image_and_meta,
+    _save_game_ui_group,
     _save_audio_and_meta,
     _master_audio_file,
     _build_web_path,
@@ -192,6 +193,8 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             self.language = d.get("language")
             # SeeThrough fields
             self.seethrough_resolution = d.get("seethrough_resolution")
+            # Game UI element maker fields
+            self.game_ui_background_mode = d.get("game_ui_background_mode")
 
     request = _Req(req_dict)
     # Ensure we always have a concrete seed so users can reproduce results later,
@@ -604,6 +607,46 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         except Exception:
             hidden_ref_bytes_list = None
 
+        # --- Game UI element maker: optional references + server-owned prompt contract ---
+        game_ui_options = None
+        game_ui_reference_bytes_list: list[bytes] | None = None
+        is_game_ui = str(getattr(request, "workflow_id", "") or "") == "GameUI_Elements"
+        if is_game_ui:
+            from .game_ui_assets import build_game_ui_generation_prompt, normalize_game_ui_options
+
+            game_ui_options = normalize_game_ui_options(getattr(request, "game_ui_background_mode", None))
+            request.game_ui_background_mode = game_ui_options.background_mode
+            original_prompt = str(getattr(request, "user_prompt", "") or "").strip()
+            request.game_ui_original_prompt = original_prompt
+
+            ids: list[str] = []
+            seen_ids = set()
+            raw_ids = getattr(request, "input_image_ids", None)
+            if isinstance(raw_ids, list):
+                for raw_id in raw_ids:
+                    image_id = str(raw_id or "").strip()
+                    if image_id and image_id not in seen_ids:
+                        seen_ids.add(image_id)
+                        ids.append(image_id)
+            if not ids:
+                single_id = str(getattr(request, "input_image_id", "") or "").strip()
+                if single_id:
+                    ids = [single_id]
+            ids = ids[:3]
+            if ids:
+                game_ui_reference_bytes_list = [
+                    _load_input_png_bytes(job.owner_id, image_id, index + 1)
+                    for index, image_id in enumerate(ids)
+                ]
+                request.input_image_ids = ids
+                request.input_image_id = ids[0]
+
+            request.user_prompt = build_game_ui_generation_prompt(
+                original_prompt,
+                game_ui_options,
+                reference_count=len(game_ui_reference_bytes_list or []),
+            )
+
         final_prompt = build_image_prompt(request, wf_cfg)
 
         progress_cb(45)
@@ -612,7 +655,10 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
 
         chosen_model, req_size, req_quality = resolve_image_model_options(
             requested_model=getattr(request, "image_model", None),
-            requested_resolution=getattr(request, "image_size", None),
+            requested_resolution=(
+                getattr(request, "image_size", None)
+                or ((openrouter_cfg or {}).get("default_resolution") if isinstance(openrouter_cfg, dict) else None)
+            ),
             requested_quality=getattr(request, "image_quality", None),
             default_model=str(model or "").strip(),
             allowed_models=(openrouter_cfg or {}).get("allowed_models") if isinstance(openrouter_cfg, dict) else None,
@@ -638,10 +684,15 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             else:
                 output_aspect = "1:1"
 
-            if ref_sheet_bytes_list or hidden_ref_bytes_list:
+            if ref_sheet_bytes_list or hidden_ref_bytes_list or game_ui_reference_bytes_list:
                 # Auto-switch to image-edit when we have any attached reference images.
                 # IMPORTANT: do not mix "hidden refs" with character mention sheets; it would break sheet ordering.
-                images_for_edit = ref_sheet_bytes_list if ref_sheet_bytes_list else hidden_ref_bytes_list
+                if ref_sheet_bytes_list:
+                    images_for_edit = ref_sheet_bytes_list
+                elif hidden_ref_bytes_list:
+                    images_for_edit = hidden_ref_bytes_list
+                else:
+                    images_for_edit = game_ui_reference_bytes_list
                 try:
                     image_bytes = generate_image(
                         model=chosen_model,
@@ -780,10 +831,24 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         if cancel_event.is_set():
             raise RuntimeError("생성이 취소되었습니다.")
 
-        progress_cb(95)
-        saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, f"openrouter:{chosen_model or 'image'}")
-        web_path = _build_web_path(saved_image_path)
-        job.result["image_path"] = web_path
+        progress_cb(90)
+        if is_game_ui and game_ui_options is not None:
+            from .game_ui_assets import process_game_ui_sheet
+
+            processed_assets = process_game_ui_sheet(image_bytes, game_ui_options)
+            web_path, asset_group = _save_game_ui_group(
+                job.owner_id,
+                image_bytes,
+                processed_assets,
+                request,
+                f"openrouter:{chosen_model or 'image'}",
+            )
+            job.result["image_path"] = web_path
+            job.result["asset_group"] = asset_group
+        else:
+            saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, f"openrouter:{chosen_model or 'image'}")
+            web_path = _build_web_path(saved_image_path)
+            job.result["image_path"] = web_path
         progress_cb(100)
         return
 
@@ -890,7 +955,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
     prompt_overrides = get_prompt_overrides(
         user_prompt=getattr(request, "user_prompt", ""),
         aspect_ratio=getattr(request, "aspect_ratio", "square"),
-        workflow_name=effective_workflow_id or getattr(request, "workflow_id", "BasicWorkFlow_PixelArt"),
+        workflow_name=effective_workflow_id or getattr(request, "workflow_id", "NanoBanana"),
         seed=getattr(request, "seed", None),
     )
 

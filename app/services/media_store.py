@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Optional, List, Tuple
@@ -571,7 +572,15 @@ def _build_web_path(abs_path: str) -> str:
     return f"/outputs/{rel}"
 
 
-def _save_image_and_meta(anon_id: str, image_bytes: bytes, req, original_filename: str) -> Tuple[str, str]:
+def _save_image_and_meta(
+    anon_id: str,
+    image_bytes: bytes,
+    req,
+    original_filename: str,
+    *,
+    extra_meta: Optional[dict] = None,
+    postprocess: bool = True,
+) -> Tuple[str, str]:
     now = datetime.now(timezone.utc)
     user_dir = _user_base_dir(anon_id)
     dated_dir = _date_partition_path(user_dir, now)
@@ -582,10 +591,11 @@ def _save_image_and_meta(anon_id: str, image_bytes: bytes, req, original_filenam
     image_path = os.path.join(dated_dir, image_filename)
 
     post_meta = None
-    try:
-        image_bytes, post_meta = _maybe_postprocess_grid_image(image_bytes, req)
-    except Exception:
-        post_meta = None
+    if postprocess:
+        try:
+            image_bytes, post_meta = _maybe_postprocess_grid_image(image_bytes, req)
+        except Exception:
+            post_meta = None
 
     with open(image_path, "wb") as f:
         f.write(image_bytes)
@@ -661,11 +671,142 @@ def _save_image_and_meta(anon_id: str, image_bytes: bytes, req, original_filenam
     }
     if post_meta:
         meta["postprocess"] = post_meta
+    if isinstance(extra_meta, dict):
+        meta.update(extra_meta)
     meta_path = os.path.join(dated_dir, f"{image_id}.json")
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
     return image_path, meta_path
+
+
+def _save_game_ui_group(
+    anon_id: str,
+    source_sheet_bytes: bytes,
+    assets: list,
+    req,
+    original_filename: str,
+) -> Tuple[str, dict]:
+    """Persist one source sheet, four gallery children, derivatives, and a ZIP."""
+    if len(assets or []) != 4:
+        raise RuntimeError("게임 UI 그룹에는 정확히 4개의 에셋이 필요합니다.")
+
+    now = datetime.now(timezone.utc)
+    group_id = uuid.uuid4().hex
+    user_dir = _user_base_dir(anon_id)
+    dated_dir = _date_partition_path(user_dir, now)
+    group_dir = os.path.join(dated_dir, "game_ui_groups", group_id)
+    os.makedirs(group_dir, exist_ok=True)
+
+    sheet_path = os.path.join(group_dir, "source_sheet.png")
+    manifest_path = os.path.join(group_dir, "manifest.json")
+    zip_path = os.path.join(group_dir, f"game_ui_{group_id}.zip")
+    with open(sheet_path, "wb") as f:
+        f.write(source_sheet_bytes)
+
+    background_mode = str(getattr(req, "game_ui_background_mode", "transparent") or "transparent")
+    transparent = background_mode == "transparent"
+    original_prompt = str(
+        getattr(req, "game_ui_original_prompt", None)
+        or getattr(req, "user_prompt", "")
+        or ""
+    )
+    download_url = _build_web_path(zip_path)
+    sheet_url = _build_web_path(sheet_path)
+
+    items = []
+    for asset in assets:
+        cell_index = int(getattr(asset, "index", len(items) + 1))
+        cell_dir = os.path.join(group_dir, f"cell_{cell_index:02d}")
+        os.makedirs(cell_dir, exist_ok=True)
+
+        size_urls = {}
+        for size_key, png_bytes in dict(getattr(asset, "size_pngs", {}) or {}).items():
+            dimensions = dict(getattr(asset, "size_dimensions", {}) or {}).get(str(size_key), (0, 0))
+            size_path = os.path.join(cell_dir, f"{size_key}.png")
+            with open(size_path, "wb") as f:
+                f.write(png_bytes)
+            size_urls[str(size_key)] = {
+                "url": _build_web_path(size_path),
+                "width": int(dimensions[0]),
+                "height": int(dimensions[1]),
+            }
+
+        extra_meta = {
+            "kind": "game_ui_asset",
+            "prompt": original_prompt,
+            "game_ui_group_id": group_id,
+            "game_ui_cell_index": cell_index,
+            "game_ui_cell_count": 4,
+            "game_ui_grid": "2x2",
+            "game_ui_background_mode": background_mode,
+            "game_ui_has_alpha": transparent,
+            "game_ui_export_size_policy": "long_edge",
+            "game_ui_sheet_url": sheet_url,
+            "game_ui_group_download_url": download_url,
+            "game_ui_size_urls": size_urls,
+            "game_ui_master_dimensions": {
+                "width": int(getattr(asset, "master_width", 0) or 0),
+                "height": int(getattr(asset, "master_height", 0) or 0),
+            },
+        }
+        image_path, meta_path = _save_image_and_meta(
+            anon_id,
+            bytes(getattr(asset, "master_png")),
+            req,
+            original_filename,
+            extra_meta=extra_meta,
+            postprocess=False,
+        )
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                item_meta = json.load(f)
+        except Exception:
+            item_meta = extra_meta
+        items.append(
+            {
+                "id": str(item_meta.get("id") or os.path.splitext(os.path.basename(image_path))[0]),
+                "index": cell_index,
+                "url": _build_web_path(image_path),
+                "thumb_url": item_meta.get("thumb"),
+                "size_urls": size_urls,
+                "width": int(getattr(asset, "master_width", 0) or 0),
+                "height": int(getattr(asset, "master_height", 0) or 0),
+            }
+        )
+
+    items.sort(key=lambda item: item["index"])
+    group = {
+        "id": group_id,
+        "kind": "game_ui_group",
+        "workflow_id": getattr(req, "workflow_id", None),
+        "prompt": original_prompt,
+        "background_mode": background_mode,
+        "has_alpha": transparent,
+        "export_size_policy": "long_edge",
+        "grid": "2x2",
+        "count": 4,
+        "created_at": now.isoformat(),
+        "sheet_url": sheet_url,
+        "download_url": download_url,
+        "items": items,
+    }
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(group, f, ensure_ascii=False, indent=2)
+
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.write(sheet_path, arcname="source_sheet.png")
+        archive.write(manifest_path, arcname="manifest.json")
+        for item, asset in zip(items, assets):
+            archive.writestr(f"masters/cell_{item['index']:02d}.png", bytes(getattr(asset, "master_png")))
+            for size_key, png_bytes in dict(getattr(asset, "size_pngs", {}) or {}).items():
+                dimensions = dict(getattr(asset, "size_dimensions", {}) or {}).get(str(size_key), (0, 0))
+                archive.writestr(
+                    f"sizes/{dimensions[0]}x{dimensions[1]}/cell_{item['index']:02d}.png",
+                    png_bytes,
+                )
+
+    return items[0]["url"], group
 
 def _input_base_dir(anon_id: str) -> str:
     return os.path.join(_user_base_dir(anon_id), "inputs")
@@ -834,12 +975,14 @@ def _gather_user_images(anon_id: str, include_trash: bool = False) -> List[dict]
         return []
     items: List[dict] = []
     for root, _, files in os.walk(base):
-        # Skip control images and inputs directories entirely
+        # Skip non-gallery source/derivative stores entirely.
         try:
             parts = os.path.normpath(root).split(os.sep)
             if "controls" in parts:
                 continue
             if "inputs" in parts:
+                continue
+            if "game_ui_groups" in parts:
                 continue
         except Exception:
             pass

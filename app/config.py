@@ -23,9 +23,9 @@ DEFAULT_VALUES = {
     # user_prompt는 워크플로우별로 개별 설정됨 (제거)
     "aspect_ratio": "square", # width, height 대신 aspect_ratio 사용
     # 기본 워크플로우의 고정/추천 프롬프트를 기본값으로 사용
-    "style_prompt": WORKFLOW_CONFIGS["BasicWorkFlow_PixelArt"]["style_prompt"],
-    "negative_prompt": WORKFLOW_CONFIGS["BasicWorkFlow_PixelArt"]["negative_prompt"],
-    "recommended_prompt": WORKFLOW_CONFIGS["BasicWorkFlow_PixelArt"]["recommended_prompt"]
+    "style_prompt": WORKFLOW_CONFIGS["NanoBanana"].get("style_prompt", ""),
+    "negative_prompt": WORKFLOW_CONFIGS["NanoBanana"].get("negative_prompt", ""),
+    "recommended_prompt": WORKFLOW_CONFIGS["NanoBanana"].get("recommended_prompt", "")
 }
 
 # --- 3. 서버 설정 ---
@@ -98,7 +98,7 @@ def _clean_tags(tags_string: str) -> list[str]:
 def get_prompt_overrides(
     user_prompt: str,
     aspect_ratio: str,  # width, height 대신 aspect_ratio 사용
-    workflow_name: str = "BasicWorkFlow_PixelArt",
+    workflow_name: str = "NanoBanana",
     seed: int | None = None,
 ) -> Dict[str, Any]:
     """
@@ -192,7 +192,7 @@ def get_prompt_overrides(
         pass
 
     # --- [선택] PrimitiveInt(또는 유사) 기반 width/height 노드 오버라이드 ---
-    # 일부 Flux/Klein 워크플로우는 width/height를 직접 받지 않고,
+    # 일부 워크플로우는 width/height를 직접 받지 않고,
     # PrimitiveInt 노드의 inputs.value를 참조하도록 구성합니다.
     # 이 경우 latent_image_node를 건드리지 말고 width/height 노드 값을 바꾸는 것이 안전합니다.
     try:

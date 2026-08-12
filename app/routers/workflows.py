@@ -55,13 +55,19 @@ async def get_workflows(
             if allowed_models:
                 model_options = [option for option in model_options if option.get("id") in allowed_models]
             default_quality = str(openrouter_cfg.get("default_quality") or "").strip().lower()
+            default_resolution = str(openrouter_cfg.get("default_resolution") or "").strip().upper()
             if default_quality:
                 for option in model_options:
                     if option.get("id") == default_model:
                         option["default_quality"] = default_quality
+            if default_resolution:
+                for option in model_options:
+                    if option.get("id") == default_model and default_resolution in (option.get("resolutions") or []):
+                        option["default_resolution"] = default_resolution
             ui_schema["hostedImageGeneration"] = {
                 "default_model": default_model,
                 "default_quality": default_quality or None,
+                "default_resolution": default_resolution or None,
                 "preference_scope": workflow_id if openrouter_cfg.get("workflow_scoped_preferences") else None,
                 "model_locked": len(allowed_models) == 1,
                 "models": model_options,

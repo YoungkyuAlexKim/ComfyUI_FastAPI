@@ -75,6 +75,111 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         },
     },
 
+    "GameUI_Elements": {
+        "display_name": "게임 UI 엘리먼트 메이커",
+        "description": "원하는 게임 UI 엘리먼트를 설명하면 후보 4개를 만들고 개별 PNG로 자동 분리합니다.",
+        "hidden": False,
+        "default_user_prompt": "",
+        "style_prompt": "",
+        "negative_prompt": "",
+        "provider": "openrouter",
+        "openrouter": {
+            "model": "openai/gpt-image-2",
+            "mode": "text-to-image",
+            "allowed_models": ["openai/gpt-image-2"],
+            "default_resolution": "2K",
+            "default_quality": "medium",
+            "workflow_scoped_preferences": True,
+        },
+        "ui": {
+            "icon": "icons",
+            "templateMode": "gameui",
+            "badges": ["MVP"],
+            "showLora": False,
+            "showPromptTranslate": True,
+            "hideSeed": True,
+            "disableAspect": True,
+            "hideHostedImageOptions": True,
+            "generateLabel": "후보 4개 만들기",
+            "userPromptLabel": "무엇을 만들까요?",
+            "userPromptPlaceholder": "용도, 형태, 재질, 색감과 스타일을 자유롭게 설명해 주세요.",
+            "userPromptHelp": "아래 예시에서 시작하거나 직접 적어보세요. 형태와 용도는 문장 안에서 자유롭게 요청할 수 있습니다.",
+            "imageInputMulti": {"enabled": True, "max": 3},
+            "gameUiTool": {
+                "enabled": True,
+                "allowReferences": True,
+                "grid": "2x2",
+                "variantCount": 4,
+                "promptPresetInitialCount": 6,
+                "defaults": {
+                    "backgroundMode": "transparent",
+                },
+            },
+            "promptTemplates": [
+                {
+                    "title": "얼음 마법 아이콘",
+                    "category": "아이콘과 심벌",
+                    "text": "모바일 다크 판타지 RPG용 얼음 마법 스킬 아이콘. 중앙에 푸른 수정과 날카롭게 퍼지는 눈꽃, 차가운 청백색 광원, 강한 실루엣과 굵은 명암. 작은 화면에서도 한눈에 읽히게 만들고 글자와 배경 장면은 넣지 마세요."
+                },
+                {
+                    "title": "독 상태이상",
+                    "category": "아이콘과 심벌",
+                    "text": "전략 RPG의 독 상태이상 아이콘. 금이 간 녹색 유리병에서 보랏빛 독기가 피어오르는 모습, 위험을 알리는 날카로운 형태, 어두운 테두리와 높은 색 대비. 32픽셀에서도 식별되도록 세부 묘사는 절제하고 글자는 넣지 마세요."
+                },
+                {
+                    "title": "전설 등급 검",
+                    "category": "아이콘과 심벌",
+                    "text": "핵앤슬래시 게임의 전설 등급 검 아이템. 비스듬히 놓인 검은 강철 대검, 금빛 룬과 붉은 보석, 오래된 전투 흔적, 고급 판타지 아이템 렌더링. 검 전체가 잘리지 않게 보이고 배경 장면과 글자는 넣지 마세요."
+                },
+                {
+                    "title": "골드 재화 토큰",
+                    "category": "아이콘과 심벌",
+                    "text": "캐주얼 판타지 게임의 골드 재화 토큰. 왕관 문양이 양각된 두꺼운 원형 금화, 따뜻한 금빛, 부드러운 하이라이트와 또렷한 외곽선, 친근하고 고급스러운 3D 스타일. 숫자와 글자 없이 독립된 토큰 하나로 만드세요."
+                },
+                {
+                    "title": "원형 공격 버튼",
+                    "category": "버튼과 컨트롤",
+                    "text": "모바일 액션 RPG용 원형 기본 공격 버튼. 중앙에 은빛 검 심벌, 두꺼운 청동 테두리, 어두운 가죽 질감, 눌러도 형태가 잘 읽히는 단단한 입체감. 작은 화면에서 터치 버튼으로 보이게 만들고 글자와 배경 장면은 넣지 마세요."
+                },
+                {
+                    "title": "가로 확인 버튼",
+                    "category": "버튼과 컨트롤",
+                    "text": "근미래 우주선 인터페이스용 가로형 확인 버튼 스킨. 짙은 건메탈 표면, 얇은 청록색 에너지 라인, 잘린 모서리와 절제된 광택. 중앙은 나중에 라벨을 넣을 수 있도록 깨끗하고 넓게 비우며 글자는 생성하지 마세요."
+                },
+                {
+                    "title": "목재 탭 버튼",
+                    "category": "버튼과 컨트롤",
+                    "text": "아늑한 농장 시뮬레이션 게임용 가로 탭 버튼. 밝은 참나무 판자, 둥근 모서리, 작은 잎사귀 장식과 부드러운 그림자, 손으로 만든 듯한 친근한 스타일. 중앙 라벨 영역은 비우고 배경 장면과 글자는 넣지 마세요."
+                },
+                {
+                    "title": "초상화 프레임",
+                    "category": "프레임과 표식",
+                    "text": "전설 등급 보스 캐릭터 초상화용 세로 프레임. 검게 그을린 금속과 붉은 보석, 위협적인 고딕 가시 장식, 상단에 작은 왕관 형태. 중앙 초상화 영역은 넓고 완전히 열린 상태로 두며 인물과 글자는 넣지 마세요."
+                },
+                {
+                    "title": "인벤토리 슬롯",
+                    "category": "프레임과 표식",
+                    "text": "중세 판타지 인벤토리용 정사각형 아이템 슬롯. 낡은 철제 테두리와 짙은 가죽 안쪽 면, 모서리의 작은 리벳, 선택되지 않은 기본 상태. 아이템을 올릴 중앙 공간은 단순하게 유지하고 아이템과 숫자는 넣지 마세요."
+                },
+                {
+                    "title": "길드 엠블럼",
+                    "category": "프레임과 표식",
+                    "text": "북부 용병 길드를 상징하는 방패형 엠블럼. 은빛 늑대 머리와 산맥 문양, 남색 에나멜과 마모된 은 테두리, 절제되고 권위 있는 중세 판타지 스타일. 독립된 완성형 문장으로 만들고 글자는 넣지 마세요."
+                },
+                {
+                    "title": "랭크 업적 배지",
+                    "category": "프레임과 표식",
+                    "text": "경쟁 게임의 최상위 랭크 업적 배지. 날개가 펼쳐진 육각형 실루엣, 백금과 보라색 수정, 중심의 추상적인 별 문양, 선명한 대칭 구조와 고급스러운 광택. 숫자와 글자 없이 작게 축소해도 등급이 느껴지게 만드세요."
+                },
+                {
+                    "title": "체력 오브",
+                    "category": "독립 HUD 요소",
+                    "text": "고딕 액션 RPG의 체력 표시용 붉은 유리 오브. 검은 철제 받침과 가느다란 악마 날개 장식, 내부에 천천히 소용돌이치는 붉은 액체, 정면에서 본 독립 HUD 요소. 다른 패널이나 숫자, 글자는 붙이지 마세요."
+                },
+            ],
+        },
+    },
+
     "NanoBanana_Img2Img": {
         "hidden": True,
         "display_name": "기본 워크플로우 — 편집",
@@ -535,435 +640,6 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         },
     },
 
-    "BasicWorkFlow_PixelArt": {
-        "display_name": "픽셀 아트",
-        "description": "레트로 감성의 픽셀 아트 스타일 이미지를 생성합니다",
-        # 테스트 동안 워크플로우 목록에서 숨김 처리
-        "hidden": True,
-
-        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
-        "default_user_prompt": "",
-
-        # 노드 ID
-        "prompt_node": "6",
-        "negative_prompt_node": "7",
-        "seed_node": "3",
-        "latent_image_node": "5",
-
-        # 고정 프롬프트
-        "style_prompt": "masterpiece, best quality, amazing quality, pixel_art",
-        "negative_prompt": "bad quality, worst quality, worst detail, sketch, censor, blurry, ugly",
-
-        # 추천 프롬프트
-        "recommended_prompt": "1girl, solo, solid_oval_eyes, simple background",
-
-        # [v4.0] 비율 기반 사이즈
-        "sizes": {
-            "square": {"width": 800, "height": 800},
-            "landscape": {"width": 1024, "height": 576},
-            "portrait": {"width": 576, "height": 1024},
-        },
-        # UI schema
-        "ui": {
-            "icon": "th",
-            "userPromptPlaceholder": "무엇을 만들고 싶으신가요? 태그를 콤마(,)로 입력해 주세요. (예: 1girl, solo, hanbok)",
-            # 추천 프롬프트 템플릿(초보자용 클릭 추가)
-            # 프론트에서 chips 형태로 노출되며 클릭 시 사용자 프롬프트에 병합됩니다.
-            "promptTemplates": [
-                "1girl, solo, solid_oval_eyes, simple background",
-                "chibi, full_body, simple background",
-                "close-up, portrait, detailed eyes",
-                "dynamic pose, action, motion lines",
-                "fantasy armor, sword, standing",
-                "cute, small animal companion"
-            ]
-        },
-    },
-
-    "BasicWorkFlow_MKStyle": {
-        "display_name": "MK 스타일",
-        "description": "MK 스타일 템플릿 + 업스케일/리파인 + 얼굴 디테일러 적용",
-        # 테스트 동안 워크플로우 목록에서 숨김 처리
-        "hidden": True,
-
-        # 사용자 프롬프트는 시스템 프롬프트에 병합되는 형태(선택 입력)
-        "default_user_prompt": "",
-
-        # 노드 ID 매핑 (JSON 기준)
-        # - 포지티브/네거티브 프롬프트 인코딩: 6 / 7
-        # - 시드: 초기 KSampler(3)
-        # - 빈 잠재 이미지: 5 (1024x1024)
-        "prompt_node": "6",
-        "negative_prompt_node": "7",
-        "seed_node": "3",
-        "latent_image_node": "5",
-
-        # 고정 프롬프트(시스템 스타일)
-        "style_prompt": "CQArt, masterpiece, best quality, amazing quality",
-        "negative_prompt": "bad quality, worst quality, worst detail, signature",
-
-        # 비율 기반 사이즈(기본 정사각 1024x1024)
-        # 16:9 계열은 GPU 친화적으로 64 배수에 가깝게 조정
-        "sizes": {
-            "square": {"width": 1024, "height": 1024},
-            "landscape": {"width": 1344, "height": 768},
-            "portrait": {"width": 768, "height": 1344},
-        },
-
-        # UI 힌트
-        "ui": {
-            "icon": "paint-brush",
-            # LoRA 강도 조절 UI 노출 (슬라이더)
-            "showLora": True,
-            # 당분간 캐릭터 LoRA 슬라이더는 숨김, 스타일만 노출
-            "showStyleLora": True,
-            "showCharacterLora": False
-        },
-        # LoRA 매핑(노드/입력 키)
-        # - 캐릭터 로라: 워크플로우 노드 14
-        # - 스타일 로라: 워크플로우 노드 42
-        # - 입력 필드명은 pysssss LoraLoader 기준
-        "loras": {
-            "character": {
-                "node": "14",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_clip",
-                # 기본값 및 UI 범위 (프론트 참고용)
-                "defaults": {"unet": 0.0, "clip": 0.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05
-            },
-            "style": {
-                "node": "42",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_clip",
-                # 워크플로우 JSON 기본값 반영(0.8)
-                "defaults": {"unet": 0.8, "clip": 0.8},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05
-            }
-        }
-        ,
-        # LoRA 슬라이더 사용자 힌트(워크플로우별 커스텀 문구)
-        "lora_hint": {
-            "style": "강도가 높아질 수록 민국님 그림체에 점점 더 가까워집니다. 강도가 낮아질수록 모델 잠재력이 높아집니다",
-            "character": ""
-        }
-    },
-
-    "LOSstyle_Qwen": {
-        "display_name": "LOS 스타일",
-        "description": "Qwen 이미지 베이스 + Lightning LoRA 고정, 스타일 LoRA 조절형(컨트롤넷 없음)",
-
-        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
-        "default_user_prompt": "",
-
-        # 노드 ID 매핑
-        "prompt_node": "6",
-        "negative_prompt_node": "7",
-        "seed_node": "3",
-        "latent_image_node": "58",
-
-        # 시스템 스타일 프롬프트: LOSart를 시스템 프롬프트로 이동
-        "style_prompt": "LOSart",
-        # 네거티브 프롬프트는 공란 유지(고급형 베이스 모델 가정)
-        "negative_prompt": "",
-
-        # 권장 해상도: 정사각 1280x1280, 16:9 가로/세로는 이를 기준으로 산정
-        "sizes": {
-            "square": {"width": 1280, "height": 1280},
-            "landscape": {"width": 1280, "height": 720},
-            "portrait": {"width": 720, "height": 1280},
-        },
-
-        # UI 힌트: 컨트롤넷 비노출, 스타일 LoRA만 노출(캐릭터 LoRA는 숨김)
-        "ui": {
-            # 슬라임/젤리 느낌에 가장 가까운 무료 아이콘: droplet(물방울)
-            "icon": "droplet",
-            "showLora": True,
-            "showStyleLora": True,
-            "showCharacterLora": False,
-            # LOS 스타일: 한국어 자연어 → 이미지 생성용 영어 프롬프트 변환 버튼 사용
-            "showPromptTranslate": True,
-            "userPromptPlaceholder": "어떤 장면을 만들고 싶으신가요? 한 문장으로 적어주세요. (예: 도서관에서 슬라임을 안고 있는 소녀, 따뜻한 조명)",
-            # 자연어 템플릿 모드 표시(프론트의 중복 병합 로직에 사용)
-            "templateMode": "natural",
-            # 편집(img2img) 관련 워크플로우 링크(목록 비노출 전용)
-            "related": {"img2img": "LOSStyle_Klein_Img2Img"}
-        },
-
-        # LoRA 매핑: Lightning(고정), 스타일(조절), 캐릭터(0.0, 비노출)
-        # Qwen 워크플로우는 LoraLoaderModelOnly를 사용하므로 strength_clip이 없습니다.
-        # 프론트가 단일 슬라이더로 값을 보낼 때도 안전하게 적용되도록 clip_input을 strength_model로 동일 지정합니다.
-        "loras": {
-            "style": {
-                "node": "75",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_model",
-                "defaults": {"unet": 1.0, "clip": 1.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05
-            },
-            "character": {
-                "node": "76",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                "clip_input": "strength_model",
-                "defaults": {"unet": 0.0, "clip": 0.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05
-            }
-        },
-
-        # 사용자 안내 문구
-        "lora_hint": {
-            "style": "강도를 높일수록 LOS 스타일 성향이 강해집니다.",
-            "character": "캐릭터 LoRA는 현재 숨김 상태입니다. 필요 시만 사용하세요."
-        }
-    },
-
-    "LOSStyle_Klein_Img2Img": {
-        "hidden": True,
-        "display_name": "LOS 스타일 — 편집 (Klein)",
-        "description": "Klein 기반 Flux2 Img2Img 편집 워크플로우입니다. (LOS 스타일 편집 대체)",
-
-        # 입력 이미지 1장/2장에 따라 내부 워크플로우(JSON)를 자동 선택합니다.
-        # - 1장: 기존 single-input 워크플로우(이 엔트리 자체)
-        # - 2장: dual-input 워크플로우(아래 hidden 엔트리)
-        "comfy_variants_by_input_count": {
-            1: "LOSStyle_Klein_Img2Img",
-            2: "LOSStyle_Klein_Img2Img_dualInput",
-        },
-
-        # 프롬프트: 단일 positive conditioning만 사용 (negative는 ConditioningZeroOut 기반)
-        # - CLIPTextEncode(107) inputs.text
-        "prompt_node": "107",
-        "prompt_input_key": "text",
-        # Negative prompt node 없음(워크플로우 구조상 별도 네거티브 텍스트 인코딩을 쓰지 않음)
-        # "negative_prompt_node": 없음
-
-        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
-        "default_user_prompt": "",
-
-        # 워크플로우 기본 스타일 토큰 (유저 프롬프트와 함께 positive 텍스트로 들어감)
-        # (학습 캡션 형태와 맞추기 위해 콤마 형태 사용)
-        "style_prompt": "LOSart",
-        "negative_prompt": "",
-
-        # Seed: RandomNoise(104) inputs.noise_seed
-        "seed_node": "104",
-        "seed_input_key": "noise_seed",
-
-        # 입력 이미지 매핑(필수): LoadImage(81) inputs.image
-        "image_input": {"image_node": "81", "input_field": "image"},
-
-        # LoRA: 스타일 LoRA 강도 조절(노드 117)
-        "loras": {
-            "style": {
-                "node": "117",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                # LoraLoaderModelOnly는 clip strength가 없으므로 동일 키로 매핑
-                "clip_input": "strength_model",
-                "defaults": {"unet": 1.0, "clip": 1.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            }
-        },
-        "lora_hint": {
-            "style": "강도를 높일수록 LOS 스타일 성향이 강해집니다.",
-            "character": "",
-        },
-
-        # UI 힌트: Img2Img에서는 입력 비율을 따르므로 비율 UI 비활성
-        "ui": {
-            "showLora": True,
-            "showStyleLora": True,
-            "showCharacterLora": False,
-            "showPromptTranslate": True,
-            "templateMode": "natural",
-            "disableAspect": True,
-            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요? (예: 슬라임을 제거하고 강아지로 교체해 주세요)",
-            # 1~2장까지 선택 UI(썸네일 그리드)를 활성화합니다.
-            "imageInputMulti": {"enabled": True, "max": 2},
-        },
-    },
-
-    "LOSStyle_Klein_Img2Img_dualInput": {
-        # LOSStyle_Klein_Img2Img wrapper에서만 사용되는 내부 워크플로우(목록 비노출)
-        "hidden": True,
-        "display_name": "LOS 스타일 — 편집 (Klein) — 2장",
-        "description": "입력 이미지 2장을 기반으로 LOS 스타일 Klein(Flux2) Img2Img 편집을 수행합니다.",
-
-        "default_user_prompt": "",
-        "style_prompt": "LOSart",
-        "negative_prompt": "",
-
-        # Prompt: CLIPTextEncode(92:74).inputs.text
-        "prompt_node": "92:74",
-        "prompt_input_key": "text",
-
-        # Seed: Seed (rgthree)(100).inputs.seed -> RandomNoise(92:73)가 이를 참조
-        "seed_node": "100",
-        "seed_input_key": "seed",
-
-        # Dual input images:
-        # - 1번째 이미지: LoadImage(76).inputs.image
-        # - 2번째 이미지: LoadImage(81).inputs.image
-        "image_inputs": [
-            {"ordinal": 1, "image_node": "76", "input_field": "image"},
-            {"ordinal": 2, "image_node": "81", "input_field": "image"},
-        ],
-        # UI gate only
-        "image_input": {"image_node": "76", "input_field": "image"},
-
-        # LoRA: 스타일 LoRA 강도 조절(노드 92:88)
-        "loras": {
-            "style": {
-                "node": "92:88",
-                "name_input": "lora_name",
-                "unet_input": "strength_model",
-                # LoraLoaderModelOnly는 clip strength가 없으므로 동일 키로 매핑
-                "clip_input": "strength_model",
-                "defaults": {"unet": 1.0, "clip": 1.0},
-                "min": 0.0,
-                "max": 1.5,
-                "step": 0.05,
-            }
-        },
-        "lora_hint": {
-            "style": "강도를 높일수록 LOS 스타일 성향이 강해집니다.",
-            "character": "",
-        },
-
-        "ui": {
-            "showLora": True,
-            "showStyleLora": True,
-            "showCharacterLora": False,
-            "showPromptTranslate": True,
-            "templateMode": "natural",
-            "disableAspect": True,
-            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요?",
-            # 내부 워크플로우를 직접 선택할 일은 없지만, 안전하게 동일 설정 유지
-            "imageInputMulti": {"enabled": True, "max": 2},
-        },
-    },
-
-    "Flux2Klein_ImageEdit": {
-        "display_name": "간단 이미지 편집",
-        "description": "이미지 1장(또는 2장)을 넣고, 원하는 변경을 글로 적으면 Klein(Flux2)로 편집합니다.",
-        "hidden": False,
-
-        # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
-        "default_user_prompt": "",
-        "style_prompt": "",
-        "negative_prompt": "",
-
-        # Wrapper routing: pick an internal ComfyUI workflow by input image count.
-        # NOTE: generation.py에서 이 키를 읽어 workflow_path를 바꿉니다.
-        "comfy_variants_by_input_count": {
-            1: "Flux2Klein_i2i_singleInput",
-            2: "Flux2Klein_i2i_dualInput",
-        },
-
-        # UI gate only: 존재만으로 "입력 이미지 필요"를 인지하게 합니다.
-        # 실제 LoadImage 노드 주입은 variant config에서 처리됩니다.
-        "image_input": {"image_node": "102", "input_field": "image"},
-
-        "ui": {
-            "icon": "edit",
-            "templateMode": "utility",
-            "showLora": False,
-            "showPromptTranslate": True,
-            # Img2Img는 입력 비율을 따르는 것이 자연스럽습니다.
-            "disableAspect": True,
-            "generateLabel": "이미지 편집하기",
-            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요? (예: 머리색을 은발로 바꾸고, 배경을 밤하늘로 바꿔주세요)",
-            # 1~2장까지 선택 UI(썸네일 그리드)를 활성화합니다.
-            "imageInputMulti": {"enabled": True, "max": 2},
-        },
-    },
-
-    "Flux2Klein_i2i_singleInput": {
-        # wrapper에서만 사용되는 내부 워크플로우(목록 비노출)
-        "hidden": True,
-        "display_name": "이미지 편집 (Klein) — 1장",
-        "description": "입력 이미지 1장을 기반으로 Klein(Flux2) Img2Img 편집을 수행합니다.",
-
-        "default_user_prompt": "",
-        "style_prompt": "",
-        "negative_prompt": "",
-
-        # Prompt: CLIPTextEncode.inputs.text
-        "prompt_node": "75:74",
-        "prompt_input_key": "text",
-
-        # Seed: Seed (rgthree).inputs.seed (RandomNoise가 이를 참조)
-        "seed_node": "100",
-        "seed_input_key": "seed",
-
-        # Input image: LoadImage(102).inputs.image
-        "image_input": {"image_node": "102", "input_field": "image"},
-
-        "ui": {
-            "templateMode": "utility",
-            "showLora": False,
-            "showPromptTranslate": True,
-            "disableAspect": True,
-            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요?",
-        },
-    },
-
-    "Flux2Klein_i2i_dualInput": {
-        # wrapper에서만 사용되는 내부 워크플로우(목록 비노출)
-        "hidden": True,
-        "display_name": "이미지 편집 (Klein) — 2장",
-        "description": "입력 이미지 2장을 기반으로 Klein(Flux2) Img2Img 편집을 수행합니다.",
-
-        "default_user_prompt": "",
-        "style_prompt": "",
-        "negative_prompt": "",
-
-        # Prompt: CLIPTextEncode.inputs.text
-        "prompt_node": "92:74",
-        "prompt_input_key": "text",
-
-        # Seed: Seed (rgthree).inputs.seed (RandomNoise가 이를 참조)
-        "seed_node": "100",
-        "seed_input_key": "seed",
-
-        # Dual input images:
-        # - 1번째 이미지: LoadImage(76).inputs.image
-        # - 2번째 이미지: LoadImage(81).inputs.image
-        "image_inputs": [
-            {"ordinal": 1, "image_node": "76", "input_field": "image"},
-            {"ordinal": 2, "image_node": "81", "input_field": "image"},
-        ],
-        # UI gate only (서버는 image_inputs를 사용하지만, 프론트는 image_input 존재 여부로만 표시 판단)
-        "image_input": {"image_node": "76", "input_field": "image"},
-
-        "ui": {
-            "templateMode": "utility",
-            "showLora": False,
-            "showPromptTranslate": True,
-            "disableAspect": True,
-            "userPromptPlaceholder": "무엇을 어떻게 바꾸고 싶으신가요?",
-            # 내부 워크플로우를 직접 선택할 일은 없지만, 안전하게 동일 설정 유지
-            "imageInputMulti": {"enabled": True, "max": 2},
-        },
-    },
-
-    # ──────────────────────────────────────────────
-    # ACE-Step 1.5 XL — 음악(오디오) 생성
-    # ──────────────────────────────────────────────
     "AceStep15XL": {
         "display_name": "🎵 음악 생성 (ACE-Step)",
         "description": "텍스트 설명과 가사를 입력하여 AI 음악(MP3)을 생성합니다.",

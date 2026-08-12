@@ -210,6 +210,8 @@ class GenerateRequest(BaseModel):
     language: Optional[str] = None
     # --- SeeThrough (layer separation) params ---
     seethrough_resolution: Optional[int] = None
+    # --- Game UI element maker params ---
+    game_ui_background_mode: Optional[str] = None
 
 WORKFLOW_DIR = "./workflows/"
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]

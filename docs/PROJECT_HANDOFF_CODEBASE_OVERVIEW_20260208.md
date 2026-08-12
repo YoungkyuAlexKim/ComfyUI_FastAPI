@@ -172,7 +172,7 @@
 2) “툴 워크플로우”라면 `ui.hideUserPrompt`, `ui.<toolName>`, `ui.aspectOptions` 등으로 프론트에서 옵션 UI를 노출
 
 #### 7.3 wrapper → variant 라우팅(입력 개수에 따라 내부 워크플로우 선택)
-- 예: `Flux2Klein_ImageEdit`, `LOSStyle_Klein_Img2Img` 등  
+- 예: 입력 이미지 수에 따라 단일/다중 이미지 편집 워크플로우를 선택하는 구성
 - `comfy_variants_by_input_count: { 1: "...single...", 2: "...dual..." }`  
 - 서버 `services/generation.py`가 입력 이미지 개수에 따라 `effective_workflow_id`를 선택
 

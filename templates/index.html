@@ -343,6 +343,7 @@
             const natural = [];
             const utility = [];
             const nanobanana = [];
+            const gameui = [];
             const music = [];
             workflows.forEach((wf) => {
                 const uiSchema = (wf && wf.ui) || {};
@@ -350,8 +351,10 @@
                 const isNatural = mode === 'natural';
                 const isUtility = mode === 'utility';
                 const isNanoBanana = mode === 'nanobanana';
+                const isGameUi = mode === 'gameui';
                 const isMusic = mode === 'music';
                 if (isUtility) utility.push(wf);
+                else if (isGameUi) gameui.push(wf);
                 else if (isNanoBanana) nanobanana.push(wf);
                 else if (isMusic) music.push(wf);
                 else if (isNatural) natural.push(wf);
@@ -414,6 +417,13 @@
                 <div class="workflow-group">
                     <div class="workflow-group-label">AI 이미지 생성</div>
                     ${nanobanana.map(renderItem).join('')}
+                </div>`;
+            }
+            if (gameui.length > 0) {
+                html += `
+                <div class="workflow-group">
+                    <div class="workflow-group-label">게임 UI 에셋</div>
+                    ${gameui.map(renderItem).join('')}
                 </div>`;
             }
             if (tagBased.length > 0) {
@@ -513,7 +523,7 @@
                             try { payload = JSON.parse(txt); } catch(_) {}
                             if (payload && payload.id && payload.source) {
                 const targetWf = getTargetWorkflowForMode();
-                if (!targetWf || !targetWf.image_input) {
+                if (!workflowAcceptsImageInput(targetWf)) {
                                     showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
                                     return;
                                 }
@@ -540,7 +550,7 @@
                             }
                             // Fallback: file drop
                             const targetWf2 = getTargetWorkflowForMode();
-                            if (!targetWf2 || !targetWf2.image_input) {
+                            if (!workflowAcceptsImageInput(targetWf2)) {
                                 showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
                                 return;
                             }
@@ -593,7 +603,7 @@
                 // Input image UI: show only when the *target workflow* actually needs image_input
                 try {
                     const targetWf = getTargetWorkflowForMode();
-                    const needImg = !!(targetWf && targetWf.image_input);
+                    const needImg = workflowAcceptsImageInput(targetWf);
                     if (inWrap) inWrap.style.display = needImg ? '' : 'none';
                 } catch(_) {}
                 applyAspectUiForMode();
@@ -609,7 +619,9 @@
                 try { applyExpressionToolUiForWorkflow(); } catch(_) {}
                 try { applyRelightToolUiForWorkflow(); } catch(_) {}
                 try { applyStoryboardToolUiForWorkflow(); } catch(_) {}
+                try { applyGameUiToolUiForWorkflow(); } catch(_) {}
                 try { applyMusicModeUi(); } catch(_) {}
+                try { applyInputImageUiForWorkflow(); } catch(_) {}
                 try { updateInputImagePreview(); } catch(_) {}
                 // Update default prompt when switching modes
                 try {
@@ -663,6 +675,7 @@
                                 btn.type = 'button';
                                 btn.className = 'chip-btn';
                                 btn.textContent = title;
+                                btn.dataset.templateCategory = (item && item.category) ? String(item.category) : '';
                                 const tip = '클릭: 덮어쓰기 | Shift+클릭: 추가(중복 제거)';
                                 btn.title = tip; btn.setAttribute('data-tooltip', tip);
                                 btn.addEventListener('click', (e) => {
@@ -695,6 +708,7 @@
                         }
                     }
                 } catch(_) {}
+                try { applyGameUiToolUiForWorkflow(); } catch(_) {}
             };
             btnTxt.addEventListener('click', () => setMode('txt2img'));
             btnImg.addEventListener('click', () => setMode('img2img'));
@@ -735,6 +749,34 @@
             return currentWorkflow || {};
         }
 
+        function workflowAllowsOptionalReferences(wf) {
+            try {
+                const tool = wf && wf.ui && wf.ui.gameUiTool;
+                return !!(tool && tool.enabled && tool.allowReferences);
+            } catch (_) { return false; }
+        }
+
+        function workflowAcceptsImageInput(wf) {
+            return !!(wf && (wf.image_input || workflowAllowsOptionalReferences(wf)));
+        }
+
+        function applyInputImageUiForWorkflow() {
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const optional = workflowAllowsOptionalReferences(targetWf);
+                const wrap = document.getElementById('input-image-wrap');
+                const label = document.getElementById('input-image-label-text');
+                const hint = document.getElementById('input-image-hint');
+                if (wrap) wrap.style.display = workflowAcceptsImageInput(targetWf) ? '' : 'none';
+                if (label) label.textContent = optional ? '스타일 레퍼런스 (선택)' : '입력 이미지 (필수)';
+                if (hint && !isInputMultiEnabled()) {
+                    hint.textContent = optional ? '없어도 생성 가능' : '';
+                    hint.style.display = optional ? '' : 'none';
+                }
+                if (workflowAcceptsImageInput(targetWf)) updateInputImagePreview();
+            } catch (_) {}
+        }
+
         function getDefaultPromptForWorkflowId(id) {
             try { return (workflowDefaultPrompts && typeof workflowDefaultPrompts === 'object') ? (workflowDefaultPrompts[id] || '') : ''; } catch(_) { return ''; }
         }
@@ -763,10 +805,14 @@
                 const targetWf = getTargetWorkflowForMode();
                 const uiSchema = (targetWf && targetWf.ui) || {};
                 // Some NanoBanana tools lock aspect even in txt2img (single output sheet).
-                const forceDisable = !!(targetWf && targetWf.id === 'NanoBanana_ChainsawJuiceKingCharacter');
+                const forceDisable = !!(targetWf && (targetWf.id === 'NanoBanana_ChainsawJuiceKingCharacter' || targetWf.id === 'GameUI_Elements'));
                 const disableAspect = forceDisable || (!!uiSchema.disableAspect && (isImg2ImgMode() || !!(targetWf && targetWf.image_input)));
-                // Hide entire aspect group when disabled
-                if (ui.aspectRatioGroup) ui.aspectRatioGroup.style.display = disableAspect ? 'none' : '';
+                // Hide the entire field (label + buttons), not just the button row.
+                if (ui.aspectRatioGroup) {
+                    const aspectField = ui.aspectRatioGroup.closest('.form-group');
+                    if (aspectField) aspectField.style.display = disableAspect ? 'none' : '';
+                    else ui.aspectRatioGroup.style.display = disableAspect ? 'none' : '';
+                }
                 const allowed = disableAspect ? [] : (Array.isArray(uiSchema.aspectOptions) ? uiSchema.aspectOptions : ['square','landscape','portrait']);
                 // NanoBanana img2img may expose 4 options (auto + 3 ratios). Keep them in one row on desktop.
                 try {
@@ -806,6 +852,12 @@
             return `hostedImageQuality:${scope ? `${scope}:` : ''}${String(modelId || '')}`;
         }
 
+        function hostedImageResolutionStorageKey(modelId) {
+            const cfg = getHostedImageGenerationConfig();
+            const scope = String((cfg && cfg.preference_scope) || '').trim();
+            return `hostedImageResolution:${scope ? `${scope}:` : ''}${String(modelId || '')}`;
+        }
+
         function populateHostedImageResolutions(modelId, useSavedValue) {
             const cfg = getHostedImageGenerationConfig();
             const resolutionEl = document.getElementById('hosted-image-resolution');
@@ -821,7 +873,7 @@
 
             let selected = '';
             if (useSavedValue) {
-                try { selected = localStorage.getItem(`hostedImageResolution:${model.id}`) || ''; } catch (_) {}
+                try { selected = localStorage.getItem(hostedImageResolutionStorageKey(model.id)) || ''; } catch (_) {}
             }
             if (!resolutions.includes(selected)) selected = String(model.default_resolution || resolutions[0] || '');
             resolutionEl.value = selected;
@@ -870,7 +922,7 @@
                 const recommendation = uiSchema.hostedModelRecommendation || null;
                 const cfg = getHostedImageGenerationConfig();
                 if (!wrap || !modelEl || !resolutionEl) return;
-                wrap.style.display = cfg ? '' : 'none';
+                wrap.style.display = (cfg && !uiSchema.hideHostedImageOptions) ? '' : 'none';
                 const modelLocked = !!cfg && cfg.model_locked === true;
                 if (modelLockEl) modelLockEl.style.display = modelLocked ? '' : 'none';
                 modelEl.classList.toggle('is-model-locked', modelLocked);
@@ -911,7 +963,7 @@
                     resolutionEl.addEventListener('change', () => {
                         try {
                             const currentModel = document.getElementById('hosted-image-model')?.value || '';
-                            if (currentModel) localStorage.setItem(`hostedImageResolution:${currentModel}`, resolutionEl.value || '');
+                            if (currentModel) localStorage.setItem(hostedImageResolutionStorageKey(currentModel), resolutionEl.value || '');
                         } catch (_) {}
                     });
                     resolutionEl.dataset.bound = '1';
@@ -1199,6 +1251,98 @@
                         presetSel.dataset.bound = '1';
                     }
                 } catch (_) {}
+            } catch (_) {}
+        }
+
+        function applyGameUiToolUiForWorkflow() {
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const tool = (uiSchema && uiSchema.gameUiTool) || {};
+                const wrap = document.getElementById('game-ui-options-wrap');
+                const enabled = !!tool.enabled && targetWf && targetWf.id === 'GameUI_Elements';
+                const inputCard = document.querySelector('.input-card');
+                const promptTemplates = document.getElementById('prompt-templates');
+                const promptHeading = document.getElementById('prompt-template-heading');
+                const promptCount = document.getElementById('prompt-template-count');
+                const chips = document.getElementById('prompt-template-chips');
+                if (inputCard) inputCard.classList.toggle('game-ui-mode', enabled);
+                if (promptTemplates) promptTemplates.classList.toggle('game-ui-prompt-examples', enabled);
+                if (promptHeading) promptHeading.style.display = enabled ? '' : 'none';
+                if (!wrap) return;
+                wrap.style.display = enabled ? '' : 'none';
+                if (!enabled) {
+                    if (chips) {
+                        chips.querySelector('.game-ui-preset-more')?.remove();
+                        chips.querySelectorAll('.game-ui-prompt-card').forEach((button) => {
+                            button.hidden = false;
+                            button.classList.remove('game-ui-prompt-card');
+                        });
+                        delete chips.dataset.gameUiExpanded;
+                    }
+                    return;
+                }
+
+                const transparentEl = document.getElementById('game-ui-transparent-output');
+                const defaults = tool.defaults || {};
+                if (transparentEl) {
+                    let stored = '';
+                    try { stored = localStorage.getItem('tool:game-ui:transparent-output') || ''; } catch (_) {}
+                    transparentEl.checked = stored ? stored === '1' : String(defaults.backgroundMode || 'transparent') === 'transparent';
+                    if (!transparentEl.dataset.gameUiBound) {
+                        transparentEl.addEventListener('change', () => {
+                            try { localStorage.setItem('tool:game-ui:transparent-output', transparentEl.checked ? '1' : '0'); } catch (_) {}
+                        });
+                        transparentEl.dataset.gameUiBound = '1';
+                    }
+                }
+
+                if (chips) {
+                    const initialCount = Math.max(1, parseInt(tool.promptPresetInitialCount || '6', 10) || 6);
+                    const buttons = Array.from(chips.children).filter((node) => node.tagName === 'BUTTON' && !node.classList.contains('game-ui-preset-more'));
+                    buttons.forEach((button) => {
+                        button.classList.add('game-ui-prompt-card');
+                        if (!button.dataset.gameUiDecorated) {
+                            const title = button.textContent || '프롬프트 예시';
+                            const category = button.dataset.templateCategory || '게임 UI';
+                            const categoryEl = document.createElement('span');
+                            categoryEl.className = 'game-ui-prompt-card__category';
+                            categoryEl.textContent = category;
+                            const titleEl = document.createElement('span');
+                            titleEl.className = 'game-ui-prompt-card__title';
+                            titleEl.textContent = title;
+                            const arrowEl = document.createElement('i');
+                            arrowEl.className = 'fas fa-arrow-up-right-from-square';
+                            arrowEl.setAttribute('aria-hidden', 'true');
+                            button.replaceChildren(categoryEl, titleEl, arrowEl);
+                            button.dataset.gameUiDecorated = '1';
+                        }
+                    });
+                    if (promptCount) promptCount.textContent = `${buttons.length}개의 예시`;
+                    chips.querySelector('.game-ui-preset-more')?.remove();
+                    const applyExpandedState = () => {
+                        const expanded = chips.dataset.gameUiExpanded === '1';
+                        buttons.forEach((button, index) => { button.hidden = !expanded && index >= initialCount; });
+                        const more = chips.querySelector('.game-ui-preset-more');
+                        if (more) {
+                            const hiddenCount = Math.max(0, buttons.length - initialCount);
+                            more.innerHTML = expanded
+                                ? '<i class="fas fa-chevron-up"></i><span>간단히 보기</span>'
+                                : `<i class="fas fa-chevron-down"></i><span>예시 ${hiddenCount}개 더 보기</span>`;
+                        }
+                    };
+                    if (buttons.length > initialCount) {
+                        const more = document.createElement('button');
+                        more.type = 'button';
+                        more.className = 'game-ui-preset-more';
+                        more.addEventListener('click', () => {
+                            chips.dataset.gameUiExpanded = chips.dataset.gameUiExpanded === '1' ? '0' : '1';
+                            applyExpandedState();
+                        });
+                        chips.appendChild(more);
+                    }
+                    applyExpandedState();
+                }
             } catch (_) {}
         }
 
@@ -1629,12 +1773,14 @@
 
         function displayAudio(audioPath) {
             const imgContainer = document.getElementById('result-image-container');
+            const gameUiContainer = document.getElementById('result-game-ui-group');
             const audioContainer = document.getElementById('result-audio-container');
             const audioEl = document.getElementById('result-audio');
             const downloadBtn = document.getElementById('audio-download-btn');
             const spinIcon = document.getElementById('audio-spinning-icon');
 
             if (imgContainer) imgContainer.style.display = 'none';
+            if (gameUiContainer) gameUiContainer.style.display = 'none';
             if (audioContainer) audioContainer.style.display = '';
 
             const cacheBusted = `${audioPath}?t=${new Date().getTime()}`;
@@ -1657,12 +1803,14 @@
 
         function displaySeeThrough(data) {
             const imgContainer = document.getElementById('result-image-container');
+            const gameUiContainer = document.getElementById('result-game-ui-group');
             const audioContainer = document.getElementById('result-audio-container');
             const stContainer = document.getElementById('result-seethrough-container');
             const resultImg = document.getElementById('result-image');
             const downloadBtn = document.getElementById('result-download-btn');
 
             if (audioContainer) audioContainer.style.display = 'none';
+            if (gameUiContainer) gameUiContainer.style.display = 'none';
             if (stContainer) stContainer.style.display = '';
 
             // Show preview image (base64 data URL — 디스크에 저장되지 않음)
@@ -1721,6 +1869,8 @@
             const imgContainer = document.getElementById('result-image-container');
             const audioContainer = document.getElementById('result-audio-container');
             const stContainer = document.getElementById('result-seethrough-container');
+            const gameUiContainer = document.getElementById('result-game-ui-group');
+            if (gameUiContainer) gameUiContainer.style.display = 'none';
             if (isMusicWorkflow()) {
                 if (imgContainer) imgContainer.style.display = 'none';
                 if (audioContainer) audioContainer.style.display = 'none';
@@ -2890,7 +3040,7 @@
                 tabs.querySelector('#tab-items')?.classList.remove('active');
                 // Hide input image UI when not needed
                 const inWrap = document.getElementById('input-image-wrap') || document.getElementById('input-image-section') || document.getElementById('img2img-input-wrap');
-                if (inWrap) inWrap.style.display = (workflow.image_input ? '' : 'none');
+                if (inWrap) inWrap.style.display = (workflowAcceptsImageInput(workflow) ? '' : 'none');
             } catch(_) {}
             // Hide/show prompt input when workflow doesn't need it (e.g., background removal)
             applyPromptVisibilityForWorkflow();
@@ -2937,6 +3087,7 @@
                             btn.type = 'button';
                             btn.className = 'chip-btn' + (tier === 3 ? ' chip-btn--muted' : '');
                             btn.textContent = title;
+                            btn.dataset.templateCategory = (item && item.category) ? String(item.category) : '';
                             const tip = '클릭: 덮어쓰기 | Shift+클릭: 추가(중복 제거)';
                             btn.title = tip; // 네이티브 툴팁(접근성/백업)
                             btn.setAttribute('data-tooltip', tip); // 빠른 커스텀 툴팁
@@ -2995,13 +3146,15 @@
             try { applyExpressionToolUiForWorkflow(); } catch(_) {}
             try { applyRelightToolUiForWorkflow(); } catch(_) {}
             try { applyStoryboardToolUiForWorkflow(); } catch(_) {}
+            try { applyGameUiToolUiForWorkflow(); } catch(_) {}
             try { applyMusicModeUi(); } catch(_) {}
             try { resetOutputForMode(); } catch(_) {}
             // 입력 이미지 섹션 표시 여부
             try {
                 const inWrap = document.getElementById('input-image-wrap');
-                if (inWrap) inWrap.style.display = workflow.image_input ? '' : 'none';
-                if (workflow.image_input) updateInputImagePreview();
+                if (inWrap) inWrap.style.display = workflowAcceptsImageInput(workflow) ? '' : 'none';
+                if (workflowAcceptsImageInput(workflow)) updateInputImagePreview();
+                applyInputImageUiForWorkflow();
             } catch(_) {}
             // 레거시 추천(클릭하여 추가) 문구 완전 비표시
             try {
@@ -3047,19 +3200,21 @@
         }
         function getInputMultiMax(){
             try {
+                const targetWf = getTargetWorkflowForMode();
+                const uiSchema = (targetWf && targetWf.ui) || {};
+                const multiCfg = (uiSchema && uiSchema.imageInputMulti) || {};
+                const configuredMax = parseInt(multiCfg.max, 10);
                 const hostedCfg = getHostedImageGenerationConfig();
                 const selectedModelId = document.getElementById('hosted-image-model')?.value || '';
                 const selectedModel = hostedCfg && Array.isArray(hostedCfg.models)
                     ? hostedCfg.models.find((model) => String(model.id || '') === selectedModelId)
                     : null;
                 const hostedMax = parseInt((selectedModel && selectedModel.max_input_references) || '', 10);
+                if (Number.isFinite(configuredMax) && configuredMax > 0 && Number.isFinite(hostedMax) && hostedMax > 0) {
+                    return Math.max(1, Math.min(16, configuredMax, hostedMax));
+                }
+                if (Number.isFinite(configuredMax) && configuredMax > 0) return Math.max(1, Math.min(16, configuredMax));
                 if (Number.isFinite(hostedMax) && hostedMax > 0) return Math.max(1, Math.min(16, hostedMax));
-
-                const targetWf = getTargetWorkflowForMode();
-                const uiSchema = (targetWf && targetWf.ui) || {};
-                const cfg = (uiSchema && uiSchema.imageInputMulti) || {};
-                const n = parseInt(cfg.max, 10);
-                if (Number.isFinite(n) && n > 0) return Math.max(1, Math.min(16, n));
             } catch (_) {}
             return 14;
         }
@@ -3192,16 +3347,22 @@
             const hint = document.getElementById('input-image-hint');
 
             const targetWf = getTargetWorkflowForMode();
-            const needsInput = !!(targetWf && targetWf.image_input);
-            const isMulti = needsInput && isInputMultiEnabled();
+            const acceptsInput = workflowAcceptsImageInput(targetWf);
+            const isMulti = acceptsInput && isInputMultiEnabled();
 
             // Compact layout for small multi (e.g. max=2): reduce the empty space.
             try {
                 const maxMulti = isMulti ? getInputMultiMax() : 0;
+                const compactOptionalRefs = isMulti && workflowAllowsOptionalReferences(targetWf);
                 if (drop) {
                     drop.dataset.multi = isMulti ? '1' : '0';
                     drop.dataset.max = isMulti ? String(maxMulti) : '';
-                    if (isMulti && maxMulti <= 2) {
+                    if (compactOptionalRefs) {
+                        drop.style.minHeight = '118px';
+                        drop.style.height = '118px';
+                        drop.style.maxWidth = '';
+                        drop.style.margin = '';
+                    } else if (isMulti && maxMulti <= 2) {
                         drop.style.minHeight = '156px';
                         drop.style.height = '156px';
                         drop.style.maxWidth = '560px';
@@ -3214,7 +3375,12 @@
                     }
                 }
                 if (multiGrid) {
-                    if (isMulti && maxMulti <= 2) {
+                    if (compactOptionalRefs) {
+                        multiGrid.style.gridTemplateColumns = `repeat(${maxMulti}, minmax(82px, 1fr))`;
+                        multiGrid.style.gridAutoRows = '96px';
+                        multiGrid.style.justifyContent = 'start';
+                        multiGrid.style.overflow = 'hidden';
+                    } else if (isMulti && maxMulti <= 2) {
                         multiGrid.style.gridTemplateColumns = 'repeat(2, minmax(120px, 1fr))';
                         multiGrid.style.gridAutoRows = '120px';
                         multiGrid.style.justifyContent = 'center';
@@ -3230,6 +3396,9 @@
                     if (isMulti && maxMulti === 2) {
                         hint.textContent = '1번: reference_image1 · 2번: reference_image2 (드래그로 순서 변경)';
                         hint.style.display = '';
+                    } else if (isMulti && workflowAllowsOptionalReferences(targetWf)) {
+                        hint.textContent = `없어도 생성 가능 · 최대 ${maxMulti}장`;
+                        hint.style.display = '';
                     } else {
                         hint.textContent = '';
                         hint.style.display = 'none';
@@ -3240,7 +3409,7 @@
             // Reset multi UI by default
             try { if (multiGrid) multiGrid.style.display = 'none'; } catch (_) {}
 
-            if (!needsInput) {
+            if (!acceptsInput) {
                 if (img) img.style.display = 'none';
                 if (empty) empty.style.display = '';
                 return;
@@ -3658,7 +3827,7 @@
                     try { payload = JSON.parse(txt); } catch(_) {}
                     if (payload && payload.id && payload.source) {
                         const targetWf2 = getTargetWorkflowForMode();
-                        if (!targetWf2 || !targetWf2.image_input) {
+                        if (!workflowAcceptsImageInput(targetWf2)) {
                             showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
                             return;
                         }
@@ -3697,7 +3866,7 @@
                     }
                     // Fallback: file drop
                     const targetWf = getTargetWorkflowForMode();
-                    if (!targetWf || !targetWf.image_input) {
+                    if (!workflowAcceptsImageInput(targetWf)) {
                         showStatus('이 워크플로우는 입력 이미지를 받지 않습니다.', 'warning');
                         return;
                     }
@@ -3833,6 +4002,10 @@
                     setGenerationState(false, _genLabel);
                 } else if (_isAudio && data.audio_path) {
                     displayAudio(data.audio_path);
+                    hidePreviewOverlay();
+                    setGenerationState(false, _genLabel);
+                } else if (data.asset_group) {
+                    displayGameUiGroup(data.asset_group);
                     hidePreviewOverlay();
                     setGenerationState(false, _genLabel);
                 } else if (data.image_path) {
@@ -4036,6 +4209,17 @@
             } catch (_) {
                 requestData.user_prompt = String(ui.userPromptInput.value || '').trim();
             }
+
+            // Game UI element maker options. Prompt engineering remains server-owned.
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                if (targetWf && targetWf.id === 'GameUI_Elements') {
+                    requestData.aspect_ratio = 'square';
+                    requestData.game_ui_background_mode = document.getElementById('game-ui-transparent-output')?.checked === false
+                        ? 'opaque'
+                        : 'transparent';
+                }
+            } catch (_) {}
 
             // Tool-specific prompt augmentation (NanoBanana Turnaround Sheet)
             try {
@@ -4279,6 +4463,12 @@
                         }
                         requestData.input_image_id = inputImageId;
                     }
+                } else if (workflowAllowsOptionalReferences(targetWf)) {
+                    const ids = isInputMultiEnabled() ? getInputImageIds() : [getInputImageId()].filter(Boolean);
+                    if (Array.isArray(ids) && ids.length) {
+                        requestData.input_image_ids = ids.slice(0, getInputMultiMax());
+                        requestData.input_image_id = requestData.input_image_ids[0];
+                    }
                 }
             } catch(_) {}
 
@@ -4401,12 +4591,17 @@
                     updateProgress(0);
                     const audioPath = _r.audio_path || null;
                     const imagePath = _r.image_path || (data && data.image_path) || null;
+                    const assetGroup = _r.asset_group || (data && data.asset_group) || null;
                     if (_isST2) {
                         displaySeeThrough(_r);
                         hidePreviewOverlay();
                         setGenerationState(false, _genLabel2);
                     } else if (_isAudio2 && audioPath) {
                         displayAudio(audioPath);
+                        hidePreviewOverlay();
+                        setGenerationState(false, _genLabel2);
+                    } else if (assetGroup) {
+                        displayGameUiGroup(assetGroup);
                         hidePreviewOverlay();
                         setGenerationState(false, _genLabel2);
                     } else if (imagePath) {
@@ -4512,9 +4707,98 @@
             }
         }
 
+        function displayGameUiGroup(group) {
+            const groupContainer = document.getElementById('result-game-ui-group');
+            const grid = document.getElementById('game-ui-result-grid');
+            const title = document.getElementById('game-ui-result-title');
+            const footer = document.getElementById('game-ui-result-footer');
+            const download = document.getElementById('game-ui-group-download');
+            const imgContainer = document.getElementById('result-image-container');
+            const audioContainer = document.getElementById('result-audio-container');
+            const stContainer = document.getElementById('result-seethrough-container');
+            if (!groupContainer || !grid || !group || !Array.isArray(group.items)) return;
+
+            if (imgContainer) imgContainer.style.display = 'none';
+            if (audioContainer) audioContainer.style.display = 'none';
+            if (stContainer) stContainer.style.display = 'none';
+            groupContainer.style.display = '';
+            grid.replaceChildren();
+
+            if (title) title.textContent = `UI 엘리먼트 후보 ${group.items.length}개`;
+            if (download) {
+                download.href = group.download_url || '#';
+                download.download = `game_ui_${group.id || 'assets'}.zip`;
+            }
+
+            const selectItem = (item, button) => {
+                grid.querySelectorAll('.game-ui-result__cell').forEach((cell) => cell.classList.remove('is-selected'));
+                if (button) button.classList.add('is-selected');
+                lastImageUrlOriginal = item.url || null;
+                if (!footer) return;
+                footer.replaceChildren();
+                const links = document.createElement('div');
+                links.className = 'game-ui-size-links';
+                const label = document.createElement('strong');
+                label.textContent = `${item.index || ''}번 다운로드`;
+                links.appendChild(label);
+                const entries = Object.entries(item.size_urls || {}).sort((a, b) => Number(a[0]) - Number(b[0]));
+                entries.forEach(([size, info]) => {
+                    const link = document.createElement('a');
+                    link.className = 'chip-btn';
+                    link.href = info && info.url ? info.url : '#';
+                    const dimensions = info ? `${info.width || size}×${info.height || size}` : size;
+                    link.textContent = dimensions;
+                    link.download = `game_ui_${group.id || 'asset'}_${item.index || 1}_${dimensions}.png`;
+                    links.appendChild(link);
+                });
+                const master = document.createElement('a');
+                master.className = 'chip-btn';
+                master.href = item.url || '#';
+                master.textContent = '원본';
+                master.download = `game_ui_${group.id || 'asset'}_${item.index || 1}_master.png`;
+                links.appendChild(master);
+                footer.appendChild(links);
+            };
+
+            group.items.slice().sort((a, b) => Number(a.index || 0) - Number(b.index || 0)).forEach((item, idx) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'game-ui-result__cell';
+                button.setAttribute('aria-label', `${item.index || idx + 1}번 에셋 선택`);
+                if (!group.has_alpha) button.classList.add('is-opaque');
+                const image = document.createElement('img');
+                image.src = `${item.url}?t=${Date.now()}`;
+                image.alt = `${item.index || idx + 1}번 게임 UI 에셋`;
+                const index = document.createElement('span');
+                index.className = 'game-ui-result__index';
+                index.textContent = String(item.index || idx + 1);
+                button.appendChild(image);
+                button.appendChild(index);
+                button.addEventListener('click', () => selectItem(item, button));
+                button.addEventListener('dblclick', () => {
+                    if (item.url) window.open(item.url, '_blank', 'noopener');
+                });
+                grid.appendChild(button);
+                if (idx === 0) selectItem(item, button);
+            });
+
+            const hint = document.getElementById('result-hint');
+            if (hint) hint.textContent = '셀을 선택해 자연 비율의 크기별 PNG를 받거나, 묶음 ZIP을 내려받으세요.';
+            ui.placeholderSection.style.display = 'none';
+            ui.resultSection.style.display = 'block';
+            setResultActionsEnabled(false);
+        }
+
         function displayImage(imagePath, onRevealDone) {
             // Prepare cross-fade with previous visual
             const container = document.getElementById('result-image-container');
+            const groupContainer = document.getElementById('result-game-ui-group');
+            const audioContainer = document.getElementById('result-audio-container');
+            const stContainer = document.getElementById('result-seethrough-container');
+            if (groupContainer) groupContainer.style.display = 'none';
+            if (container) container.style.display = '';
+            if (audioContainer) audioContainer.style.display = 'none';
+            if (stContainer) stContainer.style.display = 'none';
             const currentSrc = ui.resultImage.src;
             let oldLayer = null;
             if ((ui.resultSection.style.display === 'block' && currentSrc)) {
@@ -4941,7 +5225,7 @@
                     wrap.appendChild(grid);
                     frag.appendChild(wrap);
 
-                    group = { wrap, title, grid };
+                    group = { wrap, title, grid, gameUiGroups: new Map() };
                     groups.set(key, group);
                 }
 
@@ -4952,7 +5236,8 @@
                 a.setAttribute('aria-label', '이미지 보기');
                 try {
                     const wfId = (it && it.meta && it.meta.workflow_id) ? String(it.meta.workflow_id) : '';
-                    if (wfId === 'RMBG2') a.classList.add('gallery-item--alpha');
+                    const hasAlpha = wfId === 'RMBG2' || !!(it && it.meta && it.meta.game_ui_has_alpha);
+                    if (hasAlpha) a.classList.add('gallery-item--alpha');
                 } catch (_) {}
                 // Drag payload with source
                 a.setAttribute('draggable', (!selectionMode).toString());
@@ -4992,7 +5277,43 @@
                     updateSelectedCount();
                 }, true);
 
-                group.grid.appendChild(a);
+                const gameUiGroupId = String((it && it.meta && it.meta.game_ui_group_id) || '').trim();
+                if (gameUiGroupId) {
+                    const cellOrder = Number((it.meta && it.meta.game_ui_cell_index) || 0);
+                    if (Number.isFinite(cellOrder) && cellOrder > 0) a.style.order = String(cellOrder);
+                    let assetGroup = group.gameUiGroups.get(gameUiGroupId);
+                    if (!assetGroup) {
+                        const groupWrap = document.createElement('div');
+                        groupWrap.className = 'game-ui-gallery-group';
+                        const header = document.createElement('div');
+                        header.className = 'game-ui-gallery-group__header';
+                        const label = document.createElement('span');
+                        label.textContent = 'UI 엘리먼트 묶음 · 4개';
+                        const zipUrl = String((it.meta && it.meta.game_ui_group_download_url) || '');
+                        if (zipUrl) {
+                            const zipLink = document.createElement('a');
+                            zipLink.className = 'chip-btn';
+                            zipLink.href = zipUrl;
+                            zipLink.download = `game_ui_${gameUiGroupId}.zip`;
+                            zipLink.innerHTML = '<i class="fas fa-file-zipper"></i> ZIP';
+                            zipLink.addEventListener('click', (event) => event.stopPropagation());
+                            header.appendChild(label);
+                            header.appendChild(zipLink);
+                        } else {
+                            header.appendChild(label);
+                        }
+                        const cells = document.createElement('div');
+                        cells.className = 'game-ui-gallery-group__cells';
+                        groupWrap.appendChild(header);
+                        groupWrap.appendChild(cells);
+                        group.grid.appendChild(groupWrap);
+                        assetGroup = { wrap: groupWrap, cells };
+                        group.gameUiGroups.set(gameUiGroupId, assetGroup);
+                    }
+                    assetGroup.cells.appendChild(a);
+                } else {
+                    group.grid.appendChild(a);
+                }
             });
 
             gallery.grid.appendChild(frag);
