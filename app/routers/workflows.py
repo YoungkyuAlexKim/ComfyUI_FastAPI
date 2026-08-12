@@ -45,9 +45,26 @@ async def get_workflows(
         ui_schema = dict(config.get("ui", {}) or {})
         if provider == "openrouter":
             openrouter_cfg = config.get("openrouter", {}) or {}
+            default_model = str(openrouter_cfg.get("model") or "google/gemini-3-pro-image")
+            model_options = public_image_model_options()
+            allowed_models = [
+                str(model_id or "").strip()
+                for model_id in (openrouter_cfg.get("allowed_models") or [])
+                if str(model_id or "").strip()
+            ]
+            if allowed_models:
+                model_options = [option for option in model_options if option.get("id") in allowed_models]
+            default_quality = str(openrouter_cfg.get("default_quality") or "").strip().lower()
+            if default_quality:
+                for option in model_options:
+                    if option.get("id") == default_model:
+                        option["default_quality"] = default_quality
             ui_schema["hostedImageGeneration"] = {
-                "default_model": str(openrouter_cfg.get("model") or "google/gemini-3-pro-image"),
-                "models": public_image_model_options(),
+                "default_model": default_model,
+                "default_quality": default_quality or None,
+                "preference_scope": workflow_id if openrouter_cfg.get("workflow_scoped_preferences") else None,
+                "model_locked": len(allowed_models) == 1,
+                "models": model_options,
             }
         workflows.append({
             "id": workflow_id,

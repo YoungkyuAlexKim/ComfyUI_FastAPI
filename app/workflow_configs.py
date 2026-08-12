@@ -501,7 +501,17 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "provider": "openrouter",
         # Internally we will attach a hidden reference image and call image-edit.
         # Keep this workflow as txt2img from the UI perspective.
-        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "text-to-image"},
+        # 2026-07 내부 비교 테스트 기준:
+        # 이 워크플로우의 팔 없는 캐릭터 구조와 8×8 의상 배치를 안정적으로 준수한 모델은
+        # GPT Image 2 High뿐이었으므로 모델 선택을 제한합니다.
+        # 다른 모델을 다시 허용하려면 동일 조건의 결과 품질을 먼저 재검증하세요.
+        "openrouter": {
+            "model": "openai/gpt-image-2",
+            "mode": "text-to-image",
+            "allowed_models": ["openai/gpt-image-2"],
+            "default_quality": "high",
+            "workflow_scoped_preferences": True,
+        },
 
         # Hidden reference image(s) that are automatically attached server-side.
         # Path is relative to repo root unless absolute.
@@ -519,8 +529,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             # Aspect ratio will be forced to square in frontend for this tool.
             "disableAspect": True,
             "hostedModelRecommendation": {
-                "title": "GPT Image 2 권장",
-                "message": "이 워크플로우의 캐릭터 구조와 8×8 의상 시트를 정확하게 구현하려면 GPT Image 2 사용을 권장합니다.",
+                "title": "GPT Image 2 전용 · High 권장",
+                "message": "정확한 캐릭터 구조와 8×8 의상 시트를 위해 High 품질 사용을 권장합니다.",
             },
         },
     },

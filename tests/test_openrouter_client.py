@@ -161,6 +161,27 @@ class OpenRouterClientTests(unittest.TestCase):
         self.assertEqual(quality, "medium")
         self.assertEqual(openrouter_client.image_model_max_references(model), 16)
 
+    def test_workflow_model_allowlist_and_quality_default(self):
+        model, resolution, quality = openrouter_client.resolve_image_model_options(
+            requested_model=None,
+            requested_resolution="2K",
+            requested_quality=None,
+            default_model="openai/gpt-image-2",
+            allowed_models=["openai/gpt-image-2"],
+            default_quality="high",
+        )
+        self.assertEqual((model, resolution, quality), ("openai/gpt-image-2", "2K", "high"))
+
+        with self.assertRaises(RuntimeError):
+            openrouter_client.resolve_image_model_options(
+                requested_model="google/gemini-3-pro-image",
+                requested_resolution="2K",
+                requested_quality=None,
+                default_model="openai/gpt-image-2",
+                allowed_models=["openai/gpt-image-2"],
+                default_quality="high",
+            )
+
     @patch("app.services.openrouter_client.requests.post")
     def test_gpt_image_2_uses_size_quality_and_zdr_exception(self, post):
         response = Mock(ok=True, status_code=200)

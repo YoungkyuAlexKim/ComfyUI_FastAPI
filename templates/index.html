@@ -800,6 +800,12 @@
             }
         }
 
+        function hostedImageQualityStorageKey(modelId) {
+            const cfg = getHostedImageGenerationConfig();
+            const scope = String((cfg && cfg.preference_scope) || '').trim();
+            return `hostedImageQuality:${scope ? `${scope}:` : ''}${String(modelId || '')}`;
+        }
+
         function populateHostedImageResolutions(modelId, useSavedValue) {
             const cfg = getHostedImageGenerationConfig();
             const resolutionEl = document.getElementById('hosted-image-resolution');
@@ -833,7 +839,7 @@
                     const allowedQualities = qualities.map((quality) => String(quality.value || ''));
                     let selectedQuality = '';
                     if (useSavedValue) {
-                        try { selectedQuality = localStorage.getItem(`hostedImageQuality:${model.id}`) || ''; } catch (_) {}
+                        try { selectedQuality = localStorage.getItem(hostedImageQualityStorageKey(model.id)) || ''; } catch (_) {}
                     }
                     if (!allowedQualities.includes(selectedQuality)) {
                         selectedQuality = String(model.default_quality || allowedQualities[0] || '');
@@ -852,6 +858,8 @@
             try {
                 const wrap = document.getElementById('hosted-image-options-wrap');
                 const modelEl = document.getElementById('hosted-image-model');
+                const modelLockEl = document.getElementById('hosted-image-model-lock');
+                const modelLockTextEl = document.getElementById('hosted-image-model-lock-text');
                 const resolutionEl = document.getElementById('hosted-image-resolution');
                 const qualityEl = document.getElementById('hosted-image-quality');
                 const recommendationEl = document.getElementById('hosted-model-recommendation');
@@ -863,6 +871,10 @@
                 const cfg = getHostedImageGenerationConfig();
                 if (!wrap || !modelEl || !resolutionEl) return;
                 wrap.style.display = cfg ? '' : 'none';
+                const modelLocked = !!cfg && cfg.model_locked === true;
+                if (modelLockEl) modelLockEl.style.display = modelLocked ? '' : 'none';
+                modelEl.classList.toggle('is-model-locked', modelLocked);
+                modelEl.title = modelLocked ? '이 워크플로우는 GPT Image 2 전용입니다.' : '';
                 if (recommendationEl) {
                     const title = recommendation ? String(recommendation.title || '').trim() : '';
                     const message = recommendation ? String(recommendation.message || '').trim() : '';
@@ -875,12 +887,17 @@
 
                 modelEl.replaceChildren();
                 cfg.models.forEach((model) => modelEl.add(new Option(String(model.label || model.id), String(model.id || ''))));
+                modelEl.disabled = modelLocked || cfg.models.length <= 1;
                 let selectedModel = '';
                 try { selectedModel = localStorage.getItem('hostedImageModel') || ''; } catch (_) {}
                 if (!cfg.models.some((model) => String(model.id || '') === selectedModel)) {
                     selectedModel = String(cfg.default_model || cfg.models[0].id || '');
                 }
                 modelEl.value = selectedModel;
+                if (modelLocked && modelLockTextEl) {
+                    const selectedOption = cfg.models.find((model) => String(model.id || '') === selectedModel) || cfg.models[0];
+                    modelLockTextEl.textContent = `${String((selectedOption && selectedOption.label) || '지정 모델')} 고정`;
+                }
                 populateHostedImageResolutions(selectedModel, true);
 
                 if (!modelEl.dataset.bound) {
@@ -903,7 +920,7 @@
                     qualityEl.addEventListener('change', () => {
                         try {
                             const currentModel = document.getElementById('hosted-image-model')?.value || '';
-                            if (currentModel) localStorage.setItem(`hostedImageQuality:${currentModel}`, qualityEl.value || '');
+                            if (currentModel) localStorage.setItem(hostedImageQualityStorageKey(currentModel), qualityEl.value || '');
                         } catch (_) {}
                     });
                     qualityEl.dataset.bound = '1';

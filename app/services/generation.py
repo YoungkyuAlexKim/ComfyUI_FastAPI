@@ -615,6 +615,8 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             requested_resolution=getattr(request, "image_size", None),
             requested_quality=getattr(request, "image_quality", None),
             default_model=str(model or "").strip(),
+            allowed_models=(openrouter_cfg or {}).get("allowed_models") if isinstance(openrouter_cfg, dict) else None,
+            default_quality=(openrouter_cfg or {}).get("default_quality") if isinstance(openrouter_cfg, dict) else None,
         )
         try:
             request.image_size = req_size

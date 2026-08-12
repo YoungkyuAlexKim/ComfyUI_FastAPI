@@ -56,10 +56,45 @@
     letter-spacing: 0.02em;
 }
 
+.hosted-image-option-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.hosted-image-model-lock {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 7px;
+    border: 1px solid rgba(245, 183, 72, 0.28);
+    border-radius: 999px;
+    background: rgba(245, 183, 72, 0.08);
+    color: #f7c66d;
+    font-size: 0.66rem;
+    font-weight: 750;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+}
+
+.hosted-image-model-lock i {
+    font-size: 0.58rem;
+}
+
 .hosted-image-option .form-input {
     min-height: 44px;
     padding-top: 9px;
     padding-bottom: 9px;
+}
+
+#hosted-image-model.is-model-locked:disabled {
+    opacity: 1;
+    cursor: not-allowed;
+    color: var(--text-primary);
+    border-color: rgba(245, 183, 72, 0.26);
+    box-shadow: inset 3px 0 0 rgba(245, 183, 72, 0.55);
 }
 
 .hosted-image-model-hint {

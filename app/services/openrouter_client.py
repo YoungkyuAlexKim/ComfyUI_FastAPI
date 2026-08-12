@@ -115,8 +115,13 @@ def resolve_image_model_options(
     requested_resolution: Optional[str],
     requested_quality: Optional[str],
     default_model: str,
+    allowed_models: Optional[List[str]] = None,
+    default_quality: Optional[str] = None,
 ) -> Tuple[str, str, Optional[str]]:
     model = str(requested_model or default_model or "").strip()
+    workflow_allowed_models = [str(item or "").strip() for item in (allowed_models or []) if str(item or "").strip()]
+    if workflow_allowed_models and model not in workflow_allowed_models:
+        raise RuntimeError("이 워크플로우에서는 선택한 이미지 모델을 사용할 수 없습니다.")
     cfg = IMAGE_MODEL_OPTIONS.get(model)
     if not cfg:
         raise RuntimeError("선택한 이미지 모델은 현재 사용할 수 없습니다. 모델을 다시 선택해 주세요.")
@@ -129,7 +134,7 @@ def resolve_image_model_options(
     quality_options = cfg.get("qualities") or []
     allowed_qualities = [str(item.get("value") or "") for item in quality_options if isinstance(item, dict)]
     if allowed_qualities:
-        quality = str(requested_quality or cfg.get("default_quality") or "").strip().lower()
+        quality = str(requested_quality or default_quality or cfg.get("default_quality") or "").strip().lower()
         if quality not in allowed_qualities:
             allowed_text = ", ".join(allowed_qualities)
             raise RuntimeError(f"선택한 모델은 {quality or '빈'} 품질 옵션을 지원하지 않습니다. 지원 품질: {allowed_text}")

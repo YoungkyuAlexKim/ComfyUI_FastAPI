@@ -1,5 +1,7 @@
+import asyncio
 import unittest
 
+from app.routers.workflows import get_workflows
 from app.workflow_configs import WORKFLOW_CONFIGS
 
 
@@ -59,6 +61,25 @@ class HostedWorkflowPromptTests(unittest.TestCase):
             recommendation = WORKFLOW_CONFIGS[workflow_id]["ui"]["hostedModelRecommendation"]
             self.assertIn("GPT Image 2", recommendation["title"])
             self.assertIn("권장", recommendation["message"])
+
+    def test_chainsaw_workflow_is_gpt_image_2_only_and_defaults_to_high(self):
+        config = WORKFLOW_CONFIGS["NanoBanana_ChainsawJuiceKingCharacter"]
+        self.assertEqual(config["openrouter"]["model"], "openai/gpt-image-2")
+        self.assertEqual(config["openrouter"]["allowed_models"], ["openai/gpt-image-2"])
+        self.assertEqual(config["openrouter"]["default_quality"], "high")
+        self.assertNotIn("allowed_models", WORKFLOW_CONFIGS["NanoBanana"]["openrouter"])
+
+        response = asyncio.run(get_workflows(include_openrouter=True, include_google=None))
+        workflow = next(item for item in response["workflows"] if item["id"] == "NanoBanana_ChainsawJuiceKingCharacter")
+        hosted = workflow["ui"]["hostedImageGeneration"]
+        self.assertTrue(hosted["model_locked"])
+        self.assertEqual([item["id"] for item in hosted["models"]], ["openai/gpt-image-2"])
+        self.assertEqual(hosted["models"][0]["resolutions"], ["1K", "2K"])
+        self.assertEqual(hosted["models"][0]["default_quality"], "high")
+
+        basic = next(item for item in response["workflows"] if item["id"] == "NanoBanana")
+        self.assertFalse(basic["ui"]["hostedImageGeneration"]["model_locked"])
+        self.assertGreater(len(basic["ui"]["hostedImageGeneration"]["models"]), 1)
 
 
 if __name__ == "__main__":
