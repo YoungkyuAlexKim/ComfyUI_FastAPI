@@ -22,8 +22,8 @@ MCP ───┘                                      │
 
 | capability | 현재 웹 구현 | 실행 경로 | MCP 상태 |
 |---|---|---|---|
-| `create_image` | 기본 생성·참고 이미지 편집 | OpenRouter | 텍스트 생성만 공개 |
-| `create_game_ui_assets` | 2×2 후보 시트와 그룹 내보내기 | GPT Image 2/OpenRouter | 계약만 준비 |
+| `create_image` | 기본 생성·참고 이미지 편집 | OpenRouter | 텍스트 생성·소유 자산 참고 편집 공개 |
+| `create_game_ui_assets` | 2×2 후보 시트와 그룹 내보내기 | GPT Image 2/OpenRouter | 2×2 고정 계약 공개 |
 | `create_character_sheet` | 턴어라운드·표정 시트 | OpenRouter | 계약만 준비 |
 | `create_storyboard` | 6·9컷 스토리보드 | OpenRouter | 계약만 준비 |
 | `remove_background` | RMBG | ComfyUI | 계약만 준비 |
@@ -64,7 +64,10 @@ MCP ───┘                                      │
 1. 방화벽/리버스 프록시와 선택적 CIDR 정책이 클라이언트를 제한합니다.
 2. 서버가 신뢰 가능한 경로로 해석한 IP를 해시해 MCP principal을 만듭니다.
 3. MCP 도구도 동일한 capability dispatcher와 generation control을 통과합니다.
-4. 완료 결과는 구조화 메타데이터와 MCP 이미지 content로 반환됩니다.
+4. 소유자 범위 자산 목록·조회, 첨부 등록, 참고 이미지 검증도 같은 `AssetService`를
+   사용합니다.
+5. 첨부 이미지는 웹과 MCP 모두 공통 디코딩·크기 제한·PNG 정규화 계층을 통과합니다.
+6. 완료 결과는 구조화 메타데이터와 MCP 이미지 content로 반환됩니다.
 
 MCP IP principal은 사람 계정이 아닙니다. NAT 또는 DHCP 환경에서는 사용자 병합이나
 변경 가능성이 있으므로 향후 OAuth나 identity-aware proxy로 교체할 수 있게 요청
@@ -116,8 +119,10 @@ IP는 웹 갤러리 소유권으로 사용하지 않고 감사 정보로만 기�
 
 ## 현재 남은 기반 작업
 
-- 기존 브라우저 쿠키 승격 관찰 후 `PRINCIPAL_IDENTITY_MODE=enforced` 전환
-- 운영 `db/app_data.db`의 안전한 Git 추적 해제
-- DB, `outputs`, principal secret의 정기 백업 자동화와 복구 훈련
-- 안정화 후 `media_store.py`의 구형 폴더 스캔 fallback 제거
+- `principal_identity_cookie_issued` 로그로 기존 브라우저 쿠키 승격을 관찰한 후
+  `PRINCIPAL_IDENTITY_MODE=enforced` 전환
+- 완전 백업 명령을 외부 백업 볼륨의 정기 작업으로 등록하고 실제 복구 훈련
+- `ASSET_CATALOG_FALLBACK_ENABLED=false` canary 후 `media_store.py`의 구형 폴더 스캔
+  fallback 제거
 - 운영 UI에 자산 감사 및 저장소 통계 연결
+- 실프로젝트 품질 검증 후 캐릭터 시트·스토리보드 등 특화 capability의 단계적 공개

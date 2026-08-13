@@ -9,8 +9,8 @@
 | capability | 내부 요청 모델 | 웹 | MCP |
 |---|---:|---:|---:|
 | `create_image/generate` | 구현 | 구현 | `create_managed_image_asset`로 구현 |
-| `create_image/edit` | 구현 | 구현 | 미공개 |
-| `create_game_ui_assets/default` | 구현 | 구현 | 미공개 |
+| `create_image/edit` | 구현 | 구현 | 소유 자산 `reference_image_ids`로 구현 |
+| `create_game_ui_assets/default` | 구현 | 구현 | `create_game_ui_assets` 2×2 계약으로 구현 |
 | `create_character_sheet/turnaround` | 구현 | 구현 | 미공개 |
 | `create_character_sheet/expressions` | 구현 | 구현 | 미공개 |
 | `create_storyboard/default` | 구현 | 구현 | 미공개 |
@@ -59,6 +59,9 @@ variant, resolved workflow/provider/model을 저장합니다. `X-Forwarded-For`�
 ## capability별 핵심 제약
 
 - 이미지 편집은 최소 한 개의 `reference_image_ids`가 필요합니다.
+- MCP 참고 이미지는 호출자의 active `image` 또는 `input` 자산이어야 하며 enqueue 전에
+  소유권과 실제 파일 존재를 확인합니다.
+- MCP 첨부 등록은 PNG/JPEG/WEBP만 허용하고 공통 입력 제한과 카탈로그 저장을 사용합니다.
 - Game UI는 현재 `2x2`, 참고 이미지 최대 3장, 2K만 지원합니다.
 - 턴어라운드는 3·5·8뷰, 표정 시트는 4·9개 계약을 사용합니다.
 - 스토리보드는 참고 이미지 한 장과 6·9컷을 사용합니다.

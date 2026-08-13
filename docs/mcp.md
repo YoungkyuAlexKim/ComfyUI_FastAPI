@@ -2,7 +2,7 @@
 
 > 서버 이름: `LC AI Canvas`
 >
-> 구현 버전: `0.2.0`
+> 구현 버전: `0.4.0`
 >
 > 전송: Streamable HTTP `/mcp/`
 
@@ -10,13 +10,27 @@
 
 - `list_generation_capabilities`
 - `get_generation_capability`
+- `list_image_assets`
+- `get_image_asset`
+- `create_input_image_asset`
 - `create_managed_image_asset`
+- `create_game_ui_assets`
 - `get_generation_job`
 - `get_generation_result`
 
-현재 쓰기 도구는 관리형 텍스트→이미지 생성 하나입니다. 참고 이미지 편집, Game UI,
-캐릭터 시트, 스토리보드, 갤러리 조회는 내부 capability 계약만 준비되어 있고 MCP
-도구로 아직 공개하지 않았습니다.
+`create_input_image_asset`은 base64 또는 PNG/JPEG/WEBP data URL 첨부를 입력 자산으로
+등록합니다. 실제 이미지 디코딩, byte·pixel 제한, EXIF 방향, PNG 정규화를 적용하며
+동일 소유자·동일 정규화 SHA-256 재시도는 기존 active 입력을 반환합니다.
+
+`create_managed_image_asset`은 `reference_image_ids`를 생략하면 텍스트→이미지, 소유한
+active 이미지 또는 입력 자산 ID를 넣으면 기존 이미지 편집으로 실행됩니다.
+`create_game_ui_assets`는 현재 검증된 2×2/4개/2K 계약만 공개하며 child 이미지 4개와
+그룹 ZIP을 생성합니다. 자산 목록·조회는 현재 MCP IP principal 소유 범위만 반환하며
+휴지통과 다른 소유자의 존재를 노출하지 않습니다.
+
+캐릭터 시트, 스토리보드, 배경 제거, 레이어 분리, 음악 생성은 내부 capability 계약만
+유지합니다. MCP용 파라미터 매핑과 결과 형식·클라이언트 테스트가 끝나지 않아 아직
+도구로 공개하지 않습니다.
 
 `create_managed_image_asset`은 웹과 같은 dispatcher, 생성 통제, 멱등성 저장소, 큐,
 감사 로그, 비용 추적, `AssetService` 저장 경로를 사용합니다. 완료 결과는 구조화
@@ -36,10 +50,13 @@
 ## 호출 흐름
 
 1. `list_generation_capabilities` 또는 `get_generation_capability`
-2. 의도별로 안정적인 `idempotency_key`를 만들고 `create_managed_image_asset`
-3. `get_generation_job`을 완료 또는 오류까지 polling
-4. 완료 후 `get_generation_result`
-5. 비용 확인이 요구되면 사용자에게 확인하고 같은 키로 `cost_confirmed=true` 재호출
+2. 클라이언트 첨부가 필요하면 `create_input_image_asset`으로 등록
+3. 기존 참고 이미지가 필요하면 `list_image_assets`와 `get_image_asset`으로 소유 자산 확인
+4. 의도별로 안정적인 `idempotency_key`를 만들고 이미지 또는 Game UI 생성 도구 호출
+5. 편집이면 확인한 ID를 `reference_image_ids`에 넣음
+6. `get_generation_job`을 완료 또는 오류까지 polling
+7. 완료 후 `get_generation_result`
+8. 비용 확인이 요구되면 사용자에게 확인하고 같은 키로 `cost_confirmed=true` 재호출
 
 같은 사용자 의도의 네트워크 재시도는 새 키를 만들지 않습니다.
 
@@ -98,10 +115,8 @@ url = "https://ai-canvas.internal.example.com/mcp/"
 
 ## 다음 MCP 단계
 
-1. 소유자 범위의 자산 목록·조회
-2. 기존 자산 ID를 참고 이미지로 쓰는 생성·편집
-3. 클라이언트 첨부 이미지를 입력 자산으로 등록
-4. 안정화된 Game UI와 특화 capability 공개
-5. 확인 절차가 있는 삭제·관리 도구
+1. 실프로젝트 표본으로 Game UI MCP 품질과 그룹 다운로드 호환성 검증
+2. 캐릭터 시트·스토리보드 등 특화 capability를 개별 안정화 후 공개
+3. 확인 절차가 있는 삭제·관리 도구
 
 삭제 도구는 초기 읽기·생성 단계에 포함하지 않습니다.

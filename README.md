@@ -11,7 +11,8 @@
 - 저장: 파일시스템 원본 + SQLite 자산 카탈로그
 - 사용자 경계: 웹은 서명 쿠키, MCP는 사내망에서 확인된 클라이언트 IP
 - 운영 통제: 일일 요청·비용 한도, 동시성, 멱등성, 확인 정책, 감사 이벤트
-- MCP: 기본 관리형 텍스트→이미지 생성과 작업 결과 조회
+- MCP: 소유자 이미지 조회, 클라이언트 첨부 등록, 기본 생성·기존 자산 편집,
+  Game UI 2×2 그룹 생성, 작업 결과 조회
 
 내부 워크플로우 이름에 남아 있는 `NanoBanana`는 호환용 ID입니다. 현재
 호스티드 모델 호출은 Google API에 직접 연결하지 않고 OpenRouter를 사용합니다.
@@ -57,7 +58,15 @@ Uvicorn의 자동 프록시 헤더 신뢰를 끄며, 신뢰 가능한 프록시�
 ```
 
 이 명령은 SQLite만 백업합니다. 실제 복구 가능성을 확보하려면 `outputs`와
-`db/principal_cookie.secret`도 인프라 백업에 포함해야 합니다.
+`db/principal_cookie.secret`을 함께 묶는 다음 명령을 정기 작업에 사용합니다.
+
+```powershell
+.\scripts\backup_app_data.ps1 -DestinationRoot E:\LC-AI-Canvas-Backups
+.\venv\Scripts\python.exe -m app.asset_admin verify-backup E:\LC-AI-Canvas-Backups\lc-ai-canvas-...
+```
+
+완전 백업은 파일별 checksum manifest와 DB·카탈로그 정합성 검증을 통과해야만
+완료됩니다. 복구 절차는 `docs/OPERATIONS.md`를 따릅니다.
 
 ## 문서
 

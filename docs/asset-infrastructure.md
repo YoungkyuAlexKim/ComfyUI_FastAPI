@@ -63,6 +63,10 @@
 - 상태 변경은 sidecar와 카탈로그를 함께 갱신하고 DB 실패 시 sidecar를 되돌립니다.
 - 휴지통 purge는 모든 대상 파일 삭제 후에만 카탈로그 행을 삭제합니다.
 - 피드 게시 DB 실패 시 방금 복사한 파일을 정리합니다.
+- 브라우저/MCP 입력 이미지는 공통 검증 계층에서 실제 디코딩, byte·pixel 제한, EXIF
+  방향 보정, PNG 정규화를 거친 뒤 저장합니다.
+- 신규 입력 자산은 카탈로그 등록이 실패하면 방금 쓴 원본·썸네일·sidecar를 보상 삭제합니다.
+- MCP 첨부 재시도는 소유자+정규화 SHA-256 범위의 기존 active 입력을 재사용합니다.
 
 파일시스템과 SQLite를 하나의 ACID 트랜잭션으로 묶을 수는 없으므로 정기 audit와 백업은
 여전히 필요합니다.
@@ -101,13 +105,20 @@ ALLOW_LEGACY_ANON_HEADER=false
 ```
 
 이 명령은 SQLite online backup API와 무결성 검사를 사용하지만 미디어는 복사하지
-않습니다. 완전한 복구 단위는 DB, 전체 `outputs`, principal secret입니다. 자세한
-절차는 `OPERATIONS.md`를 따릅니다.
+않습니다. 완전 백업은 다음 명령으로 DB, 전체 `outputs`, principal secret, checksum
+manifest를 하나의 검증된 세트로 만듭니다.
+
+```powershell
+.\venv\Scripts\python.exe -m app.asset_admin backup-all --destination-root E:\LC-AI-Canvas-Backups
+```
+
+운영 DB와 WAL sidecar는 Git ignore 대상이며 운영 파일을 그대로 둔 채 index 추적만
+해제합니다. 자세한 예약 실행과 격리 복구 절차는 `OPERATIONS.md`를 따릅니다.
 
 ## 남은 전환 작업
 
-- 활성 사용자 쿠키 승격 관찰과 `enforced` 전환
-- 운영 DB를 삭제 위험 없이 Git 추적에서 분리
-- 정기 DB+outputs 백업 및 복구 검증 자동화
-- 안정화 후 `media_store.py`의 폴더 스캔 fallback 제거
+- `principal_identity_cookie_issued` 로그를 통한 활성 사용자 승격 관찰과 `enforced` 전환
+- 완전 백업 스크립트를 외부 저장소에 예약하고 staging 복구 훈련
+- `ASSET_CATALOG_FALLBACK_ENABLED=false` canary 통과 후 `media_store.py`의 폴더 스캔
+  fallback 제거
 - UI가 소유권 확인 자산 endpoint를 기본 URL로 사용하도록 점진 전환
