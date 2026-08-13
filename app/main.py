@@ -109,10 +109,22 @@ app.include_router(assets_router)
 async def principal_session_middleware(request: Request, call_next):
     """Upgrade legacy browser identities to a signed server session."""
 
+    path = request.url.path or ""
+    if path == "/healthz" or path == "/mcp" or path.startswith("/mcp/"):
+        # Health checks have no browser identity, and MCP derives its principal
+        # from the verified client IP in McpRequestContextMiddleware.
+        return await call_next(request)
     principal_id, needs_upgrade = prepare_request_principal(request)
     response = await call_next(request)
     if needs_upgrade:
         _set_principal_cookies(request, response, principal_id)
+        logger.info(
+            {
+                "event": "principal_identity_cookie_issued",
+                "identity_source": getattr(request.state, "principal_identity_source", "unknown"),
+                "principal_hash": hashlib.sha256(principal_id.encode("utf-8")).hexdigest()[:16],
+            }
+        )
     return response
 
 # --- Beta access gate (shared password) ---
@@ -883,10 +895,10 @@ async def translate_prompt_endpoint(text: str = Form(...), mode: str = Form("ima
 
 # WebSocket routes moved to app/ws/routes.py
 
-mcp_integration = create_mcp_integration(job_manager, job_store, generation_controls)
+mcp_integration = create_mcp_integration(job_manager, job_store, generation_controls, asset_service)
 app.state.mcp_server = mcp_integration.server
 app.mount("/mcp", mcp_integration.http_app, name="mcp")
-app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
+app.mount("/outputs", StaticFiles(directory=SERVER_CONFIG["output_dir"]), name="outputs")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Health route moved to app/routers/health.py

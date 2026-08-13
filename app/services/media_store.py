@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import logging
 import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
@@ -19,6 +20,25 @@ from .asset_service import atomic_write_bytes, atomic_write_json
 
 # Reuse output directory from server config
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
+_FALLBACK_EVENTS: set[str] = set()
+
+
+def _catalog_service(operation: str):
+    service = get_asset_service()
+    if service is not None:
+        return service
+    enabled = str(os.getenv("ASSET_CATALOG_FALLBACK_ENABLED", "true") or "true").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        raise RuntimeError(f"AssetService is required for media operation: {operation}")
+    if operation not in _FALLBACK_EVENTS:
+        _FALLBACK_EVENTS.add(operation)
+        logging.getLogger("comfyui_app").warning(
+            {
+                "event": "asset_catalog_filesystem_fallback",
+                "operation": operation,
+            }
+        )
+    return None
 
 
 # --- Paths and saving helpers ---
@@ -687,7 +707,7 @@ def _save_image_and_meta(
     meta_path = os.path.join(dated_dir, f"{image_id}.json")
     atomic_write_json(meta_path, meta)
 
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("save_image")
     if asset_service is not None:
         asset_service.register(
             owner_id=anon_id,
@@ -828,7 +848,7 @@ def _save_game_ui_group(
                 )
     atomic_write_bytes(zip_path, zip_buffer.getvalue())
 
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("save_game_ui_group")
     if asset_service is not None:
         asset_service.register_group(owner_id=anon_id, manifest_path=manifest_path, metadata=group)
 
@@ -839,7 +859,7 @@ def _input_base_dir(anon_id: str) -> str:
 
 
 def _locate_input_png_path(anon_id: str, image_id: str) -> Optional[str]:
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("locate_input")
     if asset_service is not None:
         row = asset_service.get(anon_id, image_id)
         if row and row.get("kind") == "input":
@@ -856,6 +876,16 @@ def _locate_input_png_path(anon_id: str, image_id: str) -> Optional[str]:
 
 
 def _save_input_image_and_meta(anon_id: str, image_bytes: bytes, original_filename: str) -> Tuple[str, str]:
+    asset_service = _catalog_service("save_input")
+    if asset_service is not None:
+        row = asset_service.create_input_image(anon_id, image_bytes, original_filename)
+        image_path = asset_service.resolve_storage_path(row.get("storage_path"))
+        meta_path = asset_service.resolve_storage_path(row.get("metadata_path"))
+        if not image_path or not meta_path:
+            raise RuntimeError("Registered input asset paths are unavailable")
+        return image_path, meta_path
+
+    # Legacy standalone fallback used only when AssetService has not been wired.
     now = datetime.now(timezone.utc)
     base_dir = _input_base_dir(anon_id)
     dated_dir = _date_partition_path(base_dir, now)
@@ -918,21 +948,11 @@ def _save_input_image_and_meta(anon_id: str, image_bytes: bytes, original_filena
     meta_path = os.path.join(dated_dir, f"{input_id}.json")
     atomic_write_json(meta_path, meta)
 
-    asset_service = get_asset_service()
-    if asset_service is not None:
-        asset_service.register(
-            owner_id=anon_id,
-            kind="input",
-            media_path=image_path,
-            metadata_path=meta_path,
-            metadata=meta,
-        )
-
     return image_path, meta_path
 
 
 def _gather_user_inputs(anon_id: str, include_trash: bool = False) -> List[dict]:
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("list_inputs")
     if asset_service is not None:
         return asset_service.list_media(anon_id, "input", include_trash=include_trash)
     base = _input_base_dir(anon_id)
@@ -987,7 +1007,7 @@ def _gather_user_inputs(anon_id: str, include_trash: bool = False) -> List[dict]
 
 
 def _locate_input_meta_path(anon_id: str, image_id: str) -> Optional[str]:
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("locate_input_metadata")
     if asset_service is not None:
         return asset_service.locate_metadata(anon_id, image_id, kind="input")
     base = _input_base_dir(anon_id)
@@ -1001,7 +1021,7 @@ def _locate_input_meta_path(anon_id: str, image_id: str) -> Optional[str]:
 
 
 def _update_input_status(anon_id: str, image_id: str, status: str) -> bool:
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("update_input_status")
     if asset_service is not None:
         return asset_service.update_status(anon_id, image_id, status, kind="input")
     meta_path = _locate_input_meta_path(anon_id, image_id)
@@ -1018,7 +1038,7 @@ def _update_input_status(anon_id: str, image_id: str, status: str) -> bool:
 
 
 def _gather_user_images(anon_id: str, include_trash: bool = False) -> List[dict]:
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("list_images")
     if asset_service is not None:
         return asset_service.list_media(anon_id, "image", include_trash=include_trash)
     base = _user_base_dir(anon_id)
@@ -1093,7 +1113,7 @@ def _gather_user_images(anon_id: str, include_trash: bool = False) -> List[dict]
 
 
 def _locate_image_meta_path(anon_id: str, image_id: str) -> Optional[str]:
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("locate_image_metadata")
     if asset_service is not None:
         return asset_service.locate_metadata(anon_id, image_id, kind="image")
     base = _user_base_dir(anon_id)
@@ -1107,7 +1127,7 @@ def _locate_image_meta_path(anon_id: str, image_id: str) -> Optional[str]:
 
 
 def _update_image_status(anon_id: str, image_id: str, status: str) -> bool:
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("update_image_status")
     if asset_service is not None:
         return asset_service.update_status(anon_id, image_id, status, kind="image")
     meta_path = _locate_image_meta_path(anon_id, image_id)
@@ -1197,7 +1217,7 @@ def _save_audio_and_meta(
     meta_path = os.path.join(dated_dir, f"{audio_id}.json")
     atomic_write_json(meta_path, meta)
 
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("save_audio")
     if asset_service is not None:
         asset_service.register(
             owner_id=anon_id,
@@ -1213,7 +1233,7 @@ def _save_audio_and_meta(
 
 def _gather_user_audio(anon_id: str, include_trash: bool = False) -> List[dict]:
     """List audio files for a user, newest first."""
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("list_audio")
     if asset_service is not None:
         return asset_service.list_media(anon_id, "audio", include_trash=include_trash)
     base = _audio_base_dir(anon_id)
@@ -1259,7 +1279,7 @@ def _gather_user_audio(anon_id: str, include_trash: bool = False) -> List[dict]:
 
 
 def _locate_audio_meta_path(anon_id: str, audio_id: str) -> Optional[str]:
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("locate_audio_metadata")
     if asset_service is not None:
         return asset_service.locate_metadata(anon_id, audio_id, kind="audio")
     base = _audio_base_dir(anon_id)
@@ -1317,7 +1337,7 @@ def _master_audio_file(audio_path: str) -> bool:
 
 
 def _update_audio_status(anon_id: str, audio_id: str, status: str) -> bool:
-    asset_service = get_asset_service()
+    asset_service = _catalog_service("update_audio_status")
     if asset_service is not None:
         return asset_service.update_status(anon_id, audio_id, status, kind="audio")
     meta_path = _locate_audio_meta_path(anon_id, audio_id)

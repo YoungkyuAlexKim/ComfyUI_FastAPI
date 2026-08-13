@@ -199,6 +199,26 @@ class AssetStore:
         with self._connect() as con:
             return self._decode(con.execute(sql, params).fetchone())
 
+    def find_active_by_sha256(
+        self,
+        owner_id: str,
+        sha256: str,
+        *,
+        kinds: Iterable[str] | None = None,
+    ) -> Optional[dict[str, Any]]:
+        clauses = ["owner_id=?", "sha256=?", "status='active'"]
+        params: list[Any] = [owner_id, sha256]
+        kind_values = tuple(str(kind) for kind in (kinds or ()))
+        if kind_values:
+            clauses.append(f"kind IN ({','.join('?' for _ in kind_values)})")
+            params.extend(kind_values)
+        sql = (
+            f"SELECT * FROM assets WHERE {' AND '.join(clauses)} "
+            "ORDER BY created_at DESC, asset_id DESC LIMIT 1"
+        )
+        with self._connect() as con:
+            return self._decode(con.execute(sql, params).fetchone())
+
     def list(
         self,
         owner_id: str,

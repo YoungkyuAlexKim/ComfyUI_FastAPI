@@ -232,10 +232,32 @@ def prepare_request_principal(req: "Request") -> tuple[str, bool]:
     """
 
     signed_id = None
+    signed_cookie_present = False
     try:
-        signed_id = _principal_from_signed_cookie(req.cookies.get(PRINCIPAL_COOKIE_NAME))
+        signed_cookie = req.cookies.get(PRINCIPAL_COOKIE_NAME)
+        signed_cookie_present = bool(signed_cookie)
+        signed_id = _principal_from_signed_cookie(signed_cookie)
     except Exception:
         pass
-    principal_id = signed_id or _legacy_principal_from_cookies(req.cookies) or _new_browser_principal()
+    raw_legacy_id = None
+    try:
+        candidate = validate_principal_id(req.cookies.get(ANON_COOKIE_NAME))
+        if candidate and candidate.startswith(ANON_COOKIE_PREFIX):
+            raw_legacy_id = candidate
+    except Exception:
+        pass
+    legacy_id = _legacy_principal_from_cookies(req.cookies) if signed_id is None else None
+    principal_id = signed_id or legacy_id or _new_browser_principal()
     req.state.principal_id = principal_id
+    if signed_id:
+        identity_source = "signed_cookie"
+    elif legacy_id:
+        identity_source = "legacy_cookie"
+    elif signed_cookie_present:
+        identity_source = "invalid_signed_cookie"
+    elif raw_legacy_id and _identity_mode() == "enforced":
+        identity_source = "legacy_cookie_rejected"
+    else:
+        identity_source = "new_principal"
+    req.state.principal_identity_source = identity_source
     return principal_id, signed_id != principal_id

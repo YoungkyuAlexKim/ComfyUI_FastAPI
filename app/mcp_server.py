@@ -18,6 +18,7 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 
 from .config import SERVER_CONFIG
+from .services.asset_service import AssetService
 from .services.generation_commands import (
     DEFAULT_CAPABILITY_DISPATCHER,
     GenerationCommand,
@@ -26,6 +27,15 @@ from .services.generation_commands import (
 )
 from .services.generation_controls import GenerationPolicyError
 from .services.generation_submission import GenerationSubmissionService
+from .services.input_assets import (
+    InputAssetError,
+    decode_base64_image,
+    input_base64_max_characters,
+    register_input_image,
+)
+
+
+MCP_INPUT_BASE64_MAX_CHARACTERS = input_base64_max_characters()
 
 
 @dataclass(frozen=True)
@@ -160,6 +170,12 @@ def _absolute_result(result: Any, base_url: str) -> Any:
         for key, value in list(converted.items()):
             if key.endswith("_path") and isinstance(value, str) and value.startswith("/outputs/"):
                 converted[f"{key[:-5]}_url"] = f"{base_url}{value}"
+            elif (
+                (key == "url" or key.endswith("_url"))
+                and isinstance(value, str)
+                and value.startswith("/outputs/")
+            ):
+                converted[key] = f"{base_url}{value}"
         return converted
     if isinstance(result, list):
         return [_absolute_result(value, base_url) for value in result]
@@ -180,11 +196,72 @@ def _result_image_content(structured_result: dict[str, Any]):
     return McpImage(path=candidate).to_image_content()
 
 
+def _asset_web_path(row: dict[str, Any], key: str) -> str | None:
+    relative_path = row.get(key)
+    if not isinstance(relative_path, str) or not relative_path:
+        return None
+    return f"/outputs/{relative_path}"
+
+
+def _asset_result(row: dict[str, Any], base_url: str) -> dict[str, Any]:
+    content_path = _asset_web_path(row, "storage_path")
+    thumbnail_path = _asset_web_path(row, "thumbnail_path")
+    return {
+        "asset_id": row.get("asset_id"),
+        "kind": row.get("kind"),
+        "status": row.get("status"),
+        "mime_type": row.get("mime_type"),
+        "byte_size": row.get("byte_size"),
+        "sha256": row.get("sha256"),
+        "group_id": row.get("group_id"),
+        "source_job_id": row.get("source_job_id"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+        "content_url": f"{base_url}{content_path}" if content_path else None,
+        "thumbnail_url": f"{base_url}{thumbnail_path}" if thumbnail_path else None,
+        "metadata": row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
+    }
+
+
+def _asset_image_content(asset_service: AssetService, caller: McpCaller, asset_id: str):
+    row = asset_service.get(caller.principal_id, asset_id)
+    if not row or row.get("status") != "active" or row.get("kind") not in {"image", "input"}:
+        return None
+    path = asset_service.resolve_storage_path(row.get("storage_path"))
+    if not path or not os.path.isfile(path):
+        return None
+    return McpImage(path=Path(path)).to_image_content()
+
+
 class McpGenerationService:
-    def __init__(self, job_manager, job_store, controls):
+    def __init__(self, job_manager, job_store, controls, asset_service: AssetService):
         self.job_manager = job_manager
         self.job_store = job_store
+        self.asset_service = asset_service
         self.submissions = GenerationSubmissionService(job_manager, controls)
+
+    def _reference_image_ids(
+        self,
+        caller: McpCaller,
+        values: list[str] | None,
+        *,
+        max_count: int,
+    ) -> list[str]:
+        reference_ids: list[str] = []
+        for value in values or []:
+            asset_id = str(value or "").strip()
+            if asset_id and asset_id not in reference_ids:
+                reference_ids.append(asset_id)
+        if len(reference_ids) > max_count:
+            raise ValueError(f"At most {max_count} reference images are supported")
+        for asset_id in reference_ids:
+            row = self.asset_service.get(caller.principal_id, asset_id)
+            if not row or row.get("status") != "active" or row.get("kind") not in {"image", "input"}:
+                raise ValueError(f"Reference image not found: {asset_id}")
+            path = self.asset_service.resolve_storage_path(row.get("storage_path"))
+            if not path or not os.path.isfile(path):
+                raise ValueError(f"Reference image file is unavailable: {asset_id}")
+        return reference_ids
 
     def create_image(
         self,
@@ -195,7 +272,9 @@ class McpGenerationService:
         image_size: str,
         idempotency_key: str,
         cost_confirmed: bool,
+        reference_image_ids: list[str] | None = None,
     ) -> dict[str, Any]:
+        reference_ids = self._reference_image_ids(caller, reference_image_ids, max_count=14)
         context = GenerationContext(
             principal_id=caller.principal_id,
             source="mcp",
@@ -206,11 +285,13 @@ class McpGenerationService:
         )
         command = GenerationCommand(
             capability="create_image",
-            variant="generate",
+            variant="edit" if reference_ids else "generate",
             parameters={
                 "user_prompt": prompt.strip(),
                 "aspect_ratio": aspect_ratio,
                 "image_size": image_size,
+                "input_image_ids": reference_ids or None,
+                "input_image_id": reference_ids[0] if reference_ids else None,
             },
             context=context,
         )
@@ -224,6 +305,123 @@ class McpGenerationService:
             "duplicate": submission.duplicate,
             "next_action": "Poll get_generation_job until status is complete or error.",
         }
+
+    def create_game_ui_assets(
+        self,
+        caller: McpCaller,
+        *,
+        prompt: str,
+        background_mode: str,
+        image_quality: str,
+        idempotency_key: str,
+        cost_confirmed: bool,
+        reference_image_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        reference_ids = self._reference_image_ids(caller, reference_image_ids, max_count=3)
+        context = GenerationContext(
+            principal_id=caller.principal_id,
+            source="mcp",
+            client_ip=caller.client_ip,
+            client_ip_source=caller.client_ip_source,
+            request_id=uuid.uuid4().hex,
+            idempotency_key=idempotency_key,
+        )
+        command = GenerationCommand(
+            capability="create_game_ui_assets",
+            variant="default",
+            parameters={
+                "user_prompt": prompt.strip(),
+                "aspect_ratio": "square",
+                "image_size": "2K",
+                "image_quality": image_quality,
+                "game_ui_background_mode": background_mode,
+                "input_image_ids": reference_ids or None,
+                "input_image_id": reference_ids[0] if reference_ids else None,
+            },
+            context=context,
+        )
+        resolved = DEFAULT_CAPABILITY_DISPATCHER.resolve(command)
+        submission = self.submissions.submit(resolved, cost_confirmed=cost_confirmed)
+        return {
+            "job_id": submission.job_id,
+            "status": submission.status,
+            "queue_position": submission.position,
+            "estimated_cost_usd": submission.estimated_cost_usd,
+            "duplicate": submission.duplicate,
+            "output_contract": {
+                "grid": "2x2",
+                "asset_count": 4,
+                "image_size": "2K",
+                "background_mode": background_mode,
+            },
+            "next_action": "Poll get_generation_job until status is complete or error.",
+        }
+
+    def create_input_image_asset(
+        self,
+        caller: McpCaller,
+        *,
+        image_base64: str,
+        mime_type: str,
+        filename: str | None,
+    ) -> dict[str, Any]:
+        raw_bytes, data_url_mime = decode_base64_image(image_base64)
+        declared_mime = str(mime_type or "").strip().lower()
+        if data_url_mime and declared_mime and data_url_mime != declared_mime:
+            raise InputAssetError("mime_type_mismatch", "Data URL and mime_type do not match")
+        row, duplicate = register_input_image(
+            self.asset_service,
+            caller.principal_id,
+            raw_bytes,
+            filename=filename,
+            content_type=data_url_mime or declared_mime,
+            deduplicate=True,
+        )
+        result = _asset_result(row, caller.base_url)
+        result["duplicate"] = duplicate
+        result["next_action"] = "Use asset_id in reference_image_ids for an image or Game UI request."
+        return result
+
+    def list_image_assets(
+        self,
+        caller: McpCaller,
+        *,
+        asset_kind: str,
+        limit: int,
+        offset: int,
+    ) -> dict[str, Any]:
+        kinds = ("image", "input") if asset_kind == "all" else (asset_kind,)
+        rows = self.asset_service.list_assets(
+            caller.principal_id,
+            kinds=kinds,
+            include_trash=False,
+            limit=limit,
+            offset=offset,
+        )
+        total = self.asset_service.count_assets(
+            caller.principal_id,
+            kinds=kinds,
+            include_trash=False,
+        )
+        next_offset = offset + len(rows) if offset + len(rows) < total else None
+        return {
+            "asset_kind": asset_kind,
+            "items": [_asset_result(row, caller.base_url) for row in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "next_offset": next_offset,
+        }
+
+    def get_image_asset(self, caller: McpCaller, asset_id: str) -> dict[str, Any]:
+        row = self.asset_service.get(caller.principal_id, asset_id)
+        if not row or row.get("status") != "active" or row.get("kind") not in {"image", "input"}:
+            # Keep cross-owner and missing-asset responses indistinguishable.
+            raise ValueError("Image asset not found")
+        path = self.asset_service.resolve_storage_path(row.get("storage_path"))
+        if not path or not os.path.isfile(path):
+            raise ValueError("Image asset file is unavailable")
+        return _asset_result(row, caller.base_url)
 
     def get_job(self, caller: McpCaller, job_id: str) -> dict[str, Any]:
         job = self.job_manager.get(job_id)
@@ -279,12 +477,12 @@ class McpIntegration:
     lifespan_context_factory: Any
 
 
-def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
-    service = McpGenerationService(job_manager, job_store, controls)
+def create_mcp_integration(job_manager, job_store, controls, asset_service: AssetService) -> McpIntegration:
+    service = McpGenerationService(job_manager, job_store, controls, asset_service)
     server = MCPServer(
         name="lc-ai-canvas",
         title="LC AI Canvas",
-        version="0.2.0",
+        version="0.4.0",
         instructions=(
             "LC AI Canvas is the company's managed image-asset pipeline. Use "
             "create_managed_image_asset only when the user asks for the company generator or LC AI "
@@ -292,7 +490,10 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
             "image generator. For ad-hoc images in clients with a native generator and no managed-workflow "
             "need, prefer the native tool. This tool incurs company API cost. Reuse the same "
             "idempotency_key when retrying one intent. If cost confirmation is required, ask the user and "
-            "retry with cost_confirmed=true. Poll get_generation_job, then call get_generation_result."
+            "retry with cost_confirmed=true. Poll get_generation_job, then call get_generation_result. "
+            "Use list_image_assets and get_image_asset to discover only this caller's managed images. "
+            "Use create_input_image_asset to register a client attachment before referencing it. "
+            "create_game_ui_assets produces the fixed, supported 2x2 Game UI asset group."
         ),
     )
 
@@ -314,8 +515,24 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
             "capabilities": [
                 {
                     "name": "create_managed_image_asset",
-                    "variants": ["generate"],
-                    "supports": ["text-to-image", "managed-storage", "central-audit"],
+                    "variants": ["generate", "edit"],
+                    "supports": [
+                        "text-to-image",
+                        "owner-scoped-reference-images",
+                        "managed-storage",
+                        "central-audit",
+                    ],
+                    "status": "available",
+                },
+                {
+                    "name": "create_game_ui_assets",
+                    "variants": ["default"],
+                    "supports": [
+                        "2x2-candidate-sheet",
+                        "four-managed-assets",
+                        "group-zip",
+                        "owner-scoped-reference-images",
+                    ],
                     "status": "available",
                 }
             ]
@@ -328,24 +545,142 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
         structured_output=True,
     )
     async def get_generation_capability(
-        capability: Literal["create_managed_image_asset"],
+        capability: Literal["create_managed_image_asset", "create_game_ui_assets"],
     ) -> dict[str, Any]:
+        if capability == "create_game_ui_assets":
+            return {
+                "name": capability,
+                "variants": ["default"],
+                "description": (
+                    "Create four related Game UI element candidates from one prompt as a fixed 2x2 group, "
+                    "with managed child assets and a group ZIP."
+                ),
+                "inputs": {
+                    "prompt": {"type": "string", "required": True, "max_length": 8000},
+                    "reference_image_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "max_items": 3,
+                        "required": False,
+                    },
+                    "background_mode": {
+                        "enum": ["transparent", "opaque"],
+                        "default": "transparent",
+                    },
+                    "image_quality": {
+                        "enum": ["low", "medium", "high"],
+                        "default": "medium",
+                    },
+                    "idempotency_key": {"type": "string", "required": True, "min_length": 8},
+                    "cost_confirmed": {"type": "boolean", "default": False},
+                },
+                "output": {"grid": "2x2", "asset_count": 4, "image_size": "2K"},
+                "asynchronous": True,
+            }
         return {
             "name": capability,
-            "variant": "generate",
+            "variants": ["generate", "edit"],
             "description": (
-                "Create one company-managed image asset from text, with centralized API billing, "
-                "audit logging, job tracking, and LC AI Canvas storage."
+                "Create one company-managed image asset from text, or edit caller-owned reference "
+                "images, with centralized API billing, audit logging, job tracking, and LC AI Canvas storage."
             ),
             "inputs": {
                 "prompt": {"type": "string", "required": True, "max_length": 8000},
                 "aspect_ratio": {"enum": ["square", "landscape", "portrait"], "default": "square"},
                 "image_size": {"enum": ["1K", "2K"], "default": "2K"},
+                "reference_image_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "max_items": 14,
+                    "required": False,
+                    "behavior": "When present, edit these owner-scoped image assets.",
+                },
                 "idempotency_key": {"type": "string", "required": True, "min_length": 8},
                 "cost_confirmed": {"type": "boolean", "default": False},
             },
             "asynchronous": True,
         }
+
+    @server.tool(
+        title="List image assets",
+        description=(
+            "List active managed image assets owned by this MCP caller. Use input assets when selecting "
+            "uploaded references and image assets when selecting generated gallery results."
+        ),
+        annotations=read_annotations,
+        structured_output=True,
+    )
+    async def list_image_assets(
+        asset_kind: Literal["image", "input", "all"] = "image",
+        limit: Annotated[int, Field(ge=1, le=100)] = 50,
+        offset: Annotated[int, Field(ge=0, le=1_000_000)] = 0,
+    ) -> dict[str, Any]:
+        return service.list_image_assets(
+            _current_caller(),
+            asset_kind=asset_kind,
+            limit=limit,
+            offset=offset,
+        )
+
+    @server.tool(
+        title="Get image asset",
+        description=(
+            "Get one active image asset owned by this MCP caller, including metadata and image content."
+        ),
+        annotations=read_annotations,
+    )
+    async def get_image_asset(
+        asset_id: Annotated[str, Field(min_length=1, max_length=128)],
+    ) -> CallToolResult:
+        caller = _current_caller()
+        structured = service.get_image_asset(caller, asset_id)
+        content = [TextContent(type="text", text=json.dumps(structured, ensure_ascii=False))]
+        image_content = _asset_image_content(asset_service, caller, asset_id)
+        if image_content is not None:
+            content.append(image_content)
+        return CallToolResult(content=content, structuredContent=structured)
+
+    @server.tool(
+        title="Register input image asset",
+        description=(
+            "Register one PNG, JPEG, or WEBP client attachment as an owner-scoped LC AI Canvas input "
+            "asset. The image is decoded, bounded, normalized to PNG, cataloged, and deduplicated by "
+            "content. Use the returned asset_id in reference_image_ids. This does not call an AI provider."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+    )
+    async def create_input_image_asset(
+        image_base64: Annotated[
+            str,
+            Field(
+                min_length=4,
+                max_length=MCP_INPUT_BASE64_MAX_CHARACTERS,
+                description="Plain base64 or a PNG/JPEG/WEBP data URL",
+            ),
+        ],
+        mime_type: Literal["image/png", "image/jpeg", "image/webp"],
+        filename: Annotated[str | None, Field(max_length=255)] = None,
+    ) -> CallToolResult:
+        caller = _current_caller()
+        try:
+            structured = service.create_input_image_asset(
+                caller,
+                image_base64=image_base64,
+                mime_type=mime_type,
+                filename=filename,
+            )
+        except InputAssetError as exc:
+            raise RuntimeError(f"{exc.code}: {exc.message}") from exc
+        content = [TextContent(type="text", text=json.dumps(structured, ensure_ascii=False))]
+        image_content = _asset_image_content(asset_service, caller, str(structured["asset_id"]))
+        if image_content is not None:
+            content.append(image_content)
+        return CallToolResult(content=content, structuredContent=structured)
 
     @server.tool(
         title="Get generation job",
@@ -378,7 +713,8 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
     @server.tool(
         title="Create managed image asset",
         description=(
-            "Queue one company-managed text-to-image asset using LC AI Canvas. Use this when the user "
+            "Queue one company-managed image asset using LC AI Canvas. With no reference_image_ids this "
+            "is text-to-image; with caller-owned active image IDs it is an image edit. Use this when the user "
             "requests the company generator, needs centrally billed/audited/stored output, or the current "
             "client has no native image generator. In clients with native image generation, do not use "
             "this for an ad-hoc image unless a managed company workflow is requested. This consumes "
@@ -400,6 +736,7 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
         ],
         aspect_ratio: Literal["square", "landscape", "portrait"] = "square",
         image_size: Literal["1K", "2K"] = "2K",
+        reference_image_ids: Annotated[list[str] | None, Field(max_length=14)] = None,
         cost_confirmed: bool = False,
     ) -> dict[str, Any]:
         try:
@@ -410,6 +747,43 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
                 image_size=image_size,
                 idempotency_key=idempotency_key,
                 cost_confirmed=cost_confirmed,
+                reference_image_ids=reference_image_ids,
+            )
+        except GenerationPolicyError as exc:
+            raise RuntimeError(f"{exc.code}: {exc.message}") from exc
+
+    @server.tool(
+        title="Create Game UI assets",
+        description=(
+            "Queue the stable LC AI Canvas Game UI capability. It creates exactly four related candidates "
+            "in a 2x2 sheet, registers four managed child images, and produces one group ZIP. This consumes "
+            "company API budget. Optional references must be active image assets owned by this caller."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=True,
+        ),
+        structured_output=True,
+    )
+    async def create_game_ui_assets(
+        prompt: Annotated[str, Field(min_length=1, max_length=8000)],
+        idempotency_key: Annotated[str, Field(min_length=8, max_length=128)],
+        reference_image_ids: Annotated[list[str] | None, Field(max_length=3)] = None,
+        background_mode: Literal["transparent", "opaque"] = "transparent",
+        image_quality: Literal["low", "medium", "high"] = "medium",
+        cost_confirmed: bool = False,
+    ) -> dict[str, Any]:
+        try:
+            return service.create_game_ui_assets(
+                _current_caller(),
+                prompt=prompt,
+                background_mode=background_mode,
+                image_quality=image_quality,
+                idempotency_key=idempotency_key,
+                cost_confirmed=cost_confirmed,
+                reference_image_ids=reference_image_ids,
             )
         except GenerationPolicyError as exc:
             raise RuntimeError(f"{exc.code}: {exc.message}") from exc

@@ -4,16 +4,20 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 from app.asset_store import AssetStore
+from app.asset_admin import _backup_all, _verify_backup
 from app.auth.user_management import (
     _principal_from_signed_cookie,
     _signed_cookie_value,
+    prepare_request_principal,
     require_principal_id,
     validate_principal_id,
 )
 from app.services.asset_service import AssetService, atomic_write_json
+from app.services import asset_runtime, media_store
 from app.routers.admin import require_admin
 from fastapi import HTTPException
 
@@ -32,6 +36,29 @@ class PrincipalBoundaryTests(unittest.TestCase):
             token = _signed_cookie_value("anon-user_123")
             self.assertEqual(_principal_from_signed_cookie(token), "anon-user_123")
             self.assertIsNone(_principal_from_signed_cookie(token[:-1] + ("A" if token[-1] != "A" else "B")))
+
+    def test_principal_preparation_marks_legacy_upgrade_for_observation(self):
+        request = SimpleNamespace(
+            cookies={"anon_id": "anon-existing_user"},
+            state=SimpleNamespace(),
+        )
+        with mock.patch.dict(os.environ, {"PRINCIPAL_IDENTITY_MODE": "compat"}, clear=False):
+            principal_id, needs_upgrade = prepare_request_principal(request)
+        self.assertEqual(principal_id, "anon-existing_user")
+        self.assertTrue(needs_upgrade)
+        self.assertEqual(request.state.principal_identity_source, "legacy_cookie")
+
+    def test_enforced_mode_rejects_and_marks_legacy_cookie(self):
+        request = SimpleNamespace(
+            cookies={"anon_id": "anon-existing_user"},
+            state=SimpleNamespace(),
+        )
+        with mock.patch.dict(os.environ, {"PRINCIPAL_IDENTITY_MODE": "enforced"}, clear=False):
+            principal_id, needs_upgrade = prepare_request_principal(request)
+        self.assertNotEqual(principal_id, "anon-existing_user")
+        self.assertTrue(principal_id.startswith("anon-"))
+        self.assertTrue(needs_upgrade)
+        self.assertEqual(request.state.principal_identity_source, "legacy_cookie_rejected")
 
 
 class AdminBoundaryTests(unittest.TestCase):
@@ -183,6 +210,94 @@ class AssetServiceTests(unittest.TestCase):
         self.assertFalse(media.exists())
         self.assertFalse(meta_path.exists())
         self.assertIsNone(self.service.get("anon-owner", "asset123"))
+
+
+class CompleteBackupTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.output_root = self.root / "outputs"
+        self.output_root.mkdir()
+        self.db_path = self.root / "app_data.db"
+        self.secret_path = self.root / "principal_cookie.secret"
+        self.secret_path.write_bytes(b"s" * 48)
+        self.service = AssetService(AssetStore(str(self.db_path)), str(self.output_root))
+
+        media_dir = self.output_root / "users" / "anon-owner" / "2026" / "08" / "13"
+        media_dir.mkdir(parents=True)
+        media = media_dir / "asset123.png"
+        metadata_path = media_dir / "asset123.json"
+        media.write_bytes(b"asset-bytes")
+        metadata = {
+            "id": "asset123",
+            "owner": "anon-owner",
+            "kind": "image",
+            "mime": "image/png",
+            "bytes": len(b"asset-bytes"),
+            "sha256": "abc",
+            "created_at": "2026-08-13T00:00:00+00:00",
+            "status": "active",
+            "thumb": None,
+        }
+        atomic_write_json(metadata_path, metadata)
+        self.service.register(
+            owner_id="anon-owner",
+            kind="image",
+            media_path=str(media),
+            metadata_path=str(metadata_path),
+            metadata=metadata,
+        )
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_complete_backup_contains_and_verifies_all_recovery_parts(self):
+        result = _backup_all(
+            self.root / "backups",
+            database_path=self.db_path,
+            output_root=self.output_root,
+            principal_secret_path=self.secret_path,
+        )
+
+        bundle = Path(result["backup"])
+        self.assertTrue((bundle / "app_data.db").is_file())
+        self.assertTrue((bundle / "outputs" / "users" / "anon-owner" / "2026" / "08" / "13" / "asset123.png").is_file())
+        self.assertEqual((bundle / "principal_cookie.secret").read_bytes(), b"s" * 48)
+        verified = _verify_backup(bundle)
+        self.assertTrue(verified["ok"])
+        self.assertEqual(verified["catalog"]["missing_files"], 0)
+
+    def test_complete_backup_verification_detects_tampering(self):
+        result = _backup_all(
+            self.root / "backups",
+            database_path=self.db_path,
+            output_root=self.output_root,
+            principal_secret_path=self.secret_path,
+        )
+        bundle = Path(result["backup"])
+        (bundle / "outputs" / "users" / "anon-owner" / "2026" / "08" / "13" / "asset123.png").write_bytes(b"changed")
+        with self.assertRaisesRegex(RuntimeError, "checksum mismatch|size mismatch"):
+            _verify_backup(bundle)
+
+    def test_complete_backup_rejects_destination_inside_outputs(self):
+        with self.assertRaisesRegex(ValueError, "inside the outputs"):
+            _backup_all(
+                self.output_root / "backups",
+                database_path=self.db_path,
+                output_root=self.output_root,
+                principal_secret_path=self.secret_path,
+            )
+
+
+class CatalogFallbackTests(unittest.TestCase):
+    def test_filesystem_fallback_can_be_disabled_for_catalog_only_canary(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            asset_runtime, "_asset_service", None
+        ), mock.patch.object(media_store, "OUTPUT_DIR", directory), mock.patch.dict(
+            os.environ, {"ASSET_CATALOG_FALLBACK_ENABLED": "false"}, clear=False
+        ):
+            with self.assertRaisesRegex(RuntimeError, "AssetService is required"):
+                media_store._gather_user_images("anon-owner")
 
 
 if __name__ == "__main__":

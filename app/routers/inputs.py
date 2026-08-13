@@ -1,54 +1,18 @@
 from datetime import datetime, timezone
-from io import BytesIO
 import os
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
-from ..config import UPLOAD_CONFIG
 from ..logging_utils import setup_logging
 from ..auth.user_management import _get_anon_id_from_request
 from ..services.media_store import (
     _gather_user_inputs,
-    _save_input_image_and_meta,
     _update_input_status,
     _build_web_path,
 )
+from ..services.input_assets import InputAssetError, input_max_bytes, register_input_image
 from ..schemas.api_models import PaginatedImages as PaginatedInputs, UploadMediaResponse as UploadInputResponse, OkResponse
-
-try:
-    from PIL import Image
-except Exception:
-    Image = None
-try:
-    # Best-effort: fix EXIF orientation for portrait photos
-    from PIL import ImageOps
-except Exception:
-    ImageOps = None
-
 
 logger = setup_logging()
 router = APIRouter(tags=["Inputs"])
-
-_ALLOWED_INPUT_EXTS = (".png", ".jpg", ".jpeg", ".webp")
-_ALLOWED_INPUT_CT = ("image/png", "image/jpeg", "image/webp")
-
-
-def _infer_ext(filename: str | None, content_type: str | None) -> str | None:
-    """
-    Some browsers/devices may provide odd filenames without extensions (e.g. 'blob').
-    Infer an allowed extension from filename or content-type.
-    """
-    name = (filename or "").strip()
-    lower = name.lower()
-    for ext in _ALLOWED_INPUT_EXTS:
-        if lower.endswith(ext):
-            return ext
-    ct = (content_type or "").split(";")[0].strip().lower()
-    if ct == "image/png":
-        return ".png"
-    if ct == "image/jpeg":
-        return ".jpg"
-    if ct == "image/webp":
-        return ".webp"
-    return None
 
 
 
@@ -108,17 +72,11 @@ async def user_upload_input_image(request: Request, file: UploadFile = File(...)
     anon_id = _get_anon_id_from_request(request)
     if not file or not isinstance(file.filename, str):
         raise HTTPException(status_code=400, detail="Invalid upload")
-    safe_name = os.path.basename(file.filename)
-    ext = _infer_ext(safe_name, getattr(file, "content_type", None))
-    if not ext:
-        raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다. PNG/JPG/WEBP만 업로드할 수 있어요.")
-    if not safe_name.lower().endswith(ext):
-        # Normalize to a stable extension so later logic can decide conversion correctly.
-        safe_name = f"upload{ext}"
-    # Enforce inputs size cap
+    # Bound memory while reading. Decoding, pixel limits, orientation, and PNG
+    # normalization are shared with MCP in services/input_assets.py.
     chunks: list[bytes] = []
     total = 0
-    max_bytes = int(UPLOAD_CONFIG.get("inputs_max_bytes", 10 * 1024 * 1024))
+    max_bytes = input_max_bytes()
     max_mb = max_bytes / (1024 * 1024)
     while True:
         piece = await file.read(1024 * 256)
@@ -129,38 +87,22 @@ async def user_upload_input_image(request: Request, file: UploadFile = File(...)
             raise HTTPException(status_code=413, detail=f"입력 이미지가 너무 큽니다. 최대 {max_mb:.1f}MB 까지 허용됩니다.")
         chunks.append(piece)
     data = b"".join(chunks)
-    png_bytes = data
-    if ext != ".png":
-        if Image is None:
-            raise HTTPException(status_code=400, detail="서버에서 이미지 변환 기능이 준비되지 않았습니다. PNG로 변환 후 업로드해 주세요.")
-        try:
-            with Image.open(BytesIO(data)) as im:
-                # Some mobile photos rely on EXIF orientation; keep the visual orientation stable.
-                try:
-                    if ImageOps is not None:
-                        im = ImageOps.exif_transpose(im)
-                except Exception:
-                    pass
-                # Preserve alpha when present (e.g. WEBP with transparency)
-                try:
-                    has_alpha = (
-                        im.mode in ("RGBA", "LA")
-                        or (im.mode == "P" and "transparency" in (im.info or {}))
-                    )
-                except Exception:
-                    has_alpha = False
-                im = im.convert("RGBA" if has_alpha else "RGB")
-                out = BytesIO()
-                im.save(out, format="PNG")
-                png_bytes = out.getvalue()
-        except Exception:
-            raise HTTPException(status_code=400, detail="이미지를 읽을 수 없습니다. 파일이 손상되었거나 지원하지 않는 형식일 수 있어요.")
-    # Post-conversion safety cap
-    if len(png_bytes) > max_bytes:
-        raise HTTPException(status_code=413, detail=f"입력 이미지가 너무 큽니다. 최대 {max_mb:.1f}MB 까지 허용됩니다.")
-    path, meta = _save_input_image_and_meta(anon_id, png_bytes, safe_name)
-    web_url = _build_web_path(path)
-    return {"ok": True, "id": os.path.splitext(os.path.basename(path))[0], "url": web_url}
+    try:
+        service = request.app.state.asset_service
+        row, _ = register_input_image(
+            service,
+            anon_id,
+            data,
+            filename=file.filename,
+            content_type=getattr(file, "content_type", None),
+            deduplicate=False,
+        )
+    except InputAssetError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    path = service.resolve_storage_path(row.get("storage_path"))
+    if not path:
+        raise HTTPException(status_code=500, detail="Failed to resolve saved input image")
+    return {"ok": True, "id": row["asset_id"], "url": _build_web_path(path)}
 
 
 @router.post("/api/v1/inputs/copy", response_model=UploadInputResponse)
@@ -194,7 +136,7 @@ async def user_copy_to_inputs(request: Request):
 
     # Enforce inputs size limit on copy as well
     try:
-        max_bytes = int(UPLOAD_CONFIG.get("inputs_max_bytes", 10 * 1024 * 1024))
+        max_bytes = input_max_bytes()
         max_mb = max_bytes / (1024 * 1024)
         size = os.path.getsize(png_path)
         if size > max_bytes:
@@ -212,9 +154,21 @@ async def user_copy_to_inputs(request: Request):
         raise HTTPException(status_code=500, detail="Failed to read source image")
 
     try:
-        path, meta = _save_input_image_and_meta(anon_id, data, os.path.basename(png_path))
-        web_url = _build_web_path(path)
-        return {"ok": True, "id": os.path.splitext(os.path.basename(path))[0], "url": web_url}
+        service = request.app.state.asset_service
+        row, _ = register_input_image(
+            service,
+            anon_id,
+            data,
+            filename=os.path.basename(png_path),
+            content_type="image/png",
+            deduplicate=False,
+        )
+        path = service.resolve_storage_path(row.get("storage_path"))
+        if not path:
+            raise RuntimeError("Saved input path is unavailable")
+        return {"ok": True, "id": row["asset_id"], "url": _build_web_path(path)}
+    except InputAssetError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to save input image")
 

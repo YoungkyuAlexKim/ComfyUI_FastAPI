@@ -88,6 +88,7 @@ PROGRESS_LOG_CONFIG = {
 # --- 3.5 Upload limits (.env) ---
 UPLOAD_CONFIG = {
     "inputs_max_bytes": int(os.getenv("INPUTS_MAX_BYTES", str(10 * 1024 * 1024))),
+    "inputs_max_pixels": int(os.getenv("INPUTS_MAX_PIXELS", "40000000")),
 }
 
 # --- 4. 관련 함수 ---

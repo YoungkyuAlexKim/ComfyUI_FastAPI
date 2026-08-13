@@ -9,8 +9,11 @@ from unittest import mock
 
 from PIL import Image, ImageDraw
 
+from app.asset_store import AssetStore
 from app.services import media_store
+from app.services import asset_runtime
 from app.services import openrouter_client
+from app.services.asset_service import AssetService
 from app.services.generation import run_generation_processor
 from app.services.game_ui_assets import (
     build_game_ui_generation_prompt,
@@ -115,7 +118,10 @@ class GameUiAssetTests(unittest.TestCase):
             input_image_ids=None,
         )
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.object(media_store, "OUTPUT_DIR", tmp):
+            service = AssetService(AssetStore(os.path.join(tmp, "catalog.db")), tmp)
+            with mock.patch.object(media_store, "OUTPUT_DIR", tmp), mock.patch.object(
+                asset_runtime, "_asset_service", service
+            ):
                 first_url, group = media_store._save_game_ui_group("tester", sheet, assets, req, "test")
                 gallery_items = media_store._gather_user_images("tester")
                 self.assertEqual(len(gallery_items), 4)
@@ -139,6 +145,8 @@ class GameUiAssetTests(unittest.TestCase):
                 with open(manifest_path, "r", encoding="utf-8") as handle:
                     saved_group = json.load(handle)
                 self.assertEqual(saved_group["prompt"], "붉은 화염 스킬 아이콘")
+                self.assertEqual(service.store.group_stats(), {"game_ui_group:active": 1})
+                self.assertEqual(service.count_media("tester", "image"), 4)
 
     def test_workflow_is_locked_to_gpt_image_2(self):
         config = WORKFLOW_CONFIGS["GameUI_Elements"]
@@ -153,7 +161,10 @@ class GameUiAssetTests(unittest.TestCase):
     def test_generation_pipeline_accepts_optional_reference_and_returns_group(self):
         sheet = _synthetic_sheet()
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.object(media_store, "OUTPUT_DIR", tmp):
+            service = AssetService(AssetStore(os.path.join(tmp, "catalog.db")), tmp)
+            with mock.patch.object(media_store, "OUTPUT_DIR", tmp), mock.patch.object(
+                asset_runtime, "_asset_service", service
+            ):
                 input_path, input_meta_path = media_store._save_input_image_and_meta("tester", sheet, "reference.png")
                 with open(input_meta_path, "r", encoding="utf-8") as handle:
                     input_id = json.load(handle)["id"]
@@ -189,6 +200,9 @@ class GameUiAssetTests(unittest.TestCase):
                 self.assertEqual(kwargs["quality"], "medium")
                 self.assertEqual(len(kwargs["images"]), 1)
                 self.assertIn("Use the attached images", kwargs["prompt"])
+                self.assertEqual(service.count_media("tester", "input"), 1)
+                self.assertEqual(service.count_media("tester", "image"), 4)
+                self.assertEqual(service.store.group_stats(), {"game_ui_group:active": 1})
 
 
 if __name__ == "__main__":

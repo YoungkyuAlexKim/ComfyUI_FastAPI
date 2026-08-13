@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+import hashlib
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -13,6 +15,11 @@ from typing import Any, Optional
 
 from ..asset_store import AssetStore
 from ..auth.user_management import require_principal_id, validate_principal_id
+
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 
 
 _ASSET_ID_PATTERN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
@@ -226,6 +233,141 @@ class AssetService:
 
     def count_media(self, owner_id: str, kind: str, *, include_trash: bool = False) -> int:
         return self.store.count(require_principal_id(owner_id), kinds=(kind,), include_trash=include_trash)
+
+    def list_assets(
+        self,
+        owner_id: str,
+        *,
+        kinds: tuple[str, ...],
+        include_trash: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Return owner-scoped catalog rows for trusted API adapters."""
+
+        principal_id = require_principal_id(owner_id)
+        normalized_kinds = tuple(dict.fromkeys(str(kind).strip() for kind in kinds))
+        if not normalized_kinds or any(kind not in {"image", "input", "audio"} for kind in normalized_kinds):
+            raise ValueError("Invalid asset kinds")
+        return self.store.list(
+            principal_id,
+            kinds=normalized_kinds,
+            include_trash=include_trash,
+            limit=limit,
+            offset=offset,
+        )
+
+    def count_assets(
+        self,
+        owner_id: str,
+        *,
+        kinds: tuple[str, ...],
+        include_trash: bool = False,
+    ) -> int:
+        principal_id = require_principal_id(owner_id)
+        normalized_kinds = tuple(dict.fromkeys(str(kind).strip() for kind in kinds))
+        if not normalized_kinds or any(kind not in {"image", "input", "audio"} for kind in normalized_kinds):
+            raise ValueError("Invalid asset kinds")
+        return self.store.count(principal_id, kinds=normalized_kinds, include_trash=include_trash)
+
+    def find_active_by_sha256(
+        self,
+        owner_id: str,
+        sha256: str,
+        *,
+        kinds: tuple[str, ...],
+    ) -> Optional[dict[str, Any]]:
+        principal_id = require_principal_id(owner_id)
+        digest = str(sha256 or "").strip().lower()
+        if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+            raise ValueError("Invalid SHA-256 digest")
+        normalized_kinds = tuple(dict.fromkeys(str(kind).strip() for kind in kinds))
+        if not normalized_kinds or any(kind not in {"image", "input", "audio"} for kind in normalized_kinds):
+            raise ValueError("Invalid asset kinds")
+        return self.store.find_active_by_sha256(principal_id, digest, kinds=normalized_kinds)
+
+    def create_input_image(
+        self,
+        owner_id: str,
+        png_bytes: bytes,
+        original_filename: str,
+    ) -> dict[str, Any]:
+        """Persist a normalized PNG input and compensate files if catalog registration fails."""
+
+        principal_id = require_principal_id(owner_id)
+        if not isinstance(png_bytes, bytes) or not png_bytes:
+            raise ValueError("Input image bytes are required")
+        now = datetime.now(timezone.utc)
+        input_id = uuid.uuid4().hex
+        dated_dir = self.users_root / principal_id / "inputs" / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d")
+        media_path = dated_dir / f"{input_id}.png"
+        metadata_path = dated_dir / f"{input_id}.json"
+        thumbnail_path: Path | None = None
+        created_paths: list[Path] = []
+
+        try:
+            atomic_write_bytes(media_path, png_bytes)
+            created_paths.append(media_path)
+            if Image is not None:
+                try:
+                    with Image.open(BytesIO(png_bytes)) as source:
+                        has_alpha = source.mode in ("RGBA", "LA") or (
+                            source.mode == "P" and "transparency" in (source.info or {})
+                        )
+                        thumbnail = source.convert("RGBA" if has_alpha else "RGB")
+                        thumbnail.thumbnail((384, 384))
+                        thumb_dir = dated_dir / "thumb"
+                        if has_alpha:
+                            thumbnail_path = thumb_dir / f"{input_id}.webp"
+                            out = BytesIO()
+                            thumbnail.save(out, format="WEBP", quality=82, method=4)
+                        else:
+                            thumbnail_path = thumb_dir / f"{input_id}.jpg"
+                            out = BytesIO()
+                            thumbnail.save(out, format="JPEG", quality=85, optimize=True)
+                        atomic_write_bytes(thumbnail_path, out.getvalue())
+                        created_paths.append(thumbnail_path)
+                except Exception:
+                    thumbnail_path = None
+
+            digest = hashlib.sha256(png_bytes).hexdigest()
+            metadata = {
+                "id": input_id,
+                "owner": principal_id,
+                "kind": "input",
+                "original_filename": str(original_filename or "upload.png"),
+                "mime": "image/png",
+                "bytes": len(png_bytes),
+                "sha256": digest,
+                "created_at": now.isoformat(),
+                "status": "active",
+                "thumb": (
+                    f"/outputs/{self._relative_path(thumbnail_path)}"
+                    if thumbnail_path is not None
+                    else None
+                ),
+                "tags": [],
+            }
+            atomic_write_json(metadata_path, metadata)
+            created_paths.append(metadata_path)
+            self.register(
+                owner_id=principal_id,
+                kind="input",
+                media_path=str(media_path),
+                metadata_path=str(metadata_path),
+                metadata=metadata,
+            )
+            row = self.get(principal_id, input_id)
+            if row is None:
+                raise RuntimeError("Input asset registration did not produce a catalog row")
+            return row
+        except Exception:
+            for path in reversed(created_paths):
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise
 
     def get(self, owner_id: str, asset_id: str) -> Optional[dict[str, Any]]:
         principal_id = require_principal_id(owner_id)
