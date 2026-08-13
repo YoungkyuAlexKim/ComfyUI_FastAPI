@@ -1,6 +1,6 @@
 import base64
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests
 
@@ -372,6 +372,7 @@ def generate_image(
     resolution: Optional[str] = None,
     quality: Optional[str] = None,
     timeout: Tuple[float, float] = (5.0, 90.0),
+    usage_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> bytes:
     model = str(model or "").strip()
     if not model:
@@ -409,6 +410,11 @@ def generate_image(
     usage = data.get("usage") if isinstance(data, dict) else None
     if isinstance(usage, dict):
         logger.info({"event": "openrouter_image_usage", "model": model, "usage": usage})
+        if usage_callback is not None:
+            try:
+                usage_callback(dict(usage))
+            except Exception as exc:
+                logger.warning({"event": "openrouter_usage_callback_failed", "error": str(exc)})
     return _extract_image(data)
 
 

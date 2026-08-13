@@ -59,6 +59,7 @@ from .services.generation_commands import (
     dispatch_legacy_web_request,
     generation_context_from_http_request,
 )
+from .services.generation_controls import GenerationControlService, GenerationPolicyError
 from .services.openrouter_client import (
     OpenRouterUpstreamError,
     generate_text,
@@ -233,12 +234,14 @@ _comfy_job_manager = JobManager(worker_count=1)
 _external_job_manager = JobManager(worker_count=4)  # env에서 startup 시 재설정
 job_manager = RoutingJobManager(_comfy_job_manager, _external_job_manager, WORKFLOW_CONFIGS)
 job_store = JobStore(JOB_DB_PATH)
+generation_controls = GenerationControlService(JOB_DB_PATH)
 from .feed_store import FeedStore
 feed_store = FeedStore(JOB_DB_PATH)
 try:
     app.state.connection_manager = manager
     app.state.job_manager = job_manager
     app.state.job_store = job_store
+    app.state.generation_controls = generation_controls
     app.state.feed_store = feed_store
 except Exception as e:
     logger.debug({"event": "app_state_init_failed", "error": str(e)})
@@ -562,11 +565,53 @@ async def generate_image(request: GenerateRequest, http_request: Request):
         )
         raise HTTPException(status_code=400, detail=str(e))
     try:
+        cost_confirmed = str(http_request.headers.get("x-cost-confirmed") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        admission = generation_controls.admit(resolved.payload, cost_confirmed=cost_confirmed)
+    except GenerationPolicyError as e:
+        logger.info(
+            {
+                "event": "generate_policy_rejected",
+                "owner_id": anon_id,
+                "request_id": resolved.command.context.request_id,
+                "capability": resolved.command.capability,
+                "reason_code": e.code,
+                "path": "/api/v1/generate",
+            }
+        )
+        raise HTTPException(status_code=e.status_code, detail=e.api_detail())
+
+    if admission.is_duplicate:
+        duplicate_position = job_manager.get_position(admission.duplicate_job_id) or 0
+        logger.info(
+            {
+                "event": "generate_idempotency_replay",
+                "owner_id": anon_id,
+                "request_id": resolved.command.context.request_id,
+                "job_id": admission.duplicate_job_id,
+            }
+        )
+        return {"job_id": admission.duplicate_job_id, "status": "duplicate", "position": duplicate_position}
+
+    resolved.payload["control_request_id"] = admission.control_request_id
+    resolved.payload["estimated_cost_usd"] = admission.estimated_cost_usd
+    resolved.payload["cost_confirmed"] = cost_confirmed
+    try:
         job = job_manager.enqueue(anon_id, "generate", resolved.payload)
     except RuntimeError as e:
+        if admission.control_request_id:
+            generation_controls.mark_enqueue_failed(admission.control_request_id, str(e))
         # Queue limit reached
         logger.info({"event": "enqueue_rejected", "owner_id": anon_id, "reason": str(e), "path": "/api/v1/generate"})
         raise HTTPException(status_code=429, detail=str(e))
+    except Exception as e:
+        if admission.control_request_id:
+            generation_controls.mark_enqueue_failed(admission.control_request_id, str(e))
+        raise
     position = job_manager.get_position(job.id)
     logger.info(
         {
@@ -582,6 +627,7 @@ async def generate_image(request: GenerateRequest, http_request: Request):
             "workflow_id": resolved.workflow_id,
             "provider": resolved.provider,
             "model": resolved.model,
+            "estimated_cost_usd": admission.estimated_cost_usd,
         }
     )
     return {"job_id": job.id, "status": "queued", "position": position}
@@ -803,6 +849,7 @@ async def on_startup():
     manager.set_loop(loop)
 
     def notifier(owner_id: str, event: dict):
+        jid = None
         try:
             jid = event.get("job_id")
             if event.get("status") == "queued" and jid:
@@ -849,6 +896,13 @@ async def on_startup():
                     })
         except Exception:
             pass
+        try:
+            if jid:
+                controlled_job = job_manager.get(jid)
+                if controlled_job:
+                    generation_controls.sync_job(controlled_job)
+        except Exception as e:
+            logger.warning({"event": "generation_control_sync_failed", "job_id": jid, "error": str(e)})
         manager.send_from_worker(owner_id, event)
 
     job_manager.register_processor("generate", _processor_generate)

@@ -55,6 +55,17 @@ templates = Jinja2Templates(directory="templates")
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
 
 
+class GenerationPolicyUpdate(BaseModel):
+    generation_enabled: Optional[bool] = None
+    mcp_enabled: Optional[bool] = None
+    daily_request_limit: Optional[int] = None
+    daily_cost_limit_usd: Optional[float] = None
+    cost_confirmation_threshold_usd: Optional[float] = None
+    confirmation_required_capabilities: Optional[list[str]] = None
+    capability_enabled: Optional[dict[str, bool]] = None
+    cost_estimates_usd: Optional[dict[str, float]] = None
+
+
 @router.get("/admin", response_class=HTMLResponse, tags=["Admin"])
 async def admin_page(request: Request):
     return templates.TemplateResponse("admin.html", {"request": request})
@@ -172,6 +183,44 @@ async def admin_jobs_metrics(request: Request, limit: int = 100):
         return avg
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _generation_controls(request: Request):
+    controls = getattr(request.app.state, "generation_controls", None)
+    if controls is None:
+        raise HTTPException(status_code=503, detail="Generation controls are not initialized")
+    return controls
+
+
+@router.get("/api/v1/admin/generation-controls/policy", tags=["Admin"])
+async def admin_generation_policy(request: Request):
+    controls = _generation_controls(request)
+    return {"policy": controls.get_policy(), "timezone": controls.timezone_name}
+
+
+@router.put("/api/v1/admin/generation-controls/policy", tags=["Admin"])
+async def admin_update_generation_policy(request: Request, body: GenerationPolicyUpdate):
+    controls = _generation_controls(request)
+    changes = body.model_dump(exclude_unset=True, exclude_none=True)
+    try:
+        return {"ok": True, "policy": controls.update_policy(changes)}
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/api/v1/admin/generation-controls/summary", tags=["Admin"])
+async def admin_generation_summary(request: Request, day: Optional[str] = None):
+    controls = _generation_controls(request)
+    try:
+        return controls.summary(day)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid day: {exc}")
+
+
+@router.get("/api/v1/admin/generation-controls/events", tags=["Admin"])
+async def admin_generation_events(request: Request, limit: int = 100):
+    controls = _generation_controls(request)
+    return {"events": controls.recent_events(limit)}
 
 
 @router.post("/api/v1/admin/jobs/sweep", tags=["Admin"])

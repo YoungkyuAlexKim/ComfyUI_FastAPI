@@ -43,3 +43,36 @@ has a single owner; an alternate process manager must preserve that setting.
 
 The initial game UI contract supports only `2x2`. Additional grids should be
 added after their generation and slicing paths are implemented and tested.
+
+## Operational controls
+
+All web generation requests now pass through the same admission service that
+future MCP tools will use. Policies default to enabled and unlimited so the
+current web experience does not change until an operator configures limits.
+
+The control store provides:
+
+- atomic company-wide daily request and estimated-cost limits;
+- idempotency scoped by request source, principal, and key;
+- global, MCP-only, and per-capability kill switches;
+- optional confirmation by capability or estimated-cost threshold;
+- accepted, rejected, duplicate, and Job-status audit events;
+- estimated cost reservations and actual provider-reported cost tracking.
+
+`GENERATION_ENABLED=false` and `MCP_GENERATION_ENABLED=false` are hard
+environment-level kill switches. Persisted admin settings cannot override
+either stop signal.
+
+Estimated prices are operator-owned configuration rather than hard-coded model
+prices. Keys in `cost_estimates_usd` may use `model`, `model|size`,
+`model|quality`, `model|size|quality`, or `capability:<name>`. OpenRouter's
+reported `usage.cost`, when present, is stored as actual cost.
+
+Admin API endpoints are available under:
+
+- `GET/PUT /api/v1/admin/generation-controls/policy`
+- `GET /api/v1/admin/generation-controls/summary`
+- `GET /api/v1/admin/generation-controls/events`
+
+The existing admin Basic Auth boundary protects these endpoints. A dedicated
+operations UI can consume them later without changing the admission layer.

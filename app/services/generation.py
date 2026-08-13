@@ -683,6 +683,28 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         except Exception:
             pass
 
+        def _record_provider_usage(usage: dict) -> None:
+            if not isinstance(req_dict, dict) or not isinstance(usage, dict):
+                return
+            # Store the provider's reported amount; do not infer actual spend
+            # from a stale hard-coded price table.
+            try:
+                cost = max(0.0, float(usage.get("cost")))
+            except (TypeError, ValueError):
+                cost = None
+            if cost is not None:
+                try:
+                    previous = float(req_dict.get("actual_cost_usd") or 0)
+                except (TypeError, ValueError):
+                    previous = 0.0
+                req_dict["actual_cost_usd"] = round(previous + cost, 8)
+            # Usage is persisted for later operations analysis. It is bounded
+            # to JSON-compatible scalar/dict/list data by a round trip.
+            try:
+                req_dict["provider_usage"] = json.loads(json.dumps(usage))
+            except (TypeError, ValueError):
+                pass
+
         image_timeout = (5.0, gpt_image_timeout_seconds()) if chosen_model == "openai/gpt-image-2" else (5.0, 90.0)
 
         if is_txt2img:
@@ -714,6 +736,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                         resolution=req_size,
                         quality=req_quality,
                         timeout=image_timeout,
+                        usage_callback=_record_provider_usage,
                     )
                 except OpenRouterUpstreamError as e:
                     _record_openrouter_provider_error(e, context="imgedit_auto")
@@ -727,6 +750,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                         resolution=req_size,
                         quality=req_quality,
                         timeout=image_timeout,
+                        usage_callback=_record_provider_usage,
                     )
                 except OpenRouterUpstreamError as e:
                     _record_openrouter_provider_error(e, context="txt2img")
@@ -832,6 +856,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                     resolution=req_size,
                     quality=req_quality,
                     timeout=image_timeout,
+                    usage_callback=_record_provider_usage,
                 )
             except OpenRouterUpstreamError as e:
                 _record_openrouter_provider_error(e, context="imgedit_user")

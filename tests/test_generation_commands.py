@@ -57,6 +57,8 @@ class GenerationCommandTests(unittest.TestCase):
         self.assertEqual(resolved.command.capability, "create_game_ui_assets")
         self.assertEqual(resolved.provider, "openrouter")
         self.assertEqual(resolved.model, "openai/gpt-image-2")
+        self.assertEqual(resolved.payload["resolved_image_size"], "2K")
+        self.assertEqual(resolved.payload["resolved_image_quality"], "medium")
 
     def test_server_owned_audit_fields_replace_spoofed_payload_values(self):
         resolved = dispatch_legacy_web_request(

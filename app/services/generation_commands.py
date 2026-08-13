@@ -91,6 +91,18 @@ class CapabilityDispatcher:
         )
         requested_model = str(command.parameters.get("image_model") or "").strip()
         model = requested_model or default_model or None
+        requested_size = str(command.parameters.get("image_size") or "").strip().upper()
+        requested_quality = str(command.parameters.get("image_quality") or "").strip().lower()
+        resolved_size = requested_size or (
+            str(provider_config.get("default_resolution") or "").strip().upper()
+            if isinstance(provider_config, dict)
+            else ""
+        )
+        resolved_quality = requested_quality or (
+            str(provider_config.get("default_quality") or "").strip().lower()
+            if isinstance(provider_config, dict)
+            else ""
+        )
 
         # Start with the legacy fields needed by the current processor, then
         # overwrite every routing/audit field with server-owned values.
@@ -110,6 +122,8 @@ class CapabilityDispatcher:
                 "resolved_workflow_id": workflow_id,
                 "resolved_provider": provider,
                 "resolved_model": model,
+                "resolved_image_size": resolved_size or None,
+                "resolved_image_quality": resolved_quality or None,
             }
         )
         return ResolvedGenerationCommand(

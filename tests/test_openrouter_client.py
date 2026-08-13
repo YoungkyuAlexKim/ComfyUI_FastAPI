@@ -191,15 +191,18 @@ class OpenRouterClientTests(unittest.TestCase):
         }
         post.return_value = response
 
+        usages = []
         result = openrouter_client.generate_image(
             model="openai/gpt-image-2",
             prompt="draw a fox",
             aspect_ratio="16:9",
             resolution="2K",
             quality="low",
+            usage_callback=usages.append,
         )
 
         self.assertEqual(result, b"gpt-image")
+        self.assertEqual(usages, [{"cost": 0.006}])
         payload = post.call_args.kwargs["json"]
         self.assertEqual(payload["size"], "2048x1152")
         self.assertEqual(payload["quality"], "low")
