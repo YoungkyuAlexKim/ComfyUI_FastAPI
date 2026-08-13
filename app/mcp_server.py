@@ -284,12 +284,15 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
     server = MCPServer(
         name="lc-ai-canvas",
         title="LC AI Canvas",
-        version="0.1.0",
+        version="0.2.0",
         instructions=(
-            "Generate images only when the user asks. create_image incurs company API cost. "
-            "Reuse the same idempotency_key when retrying the same intent. If cost confirmation "
-            "is required, ask the user and retry with cost_confirmed=true. Poll get_generation_job, "
-            "then call get_generation_result. Only create_image text-to-image is enabled in this MVP."
+            "LC AI Canvas is the company's managed image-asset pipeline. Use "
+            "create_managed_image_asset only when the user asks for the company generator or LC AI "
+            "Canvas, needs centrally billed/audited/stored output, or the current client has no native "
+            "image generator. For ad-hoc images in clients with a native generator and no managed-workflow "
+            "need, prefer the native tool. This tool incurs company API cost. Reuse the same "
+            "idempotency_key when retrying one intent. If cost confirmation is required, ask the user and "
+            "retry with cost_confirmed=true. Poll get_generation_job, then call get_generation_result."
         ),
     )
 
@@ -310,9 +313,9 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
         return {
             "capabilities": [
                 {
-                    "name": "create_image",
+                    "name": "create_managed_image_asset",
                     "variants": ["generate"],
-                    "supports": ["text-to-image"],
+                    "supports": ["text-to-image", "managed-storage", "central-audit"],
                     "status": "available",
                 }
             ]
@@ -325,12 +328,15 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
         structured_output=True,
     )
     async def get_generation_capability(
-        capability: Literal["create_image"],
+        capability: Literal["create_managed_image_asset"],
     ) -> dict[str, Any]:
         return {
             "name": capability,
             "variant": "generate",
-            "description": "Create one image from a text prompt using the hosted API image workflow.",
+            "description": (
+                "Create one company-managed image asset from text, with centralized API billing, "
+                "audit logging, job tracking, and LC AI Canvas storage."
+            ),
             "inputs": {
                 "prompt": {"type": "string", "required": True, "max_length": 8000},
                 "aspect_ratio": {"enum": ["square", "landscape", "portrait"], "default": "square"},
@@ -370,10 +376,13 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
         return CallToolResult(content=content, structuredContent=structured)
 
     @server.tool(
-        title="Create image",
+        title="Create managed image asset",
         description=(
-            "Queue one hosted API text-to-image generation. This consumes company API budget. "
-            "Use a stable unique idempotency_key per user intent and poll the returned job ID."
+            "Queue one company-managed text-to-image asset using LC AI Canvas. Use this when the user "
+            "requests the company generator, needs centrally billed/audited/stored output, or the current "
+            "client has no native image generator. In clients with native image generation, do not use "
+            "this for an ad-hoc image unless a managed company workflow is requested. This consumes "
+            "company API budget. Use one stable idempotency_key per user intent and poll the returned job."
         ),
         annotations=ToolAnnotations(
             readOnlyHint=False,
@@ -383,7 +392,7 @@ def create_mcp_integration(job_manager, job_store, controls) -> McpIntegration:
         ),
         structured_output=True,
     )
-    async def create_image(
+    async def create_managed_image_asset(
         prompt: Annotated[str, Field(min_length=1, max_length=8000, description="Complete image request")],
         idempotency_key: Annotated[
             str,

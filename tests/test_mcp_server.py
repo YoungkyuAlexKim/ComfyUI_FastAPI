@@ -134,7 +134,7 @@ class McpServerTests(unittest.TestCase):
         self.assertEqual(content.type, "image")
         self.assertEqual(content.mime_type, "image/png")
 
-    def test_tool_contract_marks_only_create_image_as_write(self):
+    def test_tool_contract_marks_only_managed_image_asset_as_write(self):
         integration = create_mcp_integration(self.manager, self.store, self.controls)
         tools = asyncio.run(integration.server.list_tools())
         by_name = {tool.name: tool for tool in tools}
@@ -143,13 +143,15 @@ class McpServerTests(unittest.TestCase):
             "get_generation_capability",
             "get_generation_job",
             "get_generation_result",
-            "create_image",
+            "create_managed_image_asset",
         })
-        self.assertFalse(by_name["create_image"].annotations.read_only_hint)
-        self.assertTrue(by_name["create_image"].annotations.open_world_hint)
+        self.assertNotIn("create_image", by_name)
+        self.assertFalse(by_name["create_managed_image_asset"].annotations.read_only_hint)
+        self.assertTrue(by_name["create_managed_image_asset"].annotations.open_world_hint)
         self.assertTrue(by_name["get_generation_job"].annotations.read_only_hint)
-        create_schema = by_name["create_image"].input_schema
+        create_schema = by_name["create_managed_image_asset"].input_schema
         self.assertIn("idempotency_key", create_schema["required"])
+        self.assertIn("company-managed", by_name["create_managed_image_asset"].description)
 
     def test_streamable_http_protocol_lists_and_invokes_tools(self):
         integration = create_mcp_integration(self.manager, self.store, self.controls)
@@ -170,6 +172,10 @@ class McpServerTests(unittest.TestCase):
                 },
             )
             self.assertEqual(initialized.status_code, 200, initialized.text)
+            self.assertEqual(
+                initialized.json()["result"]["serverInfo"]["version"],
+                "0.2.0",
+            )
 
             protocol_headers = {**headers, "MCP-Protocol-Version": "2025-06-18"}
             listed = client.post(
@@ -179,17 +185,31 @@ class McpServerTests(unittest.TestCase):
             )
             self.assertEqual(listed.status_code, 200, listed.text)
             names = {item["name"] for item in listed.json()["result"]["tools"]}
-            self.assertIn("create_image", names)
+            self.assertIn("create_managed_image_asset", names)
+            self.assertNotIn("create_image", names)
 
-            called = client.post(
+            capabilities = client.post(
                 "/",
                 headers=protocol_headers,
                 json={
                     "jsonrpc": "2.0",
                     "id": 3,
                     "method": "tools/call",
+                    "params": {"name": "list_generation_capabilities", "arguments": {}},
+                },
+            )
+            public_capabilities = capabilities.json()["result"]["structuredContent"]["capabilities"]
+            self.assertEqual(public_capabilities[0]["name"], "create_managed_image_asset")
+
+            called = client.post(
+                "/",
+                headers=protocol_headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 4,
+                    "method": "tools/call",
                     "params": {
-                        "name": "create_image",
+                        "name": "create_managed_image_asset",
                         "arguments": {
                             "prompt": "A minimal red gem icon",
                             "idempotency_key": "protocol-gem-001",
