@@ -9,7 +9,7 @@ start /B cmd /c "timeout /t 3 /nobreak > nul && start http://127.0.0.1:8000"
 
 REM FastAPI 서버 실행 (--reload 옵션으로 코드 변경 시 자동 재시작)
 echo ⏳ 서버를 시작합니다...
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --no-proxy-headers
 
 REM 가상환경 비활성화 (서버 종료 시)
 deactivate

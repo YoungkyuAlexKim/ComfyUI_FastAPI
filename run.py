@@ -31,7 +31,10 @@ def main():
         host="127.0.0.1",
         port=8000,
         reload=True,  # 코드 변경 시 자동 재시작
-        log_level="info"
+        log_level="info",
+        # Client IP forwarding is resolved in generation_commands.py only
+        # after validating the immediate proxy against TRUSTED_PROXY_CIDRS.
+        proxy_headers=False,
     )
 
 if __name__ == "__main__":

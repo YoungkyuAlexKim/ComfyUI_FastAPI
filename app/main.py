@@ -55,6 +55,10 @@ from .ws.manager import manager
 from .ws.routes import router as ws_router
 from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActiveResponse, TranslateResponse
 from .services.generation import run_generation_processor
+from .services.generation_commands import (
+    dispatch_legacy_web_request,
+    generation_context_from_http_request,
+)
 from .services.openrouter_client import (
     OpenRouterUpstreamError,
     generate_text,
@@ -116,6 +120,7 @@ async def http_logging_middleware(request: Request, call_next):
     if path.startswith("/static") or path.startswith("/outputs"):
         return await call_next(request)
     req_id = uuid.uuid4().hex
+    request.state.request_id = req_id
     start = time.perf_counter()
     try:
         logger.info({"event": "http_request", "request_id": req_id, "method": request.method, "path": path})
@@ -543,13 +548,42 @@ async def generate_image(request: GenerateRequest, http_request: Request):
             )
             raise HTTPException(status_code=429, detail=msg, headers={"Retry-After": str(retry_after)})
     try:
-        job = job_manager.enqueue(anon_id, "generate", request.model_dump())
+        context = generation_context_from_http_request(http_request, anon_id)
+        resolved = dispatch_legacy_web_request(request.model_dump(), context)
+    except ValueError as e:
+        logger.info(
+            {
+                "event": "generate_command_rejected",
+                "owner_id": anon_id,
+                "request_id": getattr(getattr(http_request, "state", None), "request_id", None),
+                "reason": str(e),
+                "path": "/api/v1/generate",
+            }
+        )
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        job = job_manager.enqueue(anon_id, "generate", resolved.payload)
     except RuntimeError as e:
         # Queue limit reached
         logger.info({"event": "enqueue_rejected", "owner_id": anon_id, "reason": str(e), "path": "/api/v1/generate"})
         raise HTTPException(status_code=429, detail=str(e))
     position = job_manager.get_position(job.id)
-    logger.info({"event": "enqueue", "owner_id": anon_id, "job_id": job.id, "position": position})
+    logger.info(
+        {
+            "event": "enqueue",
+            "owner_id": anon_id,
+            "job_id": job.id,
+            "position": position,
+            "request_id": resolved.command.context.request_id,
+            "request_source": resolved.command.context.source,
+            "client_ip": resolved.command.context.client_ip,
+            "capability": resolved.command.capability,
+            "capability_variant": resolved.command.variant,
+            "workflow_id": resolved.workflow_id,
+            "provider": resolved.provider,
+            "model": resolved.model,
+        }
+    )
     return {"job_id": job.id, "status": "queued", "position": position}
 
 

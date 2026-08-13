@@ -242,6 +242,11 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             "event": "gen_request",
             "job_id": job.id,
             "owner_id": job.owner_id,
+            "request_id": req_dict.get("request_id") if isinstance(req_dict, dict) else None,
+            "request_source": req_dict.get("request_source") if isinstance(req_dict, dict) else None,
+            "client_ip": req_dict.get("client_ip") if isinstance(req_dict, dict) else None,
+            "capability": req_dict.get("capability") if isinstance(req_dict, dict) else None,
+            "capability_variant": req_dict.get("capability_variant") if isinstance(req_dict, dict) else None,
             "workflow_id": getattr(request, "workflow_id", None),
             "input_image_id": getattr(request, "input_image_id", None),
             "input_image_filename": getattr(request, "input_image_filename", None),
@@ -668,6 +673,13 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             request.image_size = req_size
             request.image_model = chosen_model
             request.image_quality = req_quality
+            if isinstance(req_dict, dict):
+                # Keep the persisted Job payload aligned with what the provider
+                # actually received, rather than only the initially requested values.
+                req_dict["resolved_provider"] = "openrouter"
+                req_dict["resolved_model"] = chosen_model
+                req_dict["resolved_image_size"] = req_size
+                req_dict["resolved_image_quality"] = req_quality
         except Exception:
             pass
 

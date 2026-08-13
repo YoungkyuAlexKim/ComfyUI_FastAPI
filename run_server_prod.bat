@@ -15,7 +15,7 @@ if exist venv\Scripts\activate.bat (
 )
 
 REM 운영 모드 실행 (필요시 포트 변경: --port 8000)
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers
 
 REM 서버 종료 후 가상환경 비활성화
 deactivate
