@@ -57,6 +57,10 @@ coverage.xml
 local_settings.py
 db.sqlite3
 db/*.secret
+# Runtime SQLite state. Keep the database and its WAL sidecars on the host;
+# schema is created by the application and operating data is never versioned.
+/db/app_data.db
+/db/app_data.db-*
 
 # Flask stuff:
 instance/
