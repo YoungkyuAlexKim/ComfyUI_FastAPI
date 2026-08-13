@@ -172,6 +172,21 @@ class AssetService:
         manifest_path: str,
         metadata: dict[str, Any],
     ) -> str:
+        record = self._group_catalog_record(
+            owner_id=owner_id,
+            manifest_path=manifest_path,
+            metadata=metadata,
+        )
+        self.store.upsert_group(record)
+        return str(record["group_id"])
+
+    def _group_catalog_record(
+        self,
+        *,
+        owner_id: str,
+        manifest_path: str,
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
         principal_id = require_principal_id(owner_id)
         group_id = _valid_asset_id(metadata.get("id"))
         if not group_id:
@@ -181,21 +196,47 @@ class AssetService:
             raise ValueError("Invalid asset group kind")
         archive_path = self._path_from_output_url(metadata.get("download_url"))
         preview_path = self._path_from_output_url(metadata.get("sheet_url"))
-        self.store.upsert_group(
-            {
-                "group_id": group_id,
-                "owner_id": principal_id,
-                "kind": kind,
-                "status": "active",
-                "manifest_path": self._relative_path(manifest_path),
-                "archive_path": self._relative_path(archive_path),
-                "preview_path": self._relative_path(preview_path),
-                "created_at": self._created_timestamp(metadata, manifest_path),
-                "updated_at": time.time(),
-                "metadata": metadata,
-            }
+        return {
+            "group_id": group_id,
+            "owner_id": principal_id,
+            "kind": kind,
+            "status": "active",
+            "manifest_path": self._relative_path(manifest_path),
+            "archive_path": self._relative_path(archive_path),
+            "preview_path": self._relative_path(preview_path),
+            "created_at": self._created_timestamp(metadata, manifest_path),
+            "updated_at": time.time(),
+            "metadata": metadata,
+        }
+
+    def register_asset_group_bundle(
+        self,
+        *,
+        owner_id: str,
+        assets: list[dict[str, Any]],
+        manifest_path: str,
+        group_metadata: dict[str, Any],
+    ) -> str:
+        """Atomically register prepared child files and their group metadata."""
+
+        records = [
+            self._catalog_record(
+                owner_id=owner_id,
+                kind=str(asset["kind"]),
+                media_path=str(asset["media_path"]),
+                metadata_path=asset.get("metadata_path"),
+                metadata=dict(asset["metadata"]),
+                source_job_id=asset.get("source_job_id"),
+            )
+            for asset in assets
+        ]
+        group_record = self._group_catalog_record(
+            owner_id=owner_id,
+            manifest_path=manifest_path,
+            metadata=group_metadata,
         )
-        return group_id
+        self.store.upsert_asset_group_bundle(records, group_record)
+        return str(group_record["group_id"])
 
     def _to_media_item(self, row: dict[str, Any]) -> dict[str, Any]:
         storage_path = self.resolve_storage_path(row.get("storage_path"))
@@ -230,6 +271,27 @@ class AssetService:
                 offset=offset,
             )
         ]
+
+    def list_media_group_preserving_page(
+        self,
+        owner_id: str,
+        kind: str,
+        *,
+        page: int,
+        size: int,
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        """Return an opt-in gallery page that keeps grouped assets together."""
+
+        principal_id = require_principal_id(owner_id)
+        if kind not in {"image", "input", "audio"}:
+            raise ValueError("Invalid asset kind")
+        rows, pagination = self.store.list_group_preserving_page(
+            principal_id,
+            kind=kind,
+            page=page,
+            size=size,
+        )
+        return [self._to_media_item(row) for row in rows], pagination
 
     def count_media(self, owner_id: str, kind: str, *, include_trash: bool = False) -> int:
         return self.store.count(require_principal_id(owner_id), kinds=(kind,), include_trash=include_trash)

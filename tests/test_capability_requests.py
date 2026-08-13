@@ -57,6 +57,14 @@ class CapabilityRequestTests(unittest.TestCase):
         self.assertIsInstance(request, CreateGameUiAssetsRequest)
         self.assertEqual(request.grid, "2x2")
 
+    def test_mcp_game_ui_contract_rejects_web_only_grids(self):
+        with self.assertRaises(ValidationError):
+            CreateGameUiAssetsRequest(
+                idempotency_key="request-123",
+                prompt="얼음 마법 스킬 아이콘",
+                grid="3x3",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

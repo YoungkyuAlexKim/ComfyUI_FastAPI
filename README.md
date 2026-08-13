@@ -11,8 +11,9 @@
 - 저장: 파일시스템 원본 + SQLite 자산 카탈로그
 - 사용자 경계: 웹은 서명 쿠키, MCP는 사내망에서 확인된 클라이언트 IP
 - 운영 통제: 일일 요청·비용 한도, 동시성, 멱등성, 확인 정책, 감사 이벤트
+- Game UI 웹: 2×2·3×3·4×4 후보 시트 생성, 개별 PNG와 그룹 ZIP
 - MCP: 소유자 이미지 조회, 클라이언트 첨부 등록, 기본 생성·기존 자산 편집,
-  Game UI 2×2 그룹 생성, 작업 결과 조회
+  검증된 Game UI 2×2 그룹 생성, 작업 결과 조회
 
 내부 워크플로우 이름에 남아 있는 `NanoBanana`는 호환용 ID입니다. 현재
 호스티드 모델 호출은 Google API에 직접 연결하지 않고 OpenRouter를 사용합니다.
@@ -55,7 +56,12 @@ Uvicorn의 자동 프록시 헤더 신뢰를 끄며, 신뢰 가능한 프록시�
 ```powershell
 .\venv\Scripts\python.exe -m unittest discover -s tests -v
 .\venv\Scripts\python.exe -m app.asset_admin audit
+.\venv\Scripts\python.exe -m scripts.smoke_game_ui_browser
 ```
+
+마지막 명령은 설치된 Microsoft Edge, 임시 DB·outputs, 로컬 가짜 provider를 사용해
+Game UI 4×4의 생성·분할·ZIP·갤러리·삭제/복구·새로고침을 검증합니다. 운영 데이터와
+OpenRouter API를 사용하지 않으므로 비용이 발생하지 않습니다.
 
 운영 DB 백업은 다음 명령으로 생성하고 무결성까지 검사할 수 있습니다.
 
@@ -82,7 +88,7 @@ Uvicorn의 자동 프록시 헤더 신뢰를 끄며, 신뢰 가능한 프록시�
 - [자산 인프라](docs/asset-infrastructure.md)
 - [MCP 설치와 보안](docs/mcp.md)
 - [MCP capability 계약](docs/MCP_CAPABILITY_CONTRACT.md)
-- [게임 UI 엘리먼트 MVP](docs/game-ui-elements-mvp.md)
+- [게임 UI 엘리먼트 메이커](docs/game-ui-elements-mvp.md)
 - [문서 인덱스](docs/HANDOFF_INDEX.md)
 
 ## 중요한 운영 원칙

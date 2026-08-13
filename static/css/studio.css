@@ -1407,6 +1407,71 @@ body.studio-focus-mode .output-panel {
     letter-spacing: -0.008em;
 }
 
+.game-ui-grid-picker {
+    min-width: 0;
+    margin: 12px 0 0;
+    padding: 0;
+    border: 0;
+}
+
+.game-ui-grid-picker legend {
+    margin-bottom: 7px;
+    color: #9aa5b4;
+    font-size: 10px;
+    font-weight: 650;
+}
+
+.game-ui-grid-picker__options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+}
+
+.game-ui-grid-picker__options label { position: relative; cursor: pointer; }
+.game-ui-grid-picker__options input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    opacity: 0;
+}
+
+.game-ui-grid-picker__options label > span {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 9px 8px;
+    border: 1px solid #303947;
+    border-radius: 8px;
+    background: rgba(8, 11, 15, 0.52);
+    color: #a5afbc;
+    transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.game-ui-grid-picker__options label:hover > span {
+    border-color: #43516a;
+    background: rgba(17, 23, 31, 0.76);
+}
+
+.game-ui-grid-picker__options input:checked + span {
+    border-color: #607fb8;
+    background: rgba(74, 108, 164, 0.22);
+    color: #edf3fc;
+}
+
+.game-ui-grid-picker__options input:focus-visible + span { box-shadow: var(--lc-primary-ring); }
+.game-ui-grid-picker__options input:disabled + span { cursor: not-allowed; opacity: .42; }
+.game-ui-grid-picker__options strong { font-size: 12px; }
+.game-ui-grid-picker__options small { color: #7f8a99; font-size: 9.5px; }
+.game-ui-grid-picker > p {
+    margin: 6px 1px 0;
+    color: #687483;
+    font-size: 9.5px;
+    line-height: 1.45;
+}
+
 .game-ui-output__toggle {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;

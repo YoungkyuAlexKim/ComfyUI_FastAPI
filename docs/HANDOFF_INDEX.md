@@ -18,7 +18,16 @@
 
 자산 수치는 운영 중 증가하는 스냅샷이며 성공 기준은 고정 숫자가 아니라 DB 무결성과
 누락 수치 0입니다. 유료 참고 이미지 편집과 신규 Game UI 생성은 이 체크포인트에서
-실행하지 않았고 격리된 자동 테스트와 기존 운영 결과 조회로 검증했습니다.
+실행하지 않았습니다. Game UI 웹은 이후 2×2·3×3·4×4로 확장했으며 합성 시트 자동
+테스트와 격리 Edge E2E로 요청·분할·저장·결과·갤러리·새로고침·manifest·ZIP을
+검증했습니다. 이후 실서버 GPT Image 2 2K/Medium 4×4 생성도 정상 결과를 확인했습니다.
+
+2026-08-13 Game UI 확장 작업 기준으로 전체 테스트 102개가 통과했습니다. 묶음 저장은
+자식 자산과 그룹을 한 SQLite 트랜잭션으로 등록하며 실패 파일을 보상 정리하고, 웹
+갤러리는 `preserve_groups=true`로 4×4 묶음을 페이지 사이에서 나누지 않습니다.
+`python -m scripts.smoke_game_ui_browser` 격리 Edge 스모크에서 16셀, ZIP master 16개와
+파생본 64개, 부분 삭제 `15/16` 표기, 복구와 새로고침을 확인했습니다. 실서버 4×4 생성 후
+운영 audit는 자산 1,265개·그룹 5개·누락 0이며 실제 출력의 분할·갤러리 복원도 정상입니다.
 
 ## 운영 hardening 진행 상태
 
@@ -53,7 +62,7 @@ quiet window가 끝날 때까지 `compat`을 유지합니다.
 - `asset-infrastructure.md`: 자산 카탈로그, principal, 접근 제어, 전환 상태
 - `mcp.md`: 현재 공개된 MCP 도구, 클라이언트 설정, 네트워크 보안
 - `MCP_CAPABILITY_CONTRACT.md`: provider-neutral capability와 구현 상태
-- `game-ui-elements-mvp.md`: Game UI 엘리먼트 MVP 범위와 제약
+- `game-ui-elements-mvp.md`: Game UI 엘리먼트 웹 그리드, 저장 계약, MCP 공개 범위와 제약
 - `../app/resources/refs/README.md`: 정적 mount 밖의 서버 전용 숨김 레퍼런스
 
 ## 문서 유지 규칙

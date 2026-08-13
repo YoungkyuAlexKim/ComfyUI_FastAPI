@@ -243,6 +243,93 @@ class AssetStore:
         with self._connect() as con:
             return [self._decode(row) for row in con.execute(sql, params).fetchall()]
 
+    def list_group_preserving_page(
+        self,
+        owner_id: str,
+        *,
+        kind: str,
+        page: int,
+        size: int,
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        """Paginate active assets without splitting a catalog group.
+
+        ``size`` is a target asset capacity, not a hard result limit. A group
+        larger than the remaining capacity starts on the next page, and a
+        single group larger than ``size`` occupies one page by itself. This is
+        opt-in so existing offset-based API consumers keep their exact paging
+        contract.
+        """
+
+        page = max(1, int(page))
+        size = max(1, int(size))
+        with self._connect() as con:
+            # Keep the block calculation and row fetch on one WAL snapshot if
+            # a gallery delete/restore completes concurrently.
+            con.execute("BEGIN")
+            blocks = con.execute(
+                """
+                SELECT
+                    CASE
+                        WHEN group_id IS NULL OR group_id = '' THEN 'asset:' || asset_id
+                        ELSE 'group:' || group_id
+                    END AS block_key,
+                    MAX(CASE WHEN group_id IS NULL OR group_id = '' THEN asset_id END) AS asset_id,
+                    MAX(CASE WHEN group_id IS NOT NULL AND group_id != '' THEN group_id END) AS group_id,
+                    COUNT(*) AS weight,
+                    MAX(created_at) AS sort_created_at,
+                    MAX(asset_id) AS sort_asset_id
+                FROM assets
+                WHERE owner_id=? AND kind=? AND status='active'
+                GROUP BY block_key
+                ORDER BY sort_created_at DESC, sort_asset_id DESC
+                """,
+                (owner_id, kind),
+            ).fetchall()
+
+            pages: list[list[sqlite3.Row]] = []
+            current: list[sqlite3.Row] = []
+            current_weight = 0
+            total = 0
+            for block in blocks:
+                weight = max(1, int(block["weight"] or 1))
+                total += weight
+                if current and current_weight + weight > size:
+                    pages.append(current)
+                    current = []
+                    current_weight = 0
+                current.append(block)
+                current_weight += weight
+            if current:
+                pages.append(current)
+
+            selected = pages[page - 1] if page <= len(pages) else []
+            asset_ids = [str(block["asset_id"]) for block in selected if block["asset_id"]]
+            group_ids = [str(block["group_id"]) for block in selected if block["group_id"]]
+            clauses: list[str] = []
+            query_params: list[Any] = [owner_id, kind]
+            if asset_ids:
+                clauses.append(f"asset_id IN ({','.join('?' for _ in asset_ids)})")
+                query_params.extend(asset_ids)
+            if group_ids:
+                clauses.append(f"group_id IN ({','.join('?' for _ in group_ids)})")
+                query_params.extend(group_ids)
+
+            rows: list[dict[str, Any]] = []
+            if clauses:
+                sql = (
+                    "SELECT * FROM assets WHERE owner_id=? AND kind=? AND status='active' AND ("
+                    + " OR ".join(clauses)
+                    + ") ORDER BY created_at DESC, asset_id DESC"
+                )
+                rows = [self._decode(row) for row in con.execute(sql, query_params).fetchall()]
+
+        return rows, {
+            "page": page,
+            "size": size,
+            "total": total,
+            "total_pages": len(pages),
+        }
+
     def count(self, owner_id: str, *, kinds: Iterable[str] | None = None, include_trash: bool = False) -> int:
         clauses = ["owner_id=?"]
         params: list[Any] = [owner_id]
@@ -286,42 +373,61 @@ class AssetStore:
         with self._connect() as con:
             return {str(row[0]) for row in con.execute("SELECT asset_id FROM assets").fetchall()}
 
-    def upsert_group(self, group: dict[str, Any]) -> None:
+    @staticmethod
+    def _upsert_group_on_connection(con: sqlite3.Connection, group: dict[str, Any]) -> None:
         metadata = group.get("metadata") if isinstance(group.get("metadata"), dict) else {}
         now = float(group.get("updated_at") or time.time())
+        cursor = con.execute(
+            """
+            INSERT INTO asset_groups(
+                group_id, owner_id, kind, status, manifest_path,
+                archive_path, preview_path, created_at, updated_at, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, json(?))
+            ON CONFLICT(group_id) DO UPDATE SET
+                kind=excluded.kind,
+                status=excluded.status,
+                manifest_path=excluded.manifest_path,
+                archive_path=excluded.archive_path,
+                preview_path=excluded.preview_path,
+                created_at=excluded.created_at,
+                updated_at=excluded.updated_at,
+                metadata_json=excluded.metadata_json
+            WHERE asset_groups.owner_id=excluded.owner_id
+            """,
+            (
+                group["group_id"],
+                group["owner_id"],
+                group["kind"],
+                group.get("status") or "active",
+                group.get("manifest_path"),
+                group.get("archive_path"),
+                group.get("preview_path"),
+                float(group.get("created_at") or now),
+                now,
+                json.dumps(metadata, ensure_ascii=False),
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("Asset group ID is already owned by another principal")
+
+    def upsert_group(self, group: dict[str, Any]) -> None:
         with self._connect() as con:
-            cursor = con.execute(
-                """
-                INSERT INTO asset_groups(
-                    group_id, owner_id, kind, status, manifest_path,
-                    archive_path, preview_path, created_at, updated_at, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, json(?))
-                ON CONFLICT(group_id) DO UPDATE SET
-                    kind=excluded.kind,
-                    status=excluded.status,
-                    manifest_path=excluded.manifest_path,
-                    archive_path=excluded.archive_path,
-                    preview_path=excluded.preview_path,
-                    created_at=excluded.created_at,
-                    updated_at=excluded.updated_at,
-                    metadata_json=excluded.metadata_json
-                WHERE asset_groups.owner_id=excluded.owner_id
-                """,
-                (
-                    group["group_id"],
-                    group["owner_id"],
-                    group["kind"],
-                    group.get("status") or "active",
-                    group.get("manifest_path"),
-                    group.get("archive_path"),
-                    group.get("preview_path"),
-                    float(group.get("created_at") or now),
-                    now,
-                    json.dumps(metadata, ensure_ascii=False),
-                ),
-            )
-            if cursor.rowcount != 1:
-                raise sqlite3.IntegrityError("Asset group ID is already owned by another principal")
+            self._upsert_group_on_connection(con, group)
+
+    def upsert_asset_group_bundle(
+        self,
+        assets: Iterable[dict[str, Any]],
+        group: dict[str, Any],
+    ) -> int:
+        """Atomically register all child assets and their owning group."""
+
+        count = 0
+        with self._connect() as con:
+            for asset in assets:
+                self._upsert_on_connection(con, asset)
+                count += 1
+            self._upsert_group_on_connection(con, group)
+        return count
 
     def group_stats(self) -> dict[str, int]:
         with self._connect() as con:

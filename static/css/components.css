@@ -2545,7 +2545,7 @@
 
 .game-ui-result__grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--game-ui-grid-columns, 2), minmax(0, 1fr));
     gap: 12px;
 }
 
@@ -2637,19 +2637,38 @@
 
 #gallery-panel .game-ui-gallery-group__cells {
     display: grid;
-    grid-template-columns: repeat(4, 112px);
+    --game-ui-gallery-cell-size: 112px;
+    grid-template-columns: repeat(var(--game-ui-grid-columns, 2), var(--game-ui-gallery-cell-size));
     gap: 8px;
 }
 
 #gallery-panel .game-ui-gallery-group__cells .gallery-item {
-    width: 112px;
-    height: 112px;
+    width: var(--game-ui-gallery-cell-size);
+    height: var(--game-ui-gallery-cell-size);
+}
+
+.game-ui-result__grid[data-grid-columns="3"] .game-ui-result__cell { padding: 10px; }
+.game-ui-result__grid[data-grid-columns="4"] .game-ui-result__cell { padding: 7px; }
+.game-ui-result__grid[data-grid-columns="4"] .game-ui-result__index {
+    top: 6px;
+    left: 6px;
+    width: 21px;
+    height: 21px;
+    font-size: 9px;
 }
 
 @media (max-width: 700px) {
     .game-ui-result__header { align-items: flex-start; }
     .game-ui-result__download { white-space: nowrap; }
-    #gallery-panel .game-ui-gallery-group__cells { grid-template-columns: repeat(2, 112px); }
+    #gallery-panel .game-ui-gallery-group__cells {
+        --game-ui-gallery-cell-size: min(28vw, 112px);
+    }
+    #gallery-panel .game-ui-gallery-group__cells[data-grid-columns="3"] {
+        --game-ui-gallery-cell-size: min(26vw, 96px);
+    }
+    #gallery-panel .game-ui-gallery-group__cells[data-grid-columns="4"] {
+        --game-ui-gallery-cell-size: min(20vw, 88px);
+    }
 }
 
 @media (max-width: 640px) {

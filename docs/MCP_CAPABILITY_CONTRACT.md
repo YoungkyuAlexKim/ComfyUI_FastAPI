@@ -67,7 +67,8 @@ variant, resolved workflow/provider/model을 저장합니다. `X-Forwarded-For`�
 - MCP 첨부 등록은 필수 `mime_type`과 실제 이미지 형식이 일치하는 PNG/JPEG/WEBP만
   허용하고 공통 입력 제한과 카탈로그 저장을 사용합니다. provider를 호출하지 않으므로
   `GenerationCommand`나 비용 통제를 거치지 않습니다.
-- Game UI는 현재 `2x2`, 참고 이미지 최대 3장, 2K만 지원합니다.
+- Game UI 웹 경로는 `2x2`·`3x3`·`4x4`를 지원하지만 MCP 공개 요청 모델은 안정성을
+  위해 현재 `2x2`, 참고 이미지 최대 3장, 2K로 고정합니다.
 - 턴어라운드는 3·5·8뷰, 표정 시트는 4·9개 계약을 사용합니다.
 - 스토리보드는 참고 이미지 한 장과 6·9컷을 사용합니다.
 - 현재 일반 배경 제거 웹 구현은 RMBG입니다. Game UI의 크로마→알파 후처리와는

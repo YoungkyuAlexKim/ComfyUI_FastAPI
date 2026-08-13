@@ -83,7 +83,7 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
 
     "GameUI_Elements": {
         "display_name": "게임 UI 엘리먼트 메이커",
-        "description": "원하는 게임 UI 엘리먼트를 설명하면 후보 4개를 만들고 개별 PNG로 자동 분리합니다.",
+        "description": "원하는 게임 UI 엘리먼트를 설명하면 4·9·16개 후보를 만들고 개별 PNG로 자동 분리합니다.",
         "hidden": False,
         "category": "image_generation",
         "capability": "create_game_ui_assets",
@@ -119,9 +119,15 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
                 "allowReferences": True,
                 "grid": "2x2",
                 "variantCount": 4,
+                "supportedGrids": [
+                    {"id": "2x2", "label": "2×2", "variantCount": 4},
+                    {"id": "3x3", "label": "3×3", "variantCount": 9},
+                    {"id": "4x4", "label": "4×4", "variantCount": 16},
+                ],
                 "promptPresetInitialCount": 6,
                 "defaults": {
                     "backgroundMode": "transparent",
+                    "grid": "2x2",
                 },
             },
             "promptTemplates": [

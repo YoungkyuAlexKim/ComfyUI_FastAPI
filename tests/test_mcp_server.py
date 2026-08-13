@@ -188,6 +188,7 @@ class McpServerTests(unittest.TestCase):
         self.assertEqual(job.payload["workflow_id"], "GameUI_Elements")
         self.assertEqual(job.payload["input_image_ids"], ["ui-reference"])
         self.assertEqual(job.payload["game_ui_background_mode"], "transparent")
+        self.assertEqual(job.payload["game_ui_grid"], "2x2")
         self.assertEqual(response["output_contract"]["asset_count"], 4)
 
     def test_client_attachment_registration_is_deduplicated(self):

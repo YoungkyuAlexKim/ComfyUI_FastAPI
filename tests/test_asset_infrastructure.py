@@ -218,6 +218,94 @@ class AssetServiceTests(unittest.TestCase):
         self.assertFalse(meta_path.exists())
         self.assertIsNone(self.service.get("anon-owner", "asset123"))
 
+    def test_group_preserving_page_never_splits_game_ui_children(self):
+        def add(asset_id: str, created_at: float, group_id: str | None = None):
+            metadata = {
+                "id": asset_id,
+                "owner": "anon-owner",
+                "status": "active",
+                "game_ui_group_id": group_id,
+            }
+            self.store.upsert(
+                {
+                    "asset_id": asset_id,
+                    "owner_id": "anon-owner",
+                    "kind": "image",
+                    "status": "active",
+                    "storage_path": f"users/anon-owner/{asset_id}.png",
+                    "metadata_path": None,
+                    "thumbnail_path": None,
+                    "created_at": created_at,
+                    "updated_at": created_at,
+                    "group_id": group_id,
+                    "metadata": metadata,
+                }
+            )
+
+        # Twelve recent standalone images followed by a sixteen-cell 4x4
+        # group reproduce the boundary that ordinary 24-item paging splits.
+        for index in range(12):
+            add(f"recent{index:02d}", 300.0 - index)
+        for index in range(16):
+            add(f"cell{index:02d}", 200.0 - index / 100.0, "gameui4x4")
+        add("oldest", 100.0)
+
+        ordinary = self.service.list_media("anon-owner", "image", limit=24, offset=0)
+        self.assertEqual(len(ordinary), 24)
+        self.assertEqual(
+            sum(item["meta"].get("game_ui_group_id") == "gameui4x4" for item in ordinary),
+            12,
+        )
+
+        first, first_meta = self.service.list_media_group_preserving_page(
+            "anon-owner", "image", page=1, size=24
+        )
+        second, second_meta = self.service.list_media_group_preserving_page(
+            "anon-owner", "image", page=2, size=24
+        )
+        self.assertEqual(len(first), 12)
+        self.assertEqual(len(second), 17)
+        self.assertEqual(
+            sum(item["meta"].get("game_ui_group_id") == "gameui4x4" for item in second),
+            16,
+        )
+        self.assertEqual(first_meta, {"page": 1, "size": 24, "total": 29, "total_pages": 2})
+        self.assertEqual(second_meta, {"page": 2, "size": 24, "total": 29, "total_pages": 2})
+
+    def test_asset_group_bundle_rolls_back_every_child_on_group_conflict(self):
+        group = {
+            "group_id": "shared-group",
+            "owner_id": "anon-other",
+            "kind": "game_ui_group",
+            "status": "active",
+            "manifest_path": None,
+            "archive_path": None,
+            "preview_path": None,
+            "created_at": 1.0,
+            "updated_at": 1.0,
+            "metadata": {},
+        }
+        self.store.upsert_group(group)
+        child = {
+            "asset_id": "new-child",
+            "owner_id": "anon-owner",
+            "kind": "image",
+            "status": "active",
+            "storage_path": "users/anon-owner/new-child.png",
+            "metadata_path": None,
+            "thumbnail_path": None,
+            "created_at": 2.0,
+            "updated_at": 2.0,
+            "metadata": {"id": "new-child"},
+        }
+        conflicting_group = {**group, "owner_id": "anon-owner"}
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.upsert_asset_group_bundle([child], conflicting_group)
+
+        self.assertIsNone(self.store.get("new-child"))
+        self.assertEqual(self.store.group_stats(), {"game_ui_group:active": 1})
+
 
 class CompleteBackupTests(unittest.TestCase):
     def setUp(self):

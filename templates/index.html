@@ -1140,6 +1140,34 @@
             } catch (_) {}
         }
 
+        function getGameUiGridSelection() {
+            const selected = document.querySelector('input[name="game-ui-grid"]:checked');
+            const raw = String((selected && selected.value) || '2x2').toLowerCase();
+            const match = raw.match(/^([234])x\1$/);
+            const dimension = match ? Number(match[1]) : 2;
+            return {
+                id: `${dimension}x${dimension}`,
+                label: `${dimension}×${dimension}`,
+                columns: dimension,
+                count: dimension * dimension,
+            };
+        }
+
+        function updateGameUiGridSummary() {
+            const selection = getGameUiGridSelection();
+            const batch = document.getElementById('game-ui-output-batch');
+            const splitCount = document.getElementById('game-ui-output-split-count');
+            if (batch) batch.textContent = `후보 ${selection.count}개 · ${selection.label}`;
+            if (splitCount) splitCount.textContent = `${selection.count}개 자동 분리`;
+            try {
+                const targetWf = getTargetWorkflowForMode();
+                if (targetWf && targetWf.id === 'GameUI_Elements' && !ui.generateBtn.disabled) {
+                    setGenerationState(false);
+                }
+            } catch (_) {}
+            return selection;
+        }
+
         function applyGameUiToolUiForWorkflow() {
             try {
                 const targetWf = getTargetWorkflowForMode();
@@ -1171,6 +1199,31 @@
 
                 const transparentEl = document.getElementById('game-ui-transparent-output');
                 const defaults = tool.defaults || {};
+                const supportedGrids = new Set(
+                    (Array.isArray(tool.supportedGrids) ? tool.supportedGrids : [{ id: tool.grid || '2x2' }])
+                        .map((entry) => String((entry && entry.id) || '').toLowerCase())
+                        .filter((value) => /^([234])x\1$/.test(value))
+                );
+                const gridInputs = Array.from(document.querySelectorAll('input[name="game-ui-grid"]'));
+                let storedGrid = '';
+                try { storedGrid = localStorage.getItem('tool:game-ui:grid') || ''; } catch (_) {}
+                const configuredGrid = String(defaults.grid || tool.grid || '2x2').toLowerCase();
+                const desiredGrid = supportedGrids.has(storedGrid)
+                    ? storedGrid
+                    : (supportedGrids.has(configuredGrid) ? configuredGrid : '2x2');
+                gridInputs.forEach((input) => {
+                    input.disabled = !supportedGrids.has(String(input.value || '').toLowerCase());
+                    input.checked = String(input.value || '').toLowerCase() === desiredGrid;
+                    if (!input.dataset.gameUiBound) {
+                        input.addEventListener('change', () => {
+                            if (!input.checked) return;
+                            try { localStorage.setItem('tool:game-ui:grid', String(input.value || '2x2')); } catch (_) {}
+                            updateGameUiGridSummary();
+                        });
+                        input.dataset.gameUiBound = '1';
+                    }
+                });
+                updateGameUiGridSummary();
                 if (transparentEl) {
                     let stored = '';
                     try { stored = localStorage.getItem('tool:game-ui:transparent-output') || ''; } catch (_) {}
@@ -4100,6 +4153,7 @@
                 const targetWf = getTargetWorkflowForMode();
                 if (targetWf && targetWf.id === 'GameUI_Elements') {
                     requestData.aspect_ratio = 'square';
+                    requestData.game_ui_grid = getGameUiGridSelection().id;
                     requestData.game_ui_background_mode = document.getElementById('game-ui-transparent-output')?.checked === false
                         ? 'opaque'
                         : 'transparent';
@@ -4494,7 +4548,10 @@
                     const preferred = (typeof uiSchema.generateLabel === 'string' && uiSchema.generateLabel.trim())
                         ? uiSchema.generateLabel.trim()
                         : '이미지 생성하기';
-                    if (!label || label === '이미지 생성하기') label = preferred;
+                    const idleLabel = targetWf && targetWf.id === 'GameUI_Elements'
+                        ? `후보 ${getGameUiGridSelection().count}개 만들기`
+                        : preferred;
+                    if (!label || label === '이미지 생성하기') label = idleLabel;
                 } catch (_) {
                     if (!label) label = '이미지 생성하기';
                 }
@@ -4559,7 +4616,17 @@
             groupContainer.style.display = '';
             grid.replaceChildren();
 
-            if (title) title.textContent = `UI 엘리먼트 후보 ${group.items.length}개`;
+            const rawGrid = String(group.grid || '').toLowerCase();
+            const gridMatch = rawGrid.match(/^([234])x\1$/);
+            const inferredDimension = [4, 9, 16].includes(group.items.length)
+                ? Math.sqrt(group.items.length)
+                : 2;
+            const gridColumns = gridMatch ? Number(gridMatch[1]) : inferredDimension;
+            const gridLabel = `${gridColumns}×${gridColumns}`;
+            grid.style.setProperty('--game-ui-grid-columns', String(gridColumns));
+            grid.dataset.gridColumns = String(gridColumns);
+
+            if (title) title.textContent = `UI 엘리먼트 후보 ${group.items.length}개 · ${gridLabel}`;
             if (download) {
                 download.href = group.download_url || '#';
                 download.download = `game_ui_${group.id || 'assets'}.zip`;
@@ -4622,6 +4689,10 @@
             ui.placeholderSection.style.display = 'none';
             ui.resultSection.style.display = 'block';
             setResultActionsEnabled(false);
+            // Keep an already-open gallery in sync with the newly saved group.
+            // Function declarations are hoisted; goToPage is defined with the
+            // gallery helpers below and also backs the ordinary image flow.
+            try { goToPage(1); } catch (_) {}
         }
 
         function displayImage(imagePath, onRevealDone) {
@@ -5007,6 +5078,7 @@
                 const params = new URLSearchParams();
                 params.set('page', String(currentPage));
                 params.set('size', String(PAGE_SIZE));
+                if (gallerySource === 'generated') params.set('preserve_groups', 'true');
                 let endpoint = '/api/v1/images';
                 if (gallerySource === 'inputs') endpoint = '/api/v1/inputs';
                 if (gallerySource === 'audio') endpoint = '/api/v1/audio';
@@ -5123,7 +5195,13 @@
                         const header = document.createElement('div');
                         header.className = 'game-ui-gallery-group__header';
                         const label = document.createElement('span');
-                        label.textContent = 'UI 엘리먼트 묶음 · 4개';
+                        const metaGrid = String((it.meta && it.meta.game_ui_grid) || '2x2').toLowerCase();
+                        const metaGridMatch = metaGrid.match(/^([234])x\1$/);
+                        const gridColumns = metaGridMatch ? Number(metaGridMatch[1]) : 2;
+                        const rawAssetCount = Number((it.meta && it.meta.game_ui_cell_count) || 0);
+                        const assetCount = Number.isInteger(rawAssetCount) && rawAssetCount > 0
+                            ? rawAssetCount
+                            : gridColumns * gridColumns;
                         const zipUrl = String((it.meta && it.meta.game_ui_group_download_url) || '');
                         if (zipUrl) {
                             const zipLink = document.createElement('a');
@@ -5139,13 +5217,20 @@
                         }
                         const cells = document.createElement('div');
                         cells.className = 'game-ui-gallery-group__cells';
+                        cells.style.setProperty('--game-ui-grid-columns', String(gridColumns));
+                        cells.dataset.gridColumns = String(gridColumns);
                         groupWrap.appendChild(header);
                         groupWrap.appendChild(cells);
                         group.grid.appendChild(groupWrap);
-                        assetGroup = { wrap: groupWrap, cells };
+                        assetGroup = { wrap: groupWrap, cells, label, assetCount, gridColumns };
                         group.gameUiGroups.set(gameUiGroupId, assetGroup);
                     }
                     assetGroup.cells.appendChild(a);
+                    const visibleCount = assetGroup.cells.childElementCount;
+                    const countLabel = visibleCount === assetGroup.assetCount
+                        ? `${assetGroup.assetCount}개`
+                        : `${visibleCount}/${assetGroup.assetCount}개`;
+                    assetGroup.label.textContent = `UI 엘리먼트 묶음 · ${countLabel} · ${assetGroup.gridColumns}×${assetGroup.gridColumns}`;
                 } else {
                     group.grid.appendChild(a);
                 }

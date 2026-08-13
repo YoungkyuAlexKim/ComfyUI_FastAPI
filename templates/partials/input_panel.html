@@ -65,8 +65,29 @@
                             <span class="game-ui-output__eyebrow">OUTPUT</span>
                             <strong>내보내기 방식</strong>
                         </div>
-                        <span class="game-ui-output__batch"><i class="fas fa-border-all"></i> 후보 4개 · 2×2</span>
+                        <span class="game-ui-output__batch">
+                            <i class="fas fa-border-all"></i>
+                            <span id="game-ui-output-batch">후보 4개 · 2×2</span>
+                        </span>
                     </div>
+                    <fieldset class="game-ui-grid-picker">
+                        <legend>후보 레이아웃</legend>
+                        <div class="game-ui-grid-picker__options" id="game-ui-grid-options">
+                            <label>
+                                <input type="radio" name="game-ui-grid" value="2x2" checked>
+                                <span><strong>2×2</strong><small>4개</small></span>
+                            </label>
+                            <label>
+                                <input type="radio" name="game-ui-grid" value="3x3">
+                                <span><strong>3×3</strong><small>9개</small></span>
+                            </label>
+                            <label>
+                                <input type="radio" name="game-ui-grid" value="4x4">
+                                <span><strong>4×4</strong><small>16개</small></span>
+                            </label>
+                        </div>
+                        <p>한 번의 생성으로 선택한 수만큼 분리합니다. 레이아웃이 클수록 개별 후보의 원본 해상도는 작아집니다.</p>
+                    </fieldset>
                     <label class="game-ui-output__toggle" for="game-ui-transparent-output">
                         <span class="game-ui-switch">
                             <input type="checkbox" id="game-ui-transparent-output" checked>
@@ -80,7 +101,7 @@
                     </label>
                     <div class="game-ui-output__flow" aria-label="출력 과정">
                         <span>한 장 생성</span><i class="fas fa-chevron-right"></i>
-                        <span>4개 자동 분리</span><i class="fas fa-chevron-right"></i>
+                        <span id="game-ui-output-split-count">4개 자동 분리</span><i class="fas fa-chevron-right"></i>
                         <span>PNG + ZIP</span>
                     </div>
                 </div>

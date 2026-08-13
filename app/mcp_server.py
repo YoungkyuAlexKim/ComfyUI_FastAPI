@@ -335,6 +335,7 @@ class McpGenerationService:
                 "image_size": "2K",
                 "image_quality": image_quality,
                 "game_ui_background_mode": background_mode,
+                "game_ui_grid": "2x2",
                 "input_image_ids": reference_ids or None,
                 "input_image_id": reference_ids[0] if reference_ids else None,
             },

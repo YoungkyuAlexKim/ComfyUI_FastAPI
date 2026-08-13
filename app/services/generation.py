@@ -194,6 +194,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             self.seethrough_resolution = d.get("seethrough_resolution")
             # Game UI element maker fields
             self.game_ui_background_mode = d.get("game_ui_background_mode")
+            self.game_ui_grid = d.get("game_ui_grid")
 
     request = _Req(req_dict)
     # Ensure we always have a concrete seed so users can reproduce results later,
@@ -618,8 +619,12 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         if is_game_ui:
             from .game_ui_assets import build_game_ui_generation_prompt, normalize_game_ui_options
 
-            game_ui_options = normalize_game_ui_options(getattr(request, "game_ui_background_mode", None))
+            game_ui_options = normalize_game_ui_options(
+                getattr(request, "game_ui_background_mode", None),
+                getattr(request, "game_ui_grid", None),
+            )
             request.game_ui_background_mode = game_ui_options.background_mode
+            request.game_ui_grid = game_ui_options.grid
             original_prompt = str(getattr(request, "user_prompt", "") or "").strip()
             request.game_ui_original_prompt = original_prompt
 

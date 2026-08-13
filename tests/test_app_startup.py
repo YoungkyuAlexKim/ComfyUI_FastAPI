@@ -14,7 +14,26 @@ class ApplicationStartupTests(unittest.TestCase):
             from io import BytesIO
             from fastapi.testclient import TestClient
             from PIL import Image
-            from app.main import app
+            from pydantic import ValidationError
+            from app.main import GenerateRequest, app
+
+            assert GenerateRequest(
+                user_prompt="button",
+                aspect_ratio="square",
+                workflow_id="GameUI_Elements",
+                game_ui_grid="4x4",
+            ).game_ui_grid == "4x4"
+            try:
+                GenerateRequest(
+                    user_prompt="button",
+                    aspect_ratio="square",
+                    workflow_id="GameUI_Elements",
+                    game_ui_grid="5x5",
+                )
+            except ValidationError:
+                pass
+            else:
+                raise AssertionError("unsupported Game UI grid was accepted")
 
             headers = {"Accept": "application/json, text/event-stream"}
             initialize = {
@@ -30,6 +49,8 @@ class ApplicationStartupTests(unittest.TestCase):
             tools_list = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
             with TestClient(app) as client:
                 health = client.get("/healthz")
+                create_page = client.get("/create")
+                workflows = client.get("/api/v1/workflows")
                 initialized = client.post("/mcp/", headers=headers, json=initialize)
                 listed = client.post(
                     "/mcp/",
@@ -37,6 +58,14 @@ class ApplicationStartupTests(unittest.TestCase):
                     json=tools_list,
                 )
                 assert health.status_code == 200, health.text
+                assert create_page.status_code == 200, create_page.text
+                assert 'name="game-ui-grid" value="3x3"' in create_page.text
+                assert 'name="game-ui-grid" value="4x4"' in create_page.text
+                assert "preserve_groups', 'true'" in create_page.text
+                game_ui = next(item for item in workflows.json()["workflows"] if item["id"] == "GameUI_Elements")
+                assert [item["id"] for item in game_ui["ui"]["gameUiTool"]["supportedGrids"]] == [
+                    "2x2", "3x3", "4x4"
+                ]
                 assert "lc_principal" not in health.headers.get("set-cookie", "")
                 assert initialized.json()["result"]["serverInfo"]["version"] == "0.4.0"
                 assert "lc_principal" not in initialized.headers.get("set-cookie", "")

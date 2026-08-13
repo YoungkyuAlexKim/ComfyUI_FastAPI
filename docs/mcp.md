@@ -27,9 +27,9 @@
 
 `create_managed_image_asset`은 `reference_image_ids`를 생략하면 텍스트→이미지, 소유한
 active 이미지 또는 입력 자산 ID를 넣으면 기존 이미지 편집으로 실행됩니다.
-`create_game_ui_assets`는 현재 검증된 2×2/4개/2K 계약만 공개하며 child 이미지 4개와
-그룹 ZIP을 생성합니다. 자산 목록·조회는 현재 MCP IP principal 소유 범위만 반환하며
-휴지통과 다른 소유자의 존재를 노출하지 않습니다.
+`create_game_ui_assets`는 웹의 3×3·4×4 선택과 별개로 현재 검증된 2×2/4개/2K 계약만
+공개하며 child 이미지 4개와 그룹 ZIP을 생성합니다. 자산 목록·조회는 현재 MCP IP
+principal 소유 범위만 반환하며 휴지통과 다른 소유자의 존재를 노출하지 않습니다.
 
 캐릭터 시트, 스토리보드, 배경 제거, 레이어 분리, 음악 생성은 내부 capability 계약만
 유지합니다. MCP용 파라미터 매핑과 결과 형식·클라이언트 테스트가 끝나지 않아 아직

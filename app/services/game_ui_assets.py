@@ -1,9 +1,9 @@
 """Game UI asset-sheet prompting and deterministic post-processing.
 
-The image model returns one square 2x2 sheet.  This module turns that sheet
-into four independently downloadable PNG assets without making another model
-call.  It intentionally contains no storage or provider code so the image
-processing can be tested in isolation.
+The image model returns one square grid sheet. This module turns a supported
+2x2, 3x3, or 4x4 sheet into independently downloadable PNG assets without
+making another model call. It intentionally contains no storage or provider
+code so the image processing can be tested in isolation.
 """
 
 from __future__ import annotations
@@ -19,15 +19,43 @@ from PIL import Image, ImageChops
 GAME_UI_WORKFLOW_ID = "GameUI_Elements"
 GAME_UI_BACKGROUND_MODES = {"transparent", "opaque"}
 GAME_UI_TARGET_SIZES = (32, 64, 128, 256)
+GAME_UI_DEFAULT_GRID = "2x2"
+
+
+@dataclass(frozen=True)
+class GameUiGridSpec:
+    key: str
+    columns: int
+    rows: int
+
+    @property
+    def asset_count(self) -> int:
+        return self.columns * self.rows
+
+
+GAME_UI_GRID_SPECS = {
+    "2x2": GameUiGridSpec("2x2", 2, 2),
+    "3x3": GameUiGridSpec("3x3", 3, 3),
+    "4x4": GameUiGridSpec("4x4", 4, 4),
+}
 
 
 @dataclass(frozen=True)
 class GameUiOptions:
     background_mode: str
+    grid: str = GAME_UI_DEFAULT_GRID
 
     @property
     def transparent(self) -> bool:
         return self.background_mode == "transparent"
+
+    @property
+    def grid_spec(self) -> GameUiGridSpec:
+        return GAME_UI_GRID_SPECS[self.grid]
+
+    @property
+    def asset_count(self) -> int:
+        return self.grid_spec.asset_count
 
 
 @dataclass(frozen=True)
@@ -40,12 +68,60 @@ class ProcessedGameUiAsset:
     size_dimensions: Dict[str, Tuple[int, int]]
 
 
-def normalize_game_ui_options(background_mode: object) -> GameUiOptions:
+def get_game_ui_grid_spec(grid: object = None) -> GameUiGridSpec:
+    normalized = str(grid or GAME_UI_DEFAULT_GRID).strip().lower().replace("×", "x")
+    return GAME_UI_GRID_SPECS.get(normalized, GAME_UI_GRID_SPECS[GAME_UI_DEFAULT_GRID])
+
+
+def normalize_game_ui_options(background_mode: object, grid: object = None) -> GameUiOptions:
     normalized_background = str(background_mode or "transparent").strip().lower()
     if normalized_background not in GAME_UI_BACKGROUND_MODES:
         normalized_background = "transparent"
 
-    return GameUiOptions(normalized_background)
+    return GameUiOptions(normalized_background, get_game_ui_grid_spec(grid).key)
+
+
+def validate_processed_game_ui_assets(
+    assets: object,
+    options: GameUiOptions,
+) -> List[ProcessedGameUiAsset]:
+    """Validate and order a complete processed group before persistence starts."""
+
+    normalized = list(assets or [])
+    if len(normalized) != options.asset_count:
+        raise RuntimeError(
+            f"게임 UI {options.grid} 그룹에는 정확히 {options.asset_count}개의 에셋이 필요합니다."
+        )
+    try:
+        normalized.sort(key=lambda asset: int(getattr(asset, "index", 0) or 0))
+    except Exception as exc:
+        raise RuntimeError("게임 UI 에셋의 셀 번호가 올바르지 않습니다.") from exc
+    if [int(getattr(asset, "index", 0) or 0) for asset in normalized] != list(
+        range(1, options.asset_count + 1)
+    ):
+        raise RuntimeError("게임 UI 에셋의 셀 번호가 올바르지 않습니다.")
+
+    expected_size_keys = {str(size) for size in GAME_UI_TARGET_SIZES}
+    for asset in normalized:
+        master = getattr(asset, "master_png", None)
+        width = int(getattr(asset, "master_width", 0) or 0)
+        height = int(getattr(asset, "master_height", 0) or 0)
+        size_pngs = dict(getattr(asset, "size_pngs", {}) or {})
+        size_dimensions = dict(getattr(asset, "size_dimensions", {}) or {})
+        if not isinstance(master, (bytes, bytearray)) or not master or width < 1 or height < 1:
+            raise RuntimeError("게임 UI 에셋 원본 데이터가 올바르지 않습니다.")
+        if set(size_pngs) != expected_size_keys or set(size_dimensions) != expected_size_keys:
+            raise RuntimeError("게임 UI 에셋의 크기별 PNG 구성이 완전하지 않습니다.")
+        for key in expected_size_keys:
+            png_bytes = size_pngs.get(key)
+            dimensions = size_dimensions.get(key)
+            if not isinstance(png_bytes, (bytes, bytearray)) or not png_bytes:
+                raise RuntimeError("게임 UI 에셋의 크기별 PNG 데이터가 올바르지 않습니다.")
+            if not isinstance(dimensions, (tuple, list)) or len(dimensions) != 2:
+                raise RuntimeError("게임 UI 에셋의 크기별 치수 데이터가 올바르지 않습니다.")
+            if int(dimensions[0]) < 1 or int(dimensions[1]) < 1:
+                raise RuntimeError("게임 UI 에셋의 크기별 치수 데이터가 올바르지 않습니다.")
+    return normalized
 
 
 def build_game_ui_generation_prompt(
@@ -78,20 +154,24 @@ def build_game_ui_generation_prompt(
             "OPAQUE OUTPUT: Give every cell a restrained, consistent backing treatment that belongs to the "
             "requested UI style. Keep the asset clearly separated from it."
         )
+    grid_spec = options.grid_spec
+    asset_count = grid_spec.asset_count
+    count_word = {4: "four", 9: "nine", 16: "sixteen"}.get(asset_count, str(asset_count))
     return "\n".join(
         [
-            "TASK: Produce four usable alternative game UI elements for one request.",
+            f"TASK: Produce exactly {count_word} usable alternative game UI elements for one request.",
             f"USER REQUEST: {request_text}",
             reference_rules,
             "INTERPRETATION: The user request is authoritative. Infer the requested element, purpose, shape, aspect ratio, "
             "filled or open areas, and visual hierarchy directly from that request. Do not force it into a predefined "
             "icon, button, frame, badge, or panel category.",
-            "VARIATION: The four cells are alternatives for the same request, not a set of four different items. "
+            f"VARIATION: The {count_word} cells are alternatives for the same request, not a set of different items. "
             "Keep one coherent art direction while varying silhouette, ornament, proportions, and detail treatment.",
-            "SHEET FORMAT: Output exactly one square image containing exactly four equal cells in a strict 2 columns "
-            "by 2 rows layout. Reading order is top-left, top-right, bottom-left, bottom-right.",
-            "CELL SAFETY: Put exactly one complete asset in each cell. Center it, keep it fully inside its own quadrant, "
-            "and leave at least 8 percent safe margin. Nothing may cross the vertical or horizontal center line.",
+            f"SHEET FORMAT: Output exactly one square image containing exactly {count_word} equal cells in a strict "
+            f"{grid_spec.columns} columns by {grid_spec.rows} rows layout. Reading order is left to right within each "
+            "row, then top to bottom. Do not omit, merge, or duplicate cells.",
+            "CELL SAFETY: Put exactly one complete asset in each cell. Center it, keep it fully inside its own cell, "
+            "and leave at least 8 percent safe margin relative to that cell. Nothing may cross any cell boundary.",
             "SEAMS: Cells must meet edge-to-edge with zero border, zero gutter, zero padding, and no visible divider lines.",
             background_rules,
             "PROPORTIONS: Preserve the natural proportions explicitly or implicitly requested by the user, including "
@@ -101,7 +181,7 @@ def build_game_ui_generation_prompt(
             "no inventory grid, and no full HUD.",
             "TEXT RULES: Do not invent words, letters, numbers, captions, labels, logos, signatures, or watermarks. "
             "Include text only when the user explicitly requests it.",
-            "OUTPUT: Return only the finished 2x2 sheet as one image.",
+            f"OUTPUT: Return only the finished {grid_spec.key} sheet as one image.",
         ]
     )
 
@@ -180,7 +260,7 @@ def remove_chroma_matte(
     return Image.merge("RGBA", (red, green, blue, alpha))
 
 
-def split_sheet_2x2(sheet_bytes: bytes) -> List[Image.Image]:
+def split_sheet_grid(sheet_bytes: bytes, grid: object = None) -> List[Image.Image]:
     if not isinstance(sheet_bytes, (bytes, bytearray)) or not sheet_bytes:
         raise RuntimeError("생성된 UI 시트 이미지가 비어 있습니다.")
     try:
@@ -189,18 +269,23 @@ def split_sheet_2x2(sheet_bytes: bytes) -> List[Image.Image]:
     except Exception as exc:
         raise RuntimeError("생성된 UI 시트 이미지를 읽을 수 없습니다.") from exc
 
+    grid_spec = get_game_ui_grid_spec(grid)
     width, height = image.size
-    if width < 4 or height < 4:
+    if width < grid_spec.columns * 2 or height < grid_spec.rows * 2:
         raise RuntimeError("생성된 UI 시트의 해상도가 너무 작습니다.")
-    x_mid = width // 2
-    y_mid = height // 2
-    boxes = (
-        (0, 0, x_mid, y_mid),
-        (x_mid, 0, width, y_mid),
-        (0, y_mid, x_mid, height),
-        (x_mid, y_mid, width, height),
-    )
+    x_bounds = [(width * index) // grid_spec.columns for index in range(grid_spec.columns + 1)]
+    y_bounds = [(height * index) // grid_spec.rows for index in range(grid_spec.rows + 1)]
+    boxes = [
+        (x_bounds[column], y_bounds[row], x_bounds[column + 1], y_bounds[row + 1])
+        for row in range(grid_spec.rows)
+        for column in range(grid_spec.columns)
+    ]
     return [image.crop(box) for box in boxes]
+
+
+def split_sheet_2x2(sheet_bytes: bytes) -> List[Image.Image]:
+    """Backward-compatible wrapper for callers that rely on the original MVP."""
+    return split_sheet_grid(sheet_bytes, GAME_UI_DEFAULT_GRID)
 
 
 def _natural_asset_canvas(image: Image.Image, *, transparent: bool) -> Image.Image:
@@ -238,7 +323,7 @@ def process_game_ui_sheet(
     sheet_bytes: bytes,
     options: GameUiOptions,
 ) -> List[ProcessedGameUiAsset]:
-    tiles = split_sheet_2x2(sheet_bytes)
+    tiles = split_sheet_grid(sheet_bytes, options.grid)
     processed: List[ProcessedGameUiAsset] = []
 
     for index, tile in enumerate(tiles, start=1):

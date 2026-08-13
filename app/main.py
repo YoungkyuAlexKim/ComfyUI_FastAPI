@@ -4,7 +4,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from typing import Optional, List, Tuple
+from typing import Literal, Optional, List, Tuple
 import time
 import os
 import asyncio
@@ -259,6 +259,7 @@ class GenerateRequest(BaseModel):
     seethrough_resolution: Optional[int] = None
     # --- Game UI element maker params ---
     game_ui_background_mode: Optional[str] = None
+    game_ui_grid: Literal["2x2", "3x3", "4x4"] = "2x2"
 
 WORKFLOW_DIR = "./workflows/"
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
