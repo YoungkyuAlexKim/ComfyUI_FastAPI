@@ -7,6 +7,8 @@ Examples:
     python -m app.asset_admin backup-db
     python -m app.asset_admin backup-all
     python -m app.asset_admin verify-backup backups/lc-ai-canvas-...
+    python -m app.asset_admin restore-drill backups/lc-ai-canvas-...
+    python -m app.asset_admin catalog-canary
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import tempfile
 from typing import Any
 import uuid
 
@@ -283,6 +286,218 @@ def _backup_all(
     return {**verification, "backup": str(target)}
 
 
+def _restore_drill(bundle: str | Path) -> dict[str, Any]:
+    """Copy a recovery set to an isolated directory and exercise its core services.
+
+    The live database, outputs and principal secret are never used as restore
+    targets.  The temporary staging directory is removed when the drill ends.
+    """
+
+    source = Path(bundle).resolve()
+    source_verification = _verify_backup(source)
+    with tempfile.TemporaryDirectory(prefix="lc-ai-canvas-restore-drill-") as directory:
+        staging = Path(directory) / "recovery-set"
+        shutil.copytree(source, staging, copy_function=shutil.copy2)
+        staged_verification = _verify_backup(staging)
+
+        staged_database = staging / "app_data.db"
+        staged_outputs = staging / "outputs"
+        staged_secret = staging / "principal_cookie.secret"
+        staged_service = AssetService(AssetStore(str(staged_database)), str(staged_outputs))
+        staged_audit = staged_service.audit()
+        if any(
+            int(staged_audit.get(key) or 0)
+            for key in ("missing_files", "missing_metadata", "missing_group_files")
+        ):
+            raise RuntimeError(f"Staged restore catalog audit failed: {staged_audit}")
+
+        # Exercise the restored signing key without exposing its value.
+        from .auth.user_management import _principal_from_signed_cookie, _signed_cookie_value
+
+        previous_inline_secret = os.environ.get("PRINCIPAL_COOKIE_SECRET")
+        previous_secret_file = os.environ.get("PRINCIPAL_COOKIE_SECRET_FILE")
+        try:
+            os.environ["PRINCIPAL_COOKIE_SECRET"] = ""
+            os.environ["PRINCIPAL_COOKIE_SECRET_FILE"] = str(staged_secret)
+            probe_principal = "anon-restore-drill"
+            signed = _signed_cookie_value(probe_principal)
+            principal_roundtrip = _principal_from_signed_cookie(signed) == probe_principal
+        finally:
+            if previous_inline_secret is None:
+                os.environ.pop("PRINCIPAL_COOKIE_SECRET", None)
+            else:
+                os.environ["PRINCIPAL_COOKIE_SECRET"] = previous_inline_secret
+            if previous_secret_file is None:
+                os.environ.pop("PRINCIPAL_COOKIE_SECRET_FILE", None)
+            else:
+                os.environ["PRINCIPAL_COOKIE_SECRET_FILE"] = previous_secret_file
+        if not principal_roundtrip:
+            raise RuntimeError("Restored principal cookie secret failed a signing round trip")
+
+    return {
+        "ok": True,
+        "backup": str(source),
+        "source_files": source_verification["files"],
+        "source_bytes": source_verification["bytes"],
+        "staged_files": staged_verification["files"],
+        "staged_bytes": staged_verification["bytes"],
+        "catalog": staged_audit,
+        "principal_cookie_roundtrip": True,
+        "staging_removed": not staging.exists(),
+    }
+
+
+def _catalog_canary(
+    *,
+    database_path: str | Path | None = None,
+    output_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Run a read-oriented catalog-only readiness check against one data set."""
+
+    source_database = Path(database_path or JOB_DB_PATH).resolve()
+    source_outputs = Path(output_root or SERVER_CONFIG["output_dir"]).resolve()
+    service = AssetService(AssetStore(str(source_database)), str(source_outputs))
+    audit = service.audit()
+    filesystem_inventory = service.backfill_legacy(dry_run=True)
+    migrations = {
+        "asset_backfill": service.store.migration_version("asset_backfill"),
+        "asset_catalog": service.store.migration_version("asset_catalog"),
+    }
+
+    # Ensure the normal media-store adapter resolves every catalog kind while
+    # the legacy fallback is explicitly disabled.
+    from .services import asset_runtime, media_store
+
+    previous_service = asset_runtime.get_asset_service()
+    previous_fallback = os.environ.get("ASSET_CATALOG_FALLBACK_ENABLED")
+    runtime_counts = {"image": 0, "input": 0, "audio": 0}
+    expected_counts = {"image": 0, "input": 0, "audio": 0}
+    fail_closed = False
+    try:
+        asset_runtime.configure_asset_service(service)
+        os.environ["ASSET_CATALOG_FALLBACK_ENABLED"] = "false"
+        with service.store._connect() as con:
+            owners = [row[0] for row in con.execute("SELECT DISTINCT owner_id FROM assets")]
+        gatherers = {
+            "image": media_store._gather_user_images,
+            "input": media_store._gather_user_inputs,
+            "audio": media_store._gather_user_audio,
+        }
+        for owner_id in owners:
+            for kind, gather in gatherers.items():
+                runtime_counts[kind] += len(gather(owner_id, include_trash=True))
+                expected_counts[kind] += service.count_media(owner_id, kind, include_trash=True)
+
+        # An accidentally unconfigured AssetService must fail loudly in
+        # catalog-only mode instead of silently scanning legacy directories.
+        asset_runtime.configure_asset_service(None)
+        try:
+            media_store._gather_user_images("anon-catalog-canary")
+        except RuntimeError:
+            fail_closed = True
+    finally:
+        asset_runtime.configure_asset_service(previous_service)
+        if previous_fallback is None:
+            os.environ.pop("ASSET_CATALOG_FALLBACK_ENABLED", None)
+        else:
+            os.environ["ASSET_CATALOG_FALLBACK_ENABLED"] = previous_fallback
+
+    parity = {
+        "asset_rows": int(audit.get("rows") or 0),
+        "filesystem_assets": int(filesystem_inventory.get("registered") or 0),
+        "group_rows": int(audit.get("group_rows") or 0),
+        "filesystem_groups": int(filesystem_inventory.get("groups_registered") or 0),
+        "runtime_counts": runtime_counts,
+        "expected_counts": expected_counts,
+    }
+    inventory_clean = not any(
+        int(filesystem_inventory.get(key) or 0)
+        for key in ("invalid_owner_directories", "invalid_metadata", "missing_media", "errors")
+    )
+    audit_clean = not any(
+        int(audit.get(key) or 0)
+        for key in ("missing_files", "missing_metadata", "missing_group_files")
+    )
+    parity_clean = (
+        parity["asset_rows"] == parity["filesystem_assets"]
+        and parity["group_rows"] == parity["filesystem_groups"]
+        and runtime_counts == expected_counts
+    )
+    migrations_ready = migrations["asset_backfill"] >= 1 and migrations["asset_catalog"] >= 2
+    return {
+        "ok": bool(inventory_clean and audit_clean and parity_clean and migrations_ready and fail_closed),
+        "migrations": migrations,
+        "audit": audit,
+        "filesystem_inventory": filesystem_inventory,
+        "parity": parity,
+        "catalog_only_fail_closed": fail_closed,
+        "technical_ready_for_fallback_removal": bool(
+            inventory_clean and audit_clean and parity_clean and migrations_ready and fail_closed
+        ),
+        "note": "Complete backup and staging restore drill remain separate removal gates.",
+    }
+
+
+def _prune_backups(
+    destination_root: str | Path,
+    *,
+    retention_days: int,
+    minimum_bundles: int = 7,
+    apply: bool = False,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Select or delete expired complete bundles without touching unknown files."""
+
+    root = Path(destination_root).resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(f"Backup destination does not exist: {root}")
+    retention_days = int(retention_days)
+    minimum_bundles = max(0, int(minimum_bundles))
+    if retention_days < 1:
+        raise ValueError("retention_days must be at least 1")
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    cutoff = current.timestamp() - (retention_days * 86400)
+
+    bundles: list[tuple[Path, float]] = []
+    skipped: list[str] = []
+    for candidate in root.iterdir():
+        if not candidate.is_dir() or not candidate.name.startswith("lc-ai-canvas-"):
+            continue
+        manifest_path = candidate / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not isinstance(manifest, dict) or manifest.get("format_version") != BACKUP_FORMAT_VERSION:
+                raise ValueError("invalid format")
+            created = datetime.fromisoformat(str(manifest["created_at"]).replace("Z", "+00:00"))
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            bundles.append((candidate.resolve(), created.timestamp()))
+        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            skipped.append(candidate.name)
+
+    bundles.sort(key=lambda item: item[1], reverse=True)
+    protected = {path for path, _ in bundles[:minimum_bundles]}
+    expired = [path for path, created_at in bundles if path not in protected and created_at < cutoff]
+    deleted: list[str] = []
+    if apply:
+        for target in expired:
+            if target.parent != root or not target.name.startswith("lc-ai-canvas-"):
+                raise RuntimeError(f"Refusing unsafe backup deletion target: {target}")
+            shutil.rmtree(target)
+            deleted.append(str(target))
+    return {
+        "ok": True,
+        "destination_root": str(root),
+        "retention_days": retention_days,
+        "minimum_bundles": minimum_bundles,
+        "complete_bundles": len(bundles),
+        "skipped_unrecognized": sorted(skipped),
+        "expired": [str(path) for path in expired],
+        "deleted": deleted,
+        "dry_run": not apply,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Asset catalog maintenance")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -298,6 +513,23 @@ def main() -> None:
     backup_all.add_argument("--destination-root")
     verify = sub.add_parser("verify-backup", help="Verify a complete recovery set without restoring it")
     verify.add_argument("backup")
+    restore_drill = sub.add_parser(
+        "restore-drill",
+        help="Copy a recovery set to temporary staging and exercise DB, assets, and principal signing",
+    )
+    restore_drill.add_argument("backup")
+    sub.add_parser(
+        "catalog-canary",
+        help="Check catalog/filesystem parity with legacy fallback disabled",
+    )
+    prune = sub.add_parser(
+        "prune-backups",
+        help="Apply retention only to recognized complete backup bundles",
+    )
+    prune.add_argument("destination_root")
+    prune.add_argument("--retention-days", type=int, required=True)
+    prune.add_argument("--minimum-bundles", type=int, default=7)
+    prune.add_argument("--apply", action="store_true")
     args = parser.parse_args()
 
     if args.command == "backup-db":
@@ -306,6 +538,17 @@ def main() -> None:
         result = _backup_all(args.destination_root)
     elif args.command == "verify-backup":
         result = _verify_backup(args.backup)
+    elif args.command == "restore-drill":
+        result = _restore_drill(args.backup)
+    elif args.command == "catalog-canary":
+        result = _catalog_canary()
+    elif args.command == "prune-backups":
+        result = _prune_backups(
+            args.destination_root,
+            retention_days=args.retention_days,
+            minimum_bundles=args.minimum_bundles,
+            apply=args.apply,
+        )
     else:
         service = _service()
         if args.command == "audit":

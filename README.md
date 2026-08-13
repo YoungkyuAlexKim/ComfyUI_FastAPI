@@ -37,8 +37,9 @@ Copy-Item .env.example .env
 
 `run_server.bat`은 개발용으로 reload를 켜고 브라우저를 자동으로 엽니다.
 `run_server_prod.bat`은 운영용 단일 프로세스를 실행하며 브라우저를 자동으로 열지
-않습니다. 이미 8000 포트의 LC AI Canvas가 정상 실행 중이면 두 번째 실행 파일을
-열지 말고 기존 서버에 접속합니다.
+않습니다. 공통 실행기는 기존 8000 포트의 health를 먼저 확인해 중복 서버를 막고,
+비정상 포트 점유 PID와 `logs/server-*.log`를 남깁니다. 더블클릭 시작 오류는 콘솔을
+유지하므로 메시지와 로그를 함께 확인할 수 있습니다.
 
 - 생성 화면: `http://127.0.0.1:8000/create`
 - 피드: `http://127.0.0.1:8000/feed`
@@ -68,10 +69,11 @@ Uvicorn의 자동 프록시 헤더 신뢰를 끄며, 신뢰 가능한 프록시�
 ```powershell
 .\scripts\backup_app_data.ps1 -DestinationRoot E:\LC-AI-Canvas-Backups
 .\venv\Scripts\python.exe -m app.asset_admin verify-backup E:\LC-AI-Canvas-Backups\lc-ai-canvas-...
+.\scripts\test_restore_backup.ps1 -BackupPath E:\LC-AI-Canvas-Backups\lc-ai-canvas-...
 ```
 
 완전 백업은 파일별 checksum manifest와 DB·카탈로그 정합성 검증을 통과해야만
-완료됩니다. 복구 절차는 `docs/OPERATIONS.md`를 따릅니다.
+완료됩니다. 정기 작업 등록, 보존 정책과 복구 절차는 `docs/OPERATIONS.md`를 따릅니다.
 
 ## 문서
 

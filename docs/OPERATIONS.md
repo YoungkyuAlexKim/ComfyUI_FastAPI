@@ -41,18 +41,31 @@ API 키를 별도 평문 파일에 보관하는 방식도 운영 설정이나 �
 운영 실행기는 `0.0.0.0:8000`에서 수신합니다. 외부 노출 여부는 애플리케이션이
 아니라 인프라 방화벽과 리버스 프록시가 결정해야 합니다.
 
-`run_server.bat`은 개발용 reload와 브라우저 자동 열기를 사용합니다.
+`run_server.bat`은 개발용 reload와 health 확인 후 브라우저 열기를 사용합니다.
 `run_server_prod.bat`은 브라우저를 열지 않으며 실행 중인 콘솔이 서버 프로세스입니다.
-시작 전에 다음을 확인합니다.
+두 batch는 `scripts/start_server.ps1`을 공유하며 다음을 자동으로 수행합니다.
+
+- 기존 8000 포트의 LC AI Canvas가 정상이면 중복 실행 없이 종료
+- 포트가 점유됐지만 health가 실패하면 소유 PID를 출력하고 시작 차단
+- Uvicorn 출력을 UTC timestamp가 붙은 `logs/server-<mode>-*.log`에 보존
+- 시작 오류 시 더블클릭 콘솔을 `pause`로 유지
+
+자동화 환경에서 오류 pause를 끄려면 `LC_CANVAS_NO_PAUSE=1`을 설정합니다. 서버를
+시작하지 않고 중복·포트 상태만 검사할 수도 있습니다.
+
+```powershell
+.\scripts\start_server.ps1 -Mode Production -CheckOnly -NoBrowser
+```
+
+수동 진단은 다음 명령을 사용합니다.
 
 ```powershell
 Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
 Invoke-RestMethod http://127.0.0.1:8000/healthz | ConvertTo-Json -Depth 5
 ```
 
-이미 listener와 정상 health 응답이 있으면 서버가 실행 중이므로 실행 파일을 다시 열지
-않습니다. 두 번째 Uvicorn은 같은 포트를 bind하지 못해 더블클릭 콘솔이 바로 닫힐 수
-있습니다. 시작 오류를 확인할 때는 기존 PowerShell에서 실행해 출력을 보존합니다.
+이미 listener와 정상 health 응답이 있으면 실행기가 기존 서버 정보를 출력합니다.
+비정상 점유일 때는 출력된 PID의 실행 파일과 명령행을 확인한 뒤에만 종료합니다.
 
 ```powershell
 cd C:\Works\ComfyUI_FastAPI
@@ -145,6 +158,30 @@ Windows 작업 스케줄러에서는 프로그램을 `powershell.exe`, 인수를
 -NoProfile -ExecutionPolicy Bypass -File C:\Works\ComfyUI_FastAPI\scripts\backup_app_data.ps1 -DestinationRoot E:\LC-AI-Canvas-Backups
 ```
 
+직접 입력하는 대신 검증된 작업 등록 도구를 사용할 수 있습니다. 예약 백업 경로는
+프로젝트 밖의 외부 또는 별도 보호 위치여야 합니다.
+
+```powershell
+.\scripts\manage_backup_task.ps1 -Action Install `
+  -DestinationRoot E:\LC-AI-Canvas-Backups `
+  -DailyAt 03:00 -RetentionDays 30 -MinimumBundles 7
+.\scripts\manage_backup_task.ps1 -Action Show
+```
+
+작업은 설치한 Windows 계정 컨텍스트로 등록됩니다. 설치 직후 한 번 수동 실행해 결과
+코드 0과 새 번들 생성을 확인합니다.
+
+```powershell
+Start-ScheduledTask -TaskName "LC AI Canvas Complete Backup"
+Get-ScheduledTaskInfo -TaskName "LC AI Canvas Complete Backup"
+```
+
+예약 제거는 데이터가 아니라 작업 정의만 제거합니다.
+
+```powershell
+.\scripts\manage_backup_task.ps1 -Action Remove
+```
+
 완전 백업 단위는 다음 세 가지입니다.
 
 - `db/app_data.db`의 검증된 SQLite 백업
@@ -154,9 +191,12 @@ Windows 작업 스케줄러에서는 프로그램을 `powershell.exe`, 인수를
 `backup-all`은 SQLite online backup을 먼저 만들고 `outputs`와 principal secret을 새
 백업 세트에 복사합니다. 파일별 SHA-256 manifest, `PRAGMA integrity_check`, 자산·그룹
 파일 정합성 검증이 모두 통과해야 최종 디렉터리 이름으로 승격됩니다. 원본 파일은
-이동하지 않고 기존 백업도 덮어쓰거나 자동 삭제하지 않습니다. 생성·업로드·삭제가
-동시에 일어나 정합성을 확보하지 못하면 백업을 실패시키므로, 반복 실패 시 생성
-kill switch와 유지보수 창을 사용합니다.
+이동하지 않고 기존 백업도 덮어쓰지 않습니다. 같은 목적지의 중복 백업은 process mutex로
+차단됩니다. `RetentionDays=0`이면 삭제하지 않으며, 보존 기간을 명시한 예약 작업만 새
+백업 성공 후 인식 가능한 완전 백업을 최소 보존 개수 밖에서 정리합니다. 알 수 없거나
+불완전한 디렉터리는 정리하지 않습니다. 생성·업로드·삭제가 동시에 일어나 정합성을
+확보하지 못하면 백업을 실패시키므로, 반복 실패 시 생성 kill switch와 유지보수 창을
+사용합니다.
 
 `backup-all`은 API key와 관리자 암호가 있는 `.env` 전체를 복사하지 않습니다. 복구에
 필요한 나머지 운영 설정은 승인된 비밀 관리 시스템 또는 별도의 암호화 백업으로
@@ -166,7 +206,14 @@ kill switch와 유지보수 창을 사용합니다.
 
 ```powershell
 .\venv\Scripts\python.exe -m app.asset_admin verify-backup E:\LC-AI-Canvas-Backups\lc-ai-canvas-...
+.\scripts\test_restore_backup.ps1 -BackupPath E:\LC-AI-Canvas-Backups\lc-ai-canvas-...
 ```
+
+복구 훈련은 선택한 세트를 OS 임시 staging에 복사해 checksum, SQLite, 자산·그룹 경로,
+복원된 principal secret의 서명 round-trip을 검사한 뒤 staging 복사본을 제거합니다.
+운영 경로를 덮어쓰거나 바꾸지 않습니다. 실제 HTTP 기동과 브라우저 확인은 아래 수동
+복구 절차의 별도 단계입니다. 임시 디스크에는 백업 세트 한 개를 복사할 여유 공간이
+필요합니다.
 
 ### 복구 절차
 
@@ -209,6 +256,18 @@ PRINCIPAL_IDENTITY_MODE=enforced
 문의를 확인합니다. `legacy_cookie_rejected`는 enforced canary에서 기존 무서명 쿠키가
 거부됐음을 뜻합니다.
 
+현재 로그 범위, 마지막 legacy 승격, secret과 완전 백업 검증 상태를 한 번에 확인합니다.
+
+```powershell
+.\venv\Scripts\python.exe -m app.principal_admin readiness `
+  --observation-days 14 --quiet-days 7 `
+  --backup E:\LC-AI-Canvas-Backups\lc-ai-canvas-...
+```
+
+`ready_for_enforced=true`여도 비활성 사용자는 로그에 나타나지 않으므로 운영자 검토와
+기존 사용자 갤러리 canary를 생략하지 않습니다. `--require-ready`는 조건 미충족 시
+exit code 2를 반환해 배포 gate로 사용할 수 있습니다.
+
 `enforced` 전환 조건은 다음과 같습니다.
 
 - principal secret의 외부 백업과 복구 검증 완료
@@ -230,7 +289,15 @@ PRINCIPAL_IDENTITY_MODE=enforced
 - 기존 사용자 3종(image/input/audio) 목록과 카탈로그 조회 parity 확인
 - 완전 백업 및 staging 복구 훈련 완료
 
-조건을 점검하는 canary에서는 코드를 제거하기 전에 다음 설정으로 서버를 실행합니다.
+먼저 실제 DB와 outputs에서 비파괴 parity 검사를 수행합니다.
+
+```powershell
+.\venv\Scripts\python.exe -m app.asset_admin catalog-canary
+```
+
+이 명령은 migration, DB↔파일 inventory, image/input/audio 조회 수, 누락 파일과
+AssetService 미연결 시 fail-closed를 검사합니다. 기술 검사가 통과한 뒤 완전 백업과
+격리 복구 훈련까지 성공했을 때 다음 설정으로 실서버 canary를 진행합니다.
 
 ```dotenv
 ASSET_CATALOG_FALLBACK_ENABLED=false

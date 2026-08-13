@@ -111,6 +111,7 @@ manifest를 하나의 검증된 세트로 만듭니다.
 
 ```powershell
 .\venv\Scripts\python.exe -m app.asset_admin backup-all --destination-root E:\LC-AI-Canvas-Backups
+.\scripts\test_restore_backup.ps1 -BackupPath E:\LC-AI-Canvas-Backups\lc-ai-canvas-...
 ```
 
 운영 DB와 WAL sidecar는 Git ignore 대상이며 운영 파일을 그대로 둔 채 index 추적만
@@ -118,8 +119,9 @@ manifest를 하나의 검증된 세트로 만듭니다.
 
 ## 남은 전환 작업
 
-- `principal_identity_cookie_issued` 로그를 통한 활성 사용자 승격 관찰과 `enforced` 전환
-- 완전 백업 스크립트를 외부 저장소에 예약하고 staging 복구 훈련
-- 격리 테스트에서 통과한 `ASSET_CATALOG_FALLBACK_ENABLED=false` 설정을 운영 canary로
-  검증한 후 `media_store.py`의 폴더 스캔 fallback 제거
+- `principal_admin readiness`로 활성 사용자 승격의 quiet window와 검증 백업을 확인한 뒤
+  `enforced` 전환
+- `manage_backup_task.ps1`로 외부 저장소를 지정하고 `restore-drill`까지 성공시킴
+- 실제 데이터 parity까지 통과한 `asset_admin catalog-canary` 결과에 완전 백업·복구 gate를
+  더한 뒤 `ASSET_CATALOG_FALLBACK_ENABLED=false` 실서버 canary와 폴더 스캔 제거
 - UI가 소유권 확인 자산 endpoint를 기본 URL로 사용하도록 점진 전환

@@ -20,6 +20,28 @@
 누락 수치 0입니다. 유료 참고 이미지 편집과 신규 Game UI 생성은 이 체크포인트에서
 실행하지 않았고 격리된 자동 테스트와 기존 운영 결과 조회로 검증했습니다.
 
+## 운영 hardening 진행 상태
+
+2026-08-13 후속 작업에서 다음 도구와 검사를 추가했습니다.
+
+- 전체 단위·통합 테스트 95개 통과
+- 공통 실행기: 정상 인스턴스 중복 방지, 비정상 포트 PID 표시, 실행 로그, 오류 pause
+- 완전 백업: 목적지별 중복 실행 차단, 선택적 보존 정책, 작업 스케줄러 관리 도구
+- 복구 훈련: 임시 staging 복사본의 checksum·DB·자산·principal secret 검증
+- principal readiness: 로그 quiet window와 검증된 완전 백업을 함께 요구
+- catalog canary: 실제 파일 inventory와 3종 자산 조회 parity, fail-closed 검사
+
+검증 호스트에서는 3,926개 파일·약 2.14GB 완전 백업과 임시 staging 복구 훈련이
+성공했고, 프로젝트 밖 같은 C: 드라이브에 매일 03:00/14일/최소 3세트 예약 작업을
+등록해 수동 실행 결과 0까지 확인했습니다. 이는 파일 손상·실수 복구용이며 디스크 고장
+대비를 위해 목적지를 별도 볼륨이나 NAS로 교체해야 합니다.
+
+실제 catalog canary는 자산 1,249개와 그룹 4개에서 parity와 누락 0으로 통과했습니다.
+`ASSET_CATALOG_FALLBACK_ENABLED=false` 실서버도 health, reconcile, 기존 소유자의
+image/input/audio 목록 수와 원본 조회가 정상이며 fallback 경고가 없습니다. 반면
+principal 로그에는 최근 `legacy_cookie` 승격이 있어 아직 `enforced`로 바꾸지 않았습니다.
+quiet window가 끝날 때까지 `compat`을 유지합니다.
+
 ## 시작점
 
 - `../README.md`: 설치, 실행, 검증, 주요 문서 링크

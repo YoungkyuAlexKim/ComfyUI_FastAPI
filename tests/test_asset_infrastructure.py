@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -8,7 +9,13 @@ from types import SimpleNamespace
 from unittest import mock
 
 from app.asset_store import AssetStore
-from app.asset_admin import _backup_all, _verify_backup
+from app.asset_admin import (
+    _backup_all,
+    _catalog_canary,
+    _prune_backups,
+    _restore_drill,
+    _verify_backup,
+)
 from app.auth.user_management import (
     _principal_from_signed_cookie,
     _signed_cookie_value,
@@ -288,6 +295,60 @@ class CompleteBackupTests(unittest.TestCase):
                 principal_secret_path=self.secret_path,
             )
 
+    def test_restore_drill_uses_isolated_copy_and_restored_secret(self):
+        result = _backup_all(
+            self.root / "backups",
+            database_path=self.db_path,
+            output_root=self.output_root,
+            principal_secret_path=self.secret_path,
+        )
+
+        drill = _restore_drill(result["backup"])
+
+        self.assertTrue(drill["ok"])
+        self.assertTrue(drill["principal_cookie_roundtrip"])
+        self.assertTrue(drill["staging_removed"])
+        self.assertEqual(drill["catalog"]["missing_files"], 0)
+
+    def test_backup_retention_only_removes_recognized_expired_bundles(self):
+        backup_root = self.root / "backups"
+        now = datetime(2026, 8, 13, tzinfo=timezone.utc)
+        bundles = []
+        for age_days in (60, 45, 1):
+            result = _backup_all(
+                backup_root,
+                database_path=self.db_path,
+                output_root=self.output_root,
+                principal_secret_path=self.secret_path,
+            )
+            bundle = Path(result["backup"])
+            manifest_path = bundle / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["created_at"] = (now - timedelta(days=age_days)).isoformat()
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            bundles.append(bundle)
+        unknown = backup_root / "lc-ai-canvas-unknown"
+        unknown.mkdir()
+
+        preview = _prune_backups(
+            backup_root,
+            retention_days=30,
+            minimum_bundles=1,
+            now=now,
+        )
+        self.assertEqual(len(preview["expired"]), 2)
+        self.assertEqual(preview["deleted"], [])
+        applied = _prune_backups(
+            backup_root,
+            retention_days=30,
+            minimum_bundles=1,
+            apply=True,
+            now=now,
+        )
+        self.assertEqual(len(applied["deleted"]), 2)
+        self.assertTrue(bundles[2].is_dir())
+        self.assertTrue(unknown.is_dir())
+
 
 class CatalogFallbackTests(unittest.TestCase):
     def test_filesystem_fallback_can_be_disabled_for_catalog_only_canary(self):
@@ -298,6 +359,45 @@ class CatalogFallbackTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(RuntimeError, "AssetService is required"):
                 media_store._gather_user_images("anon-owner")
+
+    def test_catalog_canary_checks_inventory_parity_and_fail_closed_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outputs = root / "outputs"
+            media_dir = outputs / "users" / "anon-owner" / "2026" / "08" / "13"
+            media_dir.mkdir(parents=True)
+            media = media_dir / "asset123.png"
+            metadata_path = media_dir / "asset123.json"
+            media.write_bytes(b"asset-bytes")
+            metadata = {
+                "id": "asset123",
+                "owner": "anon-owner",
+                "kind": "image",
+                "mime": "image/png",
+                "bytes": len(b"asset-bytes"),
+                "sha256": "abc",
+                "created_at": "2026-08-13T00:00:00+00:00",
+                "status": "active",
+                "thumb": None,
+            }
+            atomic_write_json(metadata_path, metadata)
+            store = AssetStore(str(root / "app_data.db"))
+            service = AssetService(store, str(outputs))
+            service.register(
+                owner_id="anon-owner",
+                kind="image",
+                media_path=str(media),
+                metadata_path=str(metadata_path),
+                metadata=metadata,
+            )
+            store.mark_migration("asset_backfill", 1)
+
+            result = _catalog_canary(database_path=store.db_path, output_root=outputs)
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["catalog_only_fail_closed"])
+        self.assertEqual(result["parity"]["asset_rows"], 1)
+        self.assertEqual(result["parity"]["filesystem_assets"], 1)
 
 
 if __name__ == "__main__":
