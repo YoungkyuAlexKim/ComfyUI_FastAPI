@@ -107,11 +107,6 @@
         showTitle: false,
         showDescription: false,
       },
-      NanoBanana_Relight: {
-        url: '/static/img/banner/img_banner_Banana_Relight.png',
-        showTitle: false,
-        showDescription: false,
-      },
       NanoBanana_StoryboardCutboard: {
         url: '/static/img/banner/img_banner_Banana_StoryBoard.png',
         showTitle: false,

@@ -7,6 +7,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
     "RMBG2": {
         "display_name": "배경 제거 (RMBG 2.0)",
         "description": "입력 이미지의 배경을 자동으로 제거하여 투명 배경(PNG)으로 출력합니다.",
+        "category": "image_tools",
+        "capability": "remove_background",
+        "mcp_public": True,
 
         # 프롬프트/네거티브/시드 노드가 없는 단순 워크플로우이므로 매핑은 생략
         "default_user_prompt": "",
@@ -44,6 +47,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "기본 워크플로우",
         "description": "Nano Banana 계열 모델을 선택해 자연어 프롬프트 이미지를 생성합니다.",
         "hidden": False,
+        "category": "image_generation",
+        "capability": "create_image",
+        "mcp_public": True,
 
         # 기본 프롬프트는 비워두고, placeholder로만 안내합니다.
         "default_user_prompt": "",
@@ -79,6 +85,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "게임 UI 엘리먼트 메이커",
         "description": "원하는 게임 UI 엘리먼트를 설명하면 후보 4개를 만들고 개별 PNG로 자동 분리합니다.",
         "hidden": False,
+        "category": "image_generation",
+        "capability": "create_game_ui_assets",
+        "mcp_public": True,
         "default_user_prompt": "",
         "style_prompt": "",
         "negative_prompt": "",
@@ -184,6 +193,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "hidden": True,
         "display_name": "기본 워크플로우 — 편집",
         "description": "이미지를 입력으로 받아 자연어로 편집합니다. (단일 입력)",
+        "category": "image_generation",
+        "capability": "create_image",
+        "mcp_public": True,
 
         "default_user_prompt": "Edit the provided image according to the requested changes.",
         "style_prompt_position": "prepend",
@@ -213,6 +225,28 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             # - square/landscape/portrait: 출력 비율을 지정(모델이 확장/크롭을 수행할 수 있음)
             "disableAspect": False,
             "aspectOptions": ["auto", "square", "landscape", "portrait"],
+            "promptTemplates": [
+                {
+                    "title": "골든아워 조명",
+                    "category": "조명 변경",
+                    "text": "원본의 인물, 의상, 배경과 구도는 그대로 유지하고 따뜻한 골든아워 조명과 자연스러운 그림자만 적용해 주세요."
+                },
+                {
+                    "title": "강한 역광",
+                    "category": "조명 변경",
+                    "text": "원본의 모든 요소와 카메라 구도는 그대로 유지하고, 피사체 뒤에서 들어오는 강한 영화적 역광만 추가해 주세요."
+                },
+                {
+                    "title": "부드러운 스튜디오 조명",
+                    "category": "조명 변경",
+                    "text": "얼굴과 형태를 바꾸지 말고 부드러운 스튜디오 조명과 완만한 그림자를 적용해 주세요. 기존 색감과 배경은 그대로 유지해 주세요."
+                },
+                {
+                    "title": "네온 조명",
+                    "category": "조명 변경",
+                    "text": "장면의 내용과 구도는 그대로 두고 핑크와 블루 계열의 네온 조명, 반사광과 일관된 그림자만 적용해 주세요."
+                },
+            ],
             # Phase C: multi-image img2img 지원 (최대 14장)
             # UI에서 선택 순서가 곧 모델에 전달되는 순서입니다.
             "imageInputMulti": {"enabled": True, "max": 14},
@@ -223,6 +257,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "턴어라운드 시트 (캐릭터)",
         "description": "캐릭터 1장을 넣으면 정면/측면/후면 등 턴어라운드 시트로 만들어줍니다.",
         "hidden": False,
+        "category": "image_generation",
+        "capability": "create_character_sheet",
+        "mcp_public": True,
 
         # 사용자가 아무 설명을 안 해도 일단 결과가 나오도록 기본 프롬프트 제공
         # (툴 워크플로우에서는 프롬프트 입력창을 숨기므로, 내부 프롬프트는 영어로 고정하는 것이 안정적입니다.)
@@ -273,6 +310,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "표정 포트레이트 시트 (캐릭터)",
         "description": "캐릭터 1장을 넣으면 같은 그림체/같은 인상으로 표정 포트레이트들을 한 장의 시트로 만들어줍니다.",
         "hidden": False,
+        "category": "image_generation",
+        "capability": "create_character_sheet",
+        "mcp_public": True,
 
         # 툴 워크플로우:
         # - 기본 동작은 "프롬프트 없이도" 결과가 나오도록 영어 기본 프롬프트를 둡니다.
@@ -325,206 +365,13 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         },
     },
 
-    "NanoBanana_Relight": {
-        "display_name": "리라이트 (조명 바꾸기)",
-        "description": "이미지 1장을 넣으면 구도/캐릭터는 유지하고 조명(라이팅)만 바꿔줍니다.",
-        "hidden": False,
-
-        # 툴 워크플로우: 프롬프트 입력을 숨기므로, 기본 프롬프트는 간단한 영어로 고정합니다.
-        "default_user_prompt": "Relight the provided image according to the selected lighting requirements.",
-        "style_prompt_position": "prepend",
-        "style_prompt": (
-            "TASK: Perform a controlled, surgical relighting of Image 1.\n"
-            "CHANGE ONLY: Illumination direction, intensity, softness, shadow behavior, highlights, reflections, and the explicitly selected color mood.\n"
-            "PRESERVE EXACTLY: Subject identity, facial features, pose, anatomy, outfit, objects, object positions, shapes, textures, composition, crop, camera angle, perspective, background structure, and rendering style.\n"
-            "Do not redraw, restyle, beautify, add, remove, move, or replace scene content. Preserve existing text and logos; do not add new ones.\n"
-            "Make light and shadows physically coherent with the scene geometry and selected light direction.\n"
-            "OUTPUT: One clean relit image with the original framing and aspect ratio."
-        ),
-        "negative_prompt": "",
-
-        "provider": "openrouter",
-        "openrouter": {"model": "google/gemini-3-pro-image", "mode": "image-edit"},
-
-        # 입력 이미지가 필수인 도구
-        "image_input": {"image_node": "_openrouter", "input_field": "image"},
-
-        "ui": {
-            "icon": "sun",
-            "templateMode": "nanobanana",
-            "showLora": False,
-            "showPromptTranslate": False,
-            "generateLabel": "조명 바꾸기",
-            "hideUserPrompt": True,
-            # 리라이트는 입력 비율 유지가 자연스럽습니다. (프론트에서 aspect_ratio는 auto로 강제)
-            "disableAspect": True,
-            "relightTool": {
-                "enabled": True,
-                "lightingStylePresets": [
-                    {
-                        "value": "motivated",
-                        "label": "기본(영화 조명 · 추천)",
-                        "desc": "장면 속 광원(창문/램프)처럼 ‘그럴듯한’ 조명. 자연스럽고 영화적인 느낌.",
-                        "prompt": "Motivated lighting (cinematic, realistic).",
-                    },
-                    {
-                        "value": "natural",
-                        "label": "자연광(내추럴)",
-                        "desc": "햇빛 같은 자연광 위주. 인공조명 느낌을 최소화.",
-                        "prompt": "Natural lighting (sunlight), realistic.",
-                    },
-                    {
-                        "value": "high_key",
-                        "label": "밝게(하이 키)",
-                        "desc": "전체적으로 밝고 그림자가 약함. 산뜻/로맨스/코미디 분위기.",
-                        "prompt": "High-key lighting: bright overall, minimal shadows.",
-                    },
-                    {
-                        "value": "low_key",
-                        "label": "어둡게(로우 키)",
-                        "desc": "강한 대비와 깊은 그림자. 느와르/호러/긴장감 분위기.",
-                        "prompt": "Low-key lighting: strong contrast, deep shadows.",
-                    },
-                    {
-                        "value": "rembrandt",
-                        "label": "렘브란트(삼각형 빛)",
-                        "desc": "한쪽 볼에 삼각형 하이라이트가 생기는 클래식 초상 조명.",
-                        "prompt": "Rembrandt lighting: classic portrait triangle highlight on the cheek.",
-                    },
-                    {
-                        "value": "chiaroscuro",
-                        "label": "키아로스쿠로(극적 대비)",
-                        "desc": "밝은 부분만 강하게 살리고 어두운 부분은 깊게 떨어뜨림(극적 대비).",
-                        "prompt": "Chiaroscuro lighting: dramatic contrast of bright light and deep shadow.",
-                    },
-                    {
-                        "value": "silhouette",
-                        "label": "실루엣(역광)",
-                        "desc": "뒤에서 강한 빛. 피사체는 윤곽 중심으로 어둡게 보임.",
-                        "prompt": "Silhouette lighting: strong backlight, subject mostly dark silhouette.",
-                    },
-                    {
-                        "value": "butterfly",
-                        "label": "버터플라이(글래머)",
-                        "desc": "정면 위쪽에서 내려오는 빛. 코 아래 나비 모양 그림자(글래머).",
-                        "prompt": "Butterfly lighting: light from above/front, butterfly shadow under the nose.",
-                    },
-                    {
-                        "value": "split",
-                        "label": "스플릿(반쪽 조명)",
-                        "desc": "옆에서 빛을 주어 얼굴이 정확히 반으로 나뉨(한쪽 밝고 한쪽 어둠).",
-                        "prompt": "Split lighting: side light, face split into bright and dark halves.",
-                    },
-                    {
-                        "value": "bottom",
-                        "label": "바텀(공포)",
-                        "desc": "아래에서 위로 비추는 빛. 공포/불길한 그림자 연출.",
-                        "prompt": "Bottom lighting: light from below, dramatic horror shadows.",
-                    },
-                ],
-                "lightQualityPresets": [
-                    {
-                        "value": "soft",
-                        "label": "부드럽게(소프트)",
-                        "desc": "빛이 퍼져서 그림자가 부드럽고 전체가 균일해짐.",
-                        "prompt": "Soft light: diffused, gentle shadows.",
-                    },
-                    {
-                        "value": "hard",
-                        "label": "강하게(하드)",
-                        "desc": "그림자 경계가 선명하고 대비가 강해짐(드라마틱).",
-                        "prompt": "Hard light: crisp shadows, strong contrast.",
-                    },
-                ],
-                "colorMoodPresets": [
-                    {
-                        "value": "none",
-                        "label": "색감 유지(변경 없음)",
-                        "desc": "원본 색감/톤을 그대로 유지(조명만 바꾸고 색보정은 최소).",
-                        "prompt": "Keep original colors. Color grading: unchanged.",
-                    },
-                    {
-                        "value": "film_noir",
-                        "label": "필름 누아르(흑백)",
-                        "desc": "흑백(모노크롬) + 강한 대비 + 깊은 그림자. 클래식 느와르 분위기.",
-                        "prompt": "Film noir tone: black-and-white monochrome, high contrast, deep shadows, subtle film grain.",
-                    },
-                    {
-                        "value": "teal_orange",
-                        "label": "틸&오렌지(영화 톤)",
-                        "desc": "피부톤은 따뜻하게, 그림자/배경은 차가운 청록 계열로 대비.",
-                        "prompt": "Color grading: teal and orange (skin warm, shadows/background cool teal).",
-                    },
-                    {
-                        "value": "neon",
-                        "label": "네온(사이버펑크)",
-                        "desc": "핑크/블루/그린 네온 느낌의 컬러 라이팅.",
-                        "prompt": "Neon lighting color mood: vibrant pink/blue/green neon highlights.",
-                    },
-                    {
-                        "value": "golden_hour",
-                        "label": "골든 아워(따뜻한 햇살)",
-                        "desc": "해질녘/해뜰녘처럼 따뜻한 황금빛 조명.",
-                        "prompt": "Golden hour lighting: warm golden sunlight, soft romantic mood.",
-                    },
-                    {
-                        "value": "warm_cool",
-                        "label": "웜 vs 쿨 대비",
-                        "desc": "따뜻한 하이라이트(오렌지/레드)와 차가운 그림자(블루) 대비.",
-                        "prompt": "Warm vs cool contrast: warm highlights and cool shadows.",
-                    },
-                    {
-                        "value": "gel_cto",
-                        "label": "컬러젤: CTO(따뜻한 주황)",
-                        "desc": "색온도를 따뜻하게 보정하는 주황 계열 젤.",
-                        "prompt": "Color gel: CTO (warm orange color temperature).",
-                    },
-                    {
-                        "value": "gel_ctb",
-                        "label": "컬러젤: CTB(차가운 블루)",
-                        "desc": "색온도를 차갑게 보정하는 푸른 계열 젤.",
-                        "prompt": "Color gel: CTB (cool blue color temperature).",
-                    },
-                    {
-                        "value": "gel_amber",
-                        "label": "컬러젤: Bastard Amber",
-                        "desc": "클래식한 따뜻한 황금빛(앰버) 톤.",
-                        "prompt": "Color gel: Bastard Amber (classic warm golden tint).",
-                    },
-                    {
-                        "value": "gel_congo_blue",
-                        "label": "컬러젤: Congo Blue",
-                        "desc": "깊고 진한 청색. 밤/신비로운 무드에 적합.",
-                        "prompt": "Color gel: Congo Blue (deep saturated blue).",
-                    },
-                    {
-                        "value": "gel_rose_pink",
-                        "label": "컬러젤: Rose Pink",
-                        "desc": "부드러운 핑크 톤. 로맨틱/감정적 분위기.",
-                        "prompt": "Color gel: Rose Pink (soft romantic pink).",
-                    },
-                    {
-                        "value": "gel_medium_red",
-                        "label": "컬러젤: Medium Red",
-                        "desc": "진홍색 계열 레드. 위험/열정 같은 강한 감정 표현.",
-                        "prompt": "Color gel: Medium Red (crimson red).",
-                    },
-                    {
-                        "value": "gel_dark_green",
-                        "label": "컬러젤: Dark Green",
-                        "desc": "에메랄드/다크그린 톤. 미스터리/공포/병원 무드.",
-                        "prompt": "Color gel: Dark Green (emerald green).",
-                    },
-                ],
-                "defaults": {"lightingStyle": "motivated", "lightQuality": "soft", "colorMood": "none"},
-            },
-        },
-    },
-
     "NanoBanana_StoryboardCutboard": {
         "display_name": "스토리보드 컷보드 (6컷/9컷)",
         "description": "입력 이미지 1장을 기준으로, 6컷(2×3) 또는 9컷(3×3) 스토리보드 컷보드를 한 장의 그리드 이미지로 만들어줍니다.",
         "hidden": False,
+        "category": "image_generation",
+        "capability": "create_storyboard",
+        "mcp_public": True,
 
         # 사용자가 아무 설명을 안 해도 최소 동작은 하도록 기본값을 둡니다.
         "default_user_prompt": "",
@@ -588,6 +435,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "체인소주스킹 캐릭터생성",
         "description": "컨셉 한 줄을 입력하면, 숨겨진 레퍼런스 이미지를 바탕으로 64가지 의상 버전을 8×8 그리드 한 장으로 만들어줍니다.",
         "hidden": False,
+        "category": "image_generation",
+        "capability": "internal_image_preset",
+        "mcp_public": False,
 
         # 사용자는 '컨셉'만 짧게 입력하도록 유도합니다.
         "default_user_prompt": "",
@@ -643,6 +493,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
     "AceStep15XL": {
         "display_name": "🎵 음악 생성 (ACE-Step)",
         "description": "텍스트 설명과 가사를 입력하여 AI 음악(MP3)을 생성합니다.",
+        "category": "music_generation",
+        "capability": "generate_music",
+        "mcp_public": True,
 
         # 프롬프트 노드: TextEncodeAceStepAudio1.5 (node 94) — tags 필드에 주입
         "prompt_node": "94",
@@ -781,6 +634,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "display_name": "레이어 분리 (See-Through)",
         "description": "이미지 1장을 넣으면 AI가 파츠별로 레이어를 분리하여 PSD 파일로 출력합니다.",
         "hidden": False,
+        "category": "image_tools",
+        "capability": "separate_layers",
+        "mcp_public": True,
 
         "default_user_prompt": "",
         "style_prompt": "",

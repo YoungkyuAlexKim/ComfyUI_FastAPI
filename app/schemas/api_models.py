@@ -26,6 +26,10 @@ class WorkflowItem(BaseModel):
     hidden: Optional[bool] = None
     # Workflow provider routing hint (e.g., "comfyui" or "openrouter")
     provider: Optional[str] = None
+    # Stable product taxonomy shared by the web UI and future MCP capabilities.
+    category: Optional[str] = None
+    capability: Optional[str] = None
+    mcp_public: Optional[bool] = None
     style_prompt: str
     negative_prompt: str
     recommended_prompt: str

@@ -338,27 +338,25 @@
         }
 
         function renderWorkflows(workflows) {
-            // 카테고리 분류: 태그 기반 vs 자연어 기반
-            const tagBased = [];
-            const natural = [];
-            const utility = [];
-            const nanobanana = [];
-            const gameui = [];
-            const music = [];
+            // Explicit product taxonomy shared with future MCP capabilities.
+            const groups = {
+                image_generation: [],
+                image_tools: [],
+                music_generation: [],
+                other: [],
+            };
             workflows.forEach((wf) => {
                 const uiSchema = (wf && wf.ui) || {};
                 const mode = uiSchema.templateMode || '';
-                const isNatural = mode === 'natural';
-                const isUtility = mode === 'utility';
-                const isNanoBanana = mode === 'nanobanana';
-                const isGameUi = mode === 'gameui';
-                const isMusic = mode === 'music';
-                if (isUtility) utility.push(wf);
-                else if (isGameUi) gameui.push(wf);
-                else if (isNanoBanana) nanobanana.push(wf);
-                else if (isMusic) music.push(wf);
-                else if (isNatural) natural.push(wf);
-                else tagBased.push(wf);
+                let category = String((wf && wf.category) || '').trim();
+                // Backward-compatible fallback for older workflow responses.
+                if (!groups[category]) {
+                    if (mode === 'utility') category = 'image_tools';
+                    else if (mode === 'music') category = 'music_generation';
+                    else if (mode === 'nanobanana' || mode === 'gameui') category = 'image_generation';
+                    else category = 'other';
+                }
+                groups[category].push(wf);
             });
 
             const renderItem = (wf) => {
@@ -405,46 +403,32 @@
             };
 
             let html = '';
-            if (utility.length > 0) {
-                html += `
-                <div class="workflow-group">
-                    <div class="workflow-group-label">도구</div>
-                    ${utility.map(renderItem).join('')}
-                </div>`;
-            }
-            if (nanobanana.length > 0) {
+            if (groups.image_generation.length > 0) {
                 html += `
                 <div class="workflow-group">
                     <div class="workflow-group-label">AI 이미지 생성</div>
-                    ${nanobanana.map(renderItem).join('')}
+                    ${groups.image_generation.map(renderItem).join('')}
                 </div>`;
             }
-            if (gameui.length > 0) {
+            if (groups.image_tools.length > 0) {
                 html += `
                 <div class="workflow-group">
-                    <div class="workflow-group-label">게임 UI 에셋</div>
-                    ${gameui.map(renderItem).join('')}
+                    <div class="workflow-group-label">이미지 도구</div>
+                    ${groups.image_tools.map(renderItem).join('')}
                 </div>`;
             }
-            if (tagBased.length > 0) {
-                html += `
-                <div class="workflow-group">
-                    <div class="workflow-group-label">태그 기반 (Danbooru)</div>
-                    ${tagBased.map(renderItem).join('')}
-                </div>`;
-            }
-            if (natural.length > 0) {
-                html += `
-                <div class="workflow-group">
-                    <div class="workflow-group-label">사내 게임 스타일</div>
-                    ${natural.map(renderItem).join('')}
-                </div>`;
-            }
-            if (music.length > 0) {
+            if (groups.music_generation.length > 0) {
                 html += `
                 <div class="workflow-group">
                     <div class="workflow-group-label">🎵 음악 생성</div>
-                    ${music.map(renderItem).join('')}
+                    ${groups.music_generation.map(renderItem).join('')}
+                </div>`;
+            }
+            if (groups.other.length > 0) {
+                html += `
+                <div class="workflow-group">
+                    <div class="workflow-group-label">기타</div>
+                    ${groups.other.map(renderItem).join('')}
                 </div>`;
             }
             ui.workflowList.innerHTML = html;
@@ -617,7 +601,6 @@
                 try { applySeeThroughParamsUi(); } catch(_) {}
                 try { applyTurnaroundToolUiForWorkflow(); } catch(_) {}
                 try { applyExpressionToolUiForWorkflow(); } catch(_) {}
-                try { applyRelightToolUiForWorkflow(); } catch(_) {}
                 try { applyStoryboardToolUiForWorkflow(); } catch(_) {}
                 try { applyGameUiToolUiForWorkflow(); } catch(_) {}
                 try { applyMusicModeUi(); } catch(_) {}
@@ -1100,103 +1083,6 @@
                         });
                         presetSel.dataset.bound = '1';
                     }
-                } catch (_) {}
-            } catch (_) {}
-        }
-
-        function applyRelightToolUiForWorkflow() {
-            try {
-                const targetWf = getTargetWorkflowForMode();
-                const uiSchema = (targetWf && targetWf.ui) || {};
-                const tool = (uiSchema && uiSchema.relightTool) || {};
-                const wrap = document.getElementById('relight-options-wrap');
-                const enabled = !!tool.enabled && (targetWf && targetWf.id === 'NanoBanana_Relight');
-                if (!wrap) return;
-                wrap.style.display = enabled ? '' : 'none';
-                if (!enabled) return;
-
-                const selStyle = document.getElementById('relight-style-preset');
-                const selQual = document.getElementById('relight-quality-preset');
-                const selColor = document.getElementById('relight-color-preset');
-                const descStyle = document.getElementById('relight-style-desc');
-                const descQual = document.getElementById('relight-quality-desc');
-                const descColor = document.getElementById('relight-color-desc');
-
-                const lsKeyStyle = 'tool:relight:style';
-                const lsKeyQual = 'tool:relight:quality';
-                const lsKeyColor = 'tool:relight:color';
-
-                // Populate from config when provided (keeps UI list centrally editable)
-                try {
-                    if (selStyle && Array.isArray(tool.lightingStylePresets) && tool.lightingStylePresets.length) {
-                        selStyle.innerHTML = tool.lightingStylePresets
-                            .map((p) => `<option value="${String(p.value || '')}">${String(p.label || p.value || '')}</option>`)
-                            .join('');
-                    }
-                    if (selQual && Array.isArray(tool.lightQualityPresets) && tool.lightQualityPresets.length) {
-                        selQual.innerHTML = tool.lightQualityPresets
-                            .map((p) => `<option value="${String(p.value || '')}">${String(p.label || p.value || '')}</option>`)
-                            .join('');
-                    }
-                    if (selColor && Array.isArray(tool.colorMoodPresets) && tool.colorMoodPresets.length) {
-                        selColor.innerHTML = tool.colorMoodPresets
-                            .map((p) => `<option value="${String(p.value || '')}">${String(p.label || p.value || '')}</option>`)
-                            .join('');
-                    }
-                } catch (_) {}
-
-                const getStored = (key) => {
-                    try {
-                        return localStorage.getItem(key);
-                    } catch (_) {
-                        return null;
-                    }
-                };
-
-                // Load defaults (prefer localStorage; fallback to workflow defaults)
-                try {
-                    const defs = (tool && tool.defaults) || {};
-                    const defStyle = String(defs.lightingStyle || 'motivated');
-                    const defQual = String(defs.lightQuality || 'soft');
-                    const defColor = String(defs.colorMood || 'none');
-                    const vStyle = getStored(lsKeyStyle) || defStyle;
-                    const vQual = getStored(lsKeyQual) || defQual;
-                    const vColor = getStored(lsKeyColor) || defColor;
-                    if (selStyle) selStyle.value = vStyle;
-                    if (selQual) selQual.value = vQual;
-                    if (selColor) selColor.value = vColor;
-                } catch (_) {}
-
-                const updateDescs = () => {
-                    try {
-                        const findDesc = (arr, value) => {
-                            const list = Array.isArray(arr) ? arr : [];
-                            const it = list.find((p) => String(p.value || '') === String(value || ''));
-                            const d = it ? String(it.desc || '') : '';
-                            return d.trim();
-                        };
-                        if (descStyle && selStyle) descStyle.textContent = findDesc(tool.lightingStylePresets, selStyle.value || '');
-                        if (descQual && selQual) descQual.textContent = findDesc(tool.lightQualityPresets, selQual.value || '');
-                        if (descColor && selColor) descColor.textContent = findDesc(tool.colorMoodPresets, selColor.value || '');
-                    } catch (_) {}
-                };
-                updateDescs();
-
-                // Persist changes (bind once)
-                try {
-                    const bindOnce = (sel, key, fallback) => {
-                        if (!sel || sel.dataset.bound) return;
-                        sel.addEventListener('change', () => {
-                            try {
-                                localStorage.setItem(key, sel.value || fallback);
-                            } catch (_) {}
-                            updateDescs();
-                        });
-                        sel.dataset.bound = '1';
-                    };
-                    bindOnce(selStyle, lsKeyStyle, 'motivated');
-                    bindOnce(selQual, lsKeyQual, 'soft');
-                    bindOnce(selColor, lsKeyColor, 'none');
                 } catch (_) {}
             } catch (_) {}
         }
@@ -3144,7 +3030,6 @@
             try { applySeeThroughParamsUi(); } catch(_) {}
             try { applyTurnaroundToolUiForWorkflow(); } catch(_) {}
             try { applyExpressionToolUiForWorkflow(); } catch(_) {}
-            try { applyRelightToolUiForWorkflow(); } catch(_) {}
             try { applyStoryboardToolUiForWorkflow(); } catch(_) {}
             try { applyGameUiToolUiForWorkflow(); } catch(_) {}
             try { applyMusicModeUi(); } catch(_) {}
@@ -4322,56 +4207,6 @@
                         `컨셉 : ${concept}`,
                         '아웃풋 : 총 64가지 버전을 만들고 8x8 격자로 배열하여 최종 이미지를 완성하세요.',
                     ].join('\n');
-                }
-            } catch (_) {}
-            // Tool-specific prompt augmentation (NanoBanana Relight)
-            try {
-                const targetWf = getTargetWorkflowForMode();
-                if (targetWf && targetWf.id === 'NanoBanana_Relight') {
-                    const uiSchema = (targetWf && targetWf.ui) || {};
-                    const tool = (uiSchema && uiSchema.relightTool) || {};
-
-                    // Keep input aspect ratio for relight tools.
-                    requestData.aspect_ratio = 'auto';
-
-                    const selStyle = document.getElementById('relight-style-preset');
-                    const selQual = document.getElementById('relight-quality-preset');
-                    const selColor = document.getElementById('relight-color-preset');
-                    const vStyle = selStyle ? String(selStyle.value || '') : '';
-                    const vQual = selQual ? String(selQual.value || '') : '';
-                    const vColor = selColor ? String(selColor.value || '') : '';
-
-                    const findPrompt = (arr, value, fallback) => {
-                        try {
-                            const list = Array.isArray(arr) ? arr : [];
-                            const it = list.find((p) => String(p.value || '') === String(value || ''));
-                            const t = it ? String(it.prompt || '') : '';
-                            return (t && t.trim()) ? t.trim() : fallback;
-                        } catch (_) {
-                            return fallback;
-                        }
-                    };
-
-                    const defs = (tool && tool.defaults) || {};
-                    const defStyle = String(defs.lightingStyle || 'motivated');
-                    const defQual = String(defs.lightQuality || 'soft');
-                    const defColor = String(defs.colorMood || 'none');
-
-                    const lightingText = findPrompt(tool.lightingStylePresets, vStyle || defStyle, 'Motivated lighting (cinematic, realistic).');
-                    const qualityText = findPrompt(tool.lightQualityPresets, vQual || defQual, 'Soft light: diffused, gentle shadows.');
-                    const colorText = findPrompt(tool.colorMoodPresets, vColor || defColor, 'Keep original colors. Color grading: unchanged.');
-
-                    const extra = [
-                        '',
-                        '',
-                        'LIGHTING REQUIREMENTS:',
-                        `Lighting style: ${lightingText}`,
-                        `Light quality: ${qualityText}`,
-                        `Color treatment: ${colorText}`,
-                        'Change only lighting and the selected color treatment. Keep all scene content and geometry unchanged.',
-                    ].join('\n');
-
-                    requestData.user_prompt = String(requestData.user_prompt || '').trim() + extra;
                 }
             } catch (_) {}
             // RMBG2 params (mask blur / mask offset)

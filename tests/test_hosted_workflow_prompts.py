@@ -32,11 +32,12 @@ class HostedWorkflowPromptTests(unittest.TestCase):
         self.assertIn("exact portrait count", prompt)
         self.assertIn("each requested expression exactly once", prompt)
 
-    def test_relight_prompt_preserves_content_and_existing_text(self):
-        prompt = WORKFLOW_CONFIGS["NanoBanana_Relight"]["style_prompt"]
-        self.assertIn("CHANGE ONLY", prompt)
-        self.assertIn("Preserve existing text and logos", prompt)
-        self.assertIn("original framing and aspect ratio", prompt)
+    def test_general_editing_exposes_relighting_prompt_examples(self):
+        templates = WORKFLOW_CONFIGS["NanoBanana_Img2Img"]["ui"]["promptTemplates"]
+        prompts = "\n".join(item["text"] for item in templates)
+        self.assertIn("조명", prompts)
+        self.assertIn("구도", prompts)
+        self.assertIn("그대로", prompts)
 
     def test_storyboard_prompt_requires_order_and_continuity(self):
         prompt = WORKFLOW_CONFIGS["NanoBanana_StoryboardCutboard"]["style_prompt"]
