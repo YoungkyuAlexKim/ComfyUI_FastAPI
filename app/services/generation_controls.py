@@ -8,6 +8,7 @@ import json
 import math
 import os
 import sqlite3
+from contextlib import contextmanager
 import time
 import uuid
 from typing import Any, Mapping
@@ -104,10 +105,23 @@ class GenerationControlService:
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.db_path, timeout=10.0)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=5000")
         return connection
 
+    @contextmanager
+    def _managed_connection(self):
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     def _init_db(self) -> None:
-        with self._connect() as connection:
+        with self._managed_connection() as connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS generation_control_settings (
@@ -192,7 +206,7 @@ class GenerationControlService:
     def get_policy(self) -> dict[str, Any]:
         environment_policy = self._environment_policy()
         policy = dict(environment_policy)
-        with self._connect() as connection:
+        with self._managed_connection() as connection:
             rows = connection.execute("SELECT key, value_json FROM generation_control_settings").fetchall()
         for row in rows:
             if row["key"] not in DEFAULT_POLICY:
@@ -218,7 +232,7 @@ class GenerationControlService:
         merged.update(dict(changes))
         normalized = self._normalize_policy(merged)
         now = time.time()
-        with self._connect() as connection:
+        with self._managed_connection() as connection:
             for key in changes:
                 connection.execute(
                     """
@@ -523,7 +537,7 @@ class GenerationControlService:
         except (TypeError, ValueError):
             actual_cost_value = None
         now = time.time()
-        with self._connect() as connection:
+        with self._managed_connection() as connection:
             previous = connection.execute(
                 "SELECT status, actual_cost_usd FROM generation_control_requests WHERE id = ?",
                 (control_request_id,),
@@ -554,7 +568,7 @@ class GenerationControlService:
 
     def mark_enqueue_failed(self, control_request_id: str, reason: str) -> None:
         now = time.time()
-        with self._connect() as connection:
+        with self._managed_connection() as connection:
             connection.execute(
                 "UPDATE generation_control_requests SET status = 'enqueue_failed', updated_at = ? WHERE id = ?",
                 (now, control_request_id),
@@ -569,7 +583,7 @@ class GenerationControlService:
 
     def summary(self, day_key: str | None = None) -> dict[str, Any]:
         day = day_key or self._day_key()
-        with self._connect() as connection:
+        with self._managed_connection() as connection:
             row = connection.execute(
                 """
                 SELECT COUNT(*) AS total,
@@ -646,7 +660,7 @@ class GenerationControlService:
 
     def recent_events(self, limit: int = 100) -> list[dict[str, Any]]:
         bounded_limit = max(1, min(1000, int(limit)))
-        with self._connect() as connection:
+        with self._managed_connection() as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM generation_control_events

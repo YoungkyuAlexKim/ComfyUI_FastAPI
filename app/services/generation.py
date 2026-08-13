@@ -11,7 +11,6 @@ from .media_store import (
     _save_image_and_meta,
     _save_game_ui_group,
     _save_audio_and_meta,
-    _master_audio_file,
     _build_web_path,
 )
 
@@ -879,11 +878,18 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
                 processed_assets,
                 request,
                 f"openrouter:{chosen_model or 'image'}",
+                source_job_id=job.id,
             )
             job.result["image_path"] = web_path
             job.result["asset_group"] = asset_group
         else:
-            saved_image_path, _ = _save_image_and_meta(job.owner_id, image_bytes, request, f"openrouter:{chosen_model or 'image'}")
+            saved_image_path, _ = _save_image_and_meta(
+                job.owner_id,
+                image_bytes,
+                request,
+                f"openrouter:{chosen_model or 'image'}",
+                source_job_id=job.id,
+            )
             web_path = _build_web_path(saved_image_path)
             job.result["image_path"] = web_path
         progress_cb(100)
@@ -1681,17 +1687,16 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             # For audio workflows, save via audio store (date-partitioned + metadata JSON)
             is_audio_wf = bool(wf_cfg_effective.get("audio_workflow"))
             if is_audio_wf:
-                audio_path, _ = _save_audio_and_meta(job.owner_id, file_bytes, request, filename)
-                # Auto-mastering (EQ + Compressor + Limiter) — overwrites in-place
-                try:
-                    _master_audio_file(audio_path)
-                except Exception:
-                    pass
+                audio_path, _ = _save_audio_and_meta(
+                    job.owner_id, file_bytes, request, filename, source_job_id=job.id
+                )
                 web_path = _build_web_path(audio_path)
                 job.result["audio_path"] = web_path
                 job.result["is_audio"] = True
             else:
-                saved_image_path, _ = _save_image_and_meta(job.owner_id, file_bytes, request, filename)
+                saved_image_path, _ = _save_image_and_meta(
+                    job.owner_id, file_bytes, request, filename, source_job_id=job.id
+                )
                 web_path = _build_web_path(saved_image_path)
                 job.result["image_path"] = web_path
     finally:

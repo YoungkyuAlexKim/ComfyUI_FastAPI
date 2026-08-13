@@ -74,8 +74,23 @@ def _paginate(items: list, page: int, size: int):
 @router.get("/api/v1/inputs", response_model=PaginatedInputs)
 async def user_list_inputs(page: int = 1, size: int = 24, request: Request = None):
     anon_id = _get_anon_id_from_request(request)
-    items = _gather_user_inputs(anon_id, include_trash=False)
-    slice_items, meta = _paginate(items, page, size)
+    page_val = max(1, int(page))
+    size_val = max(1, min(100, int(size)))
+    asset_service = getattr(request.app.state, "asset_service", None)
+    if asset_service is not None:
+        total = asset_service.count_media(anon_id, "input")
+        slice_items = asset_service.list_media(
+            anon_id, "input", limit=size_val, offset=(page_val - 1) * size_val
+        )
+        meta = {
+            "page": page_val,
+            "size": size_val,
+            "total": total,
+            "total_pages": (total + size_val - 1) // size_val,
+        }
+    else:
+        items = _gather_user_inputs(anon_id, include_trash=False)
+        slice_items, meta = _paginate(items, page_val, size_val)
     response_items = []
     for it in slice_items:
         response_items.append({

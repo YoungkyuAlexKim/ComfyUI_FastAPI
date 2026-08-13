@@ -23,8 +23,10 @@ async def websocket_status(websocket: WebSocket):
             except Exception:
                 pass
             return
-    qp = websocket.query_params
-    user_id = qp.get("anon_id") or _get_anon_id_from_ws(websocket)
+    # Never authorize a socket from a caller-controlled query parameter.  The
+    # frontend may keep sending it during migration, but the signed cookie is
+    # the source of truth.
+    user_id = _get_anon_id_from_ws(websocket)
     logger.info({"event": "ws_connect", "owner_id": user_id})
     await manager.connect(websocket, user_id)
     try:

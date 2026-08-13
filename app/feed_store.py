@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import time
+from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
 
@@ -12,8 +13,18 @@ class FeedStore:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
 
+    @contextmanager
     def _connect(self):
-        return sqlite3.connect(self.db_path)
+        con = sqlite3.connect(self.db_path, timeout=30.0)
+        con.execute("PRAGMA busy_timeout=5000")
+        try:
+            yield con
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+        finally:
+            con.close()
 
     def _init_db(self):
         with self._connect() as con:

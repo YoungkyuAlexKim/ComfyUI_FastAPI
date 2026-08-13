@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from ..auth.user_management import _get_anon_id_from_request
 from ..feed_store import FeedStore
 from ..logging_utils import setup_logging
-from ..services.feed_media_store import publish_to_feed, move_post_assets_to_trash
+from ..services.feed_media_store import publish_to_feed, move_post_assets_to_trash, discard_published_assets
 from ..services.media_store import _locate_image_meta_path, _locate_input_png_path
 
 
@@ -136,10 +136,12 @@ async def feed_publish(req: FeedPublishRequest, request: Request):
 
     store: FeedStore = getattr(request.app.state, "feed_store", None)
     if store is None:
+        discard_published_assets(feed_meta)
         raise HTTPException(status_code=500, detail="Feed store not available")
     try:
         store.create_post(feed_meta)
     except Exception as e:
+        discard_published_assets(feed_meta)
         logger.error({"event": "feed_db_insert_failed", "post_id": feed_meta.get("post_id"), "error": str(e)})
         raise HTTPException(status_code=500, detail="Failed to persist feed post")
 

@@ -16,9 +16,10 @@ from ..services.media_store import (
     _update_audio_status,
     _user_base_dir,
 )
+from ..services.asset_runtime import get_asset_service
 from pydantic import BaseModel
 
-security = HTTPBasic()
+security = HTTPBasic(auto_error=False)
 
 
 def _admin_auth_enabled() -> bool:
@@ -27,16 +28,23 @@ def _admin_auth_enabled() -> bool:
     return bool(user) and bool(pw)
 
 
-def require_admin(credentials: HTTPBasicCredentials = Depends(security)) -> bool:
+def require_admin(credentials: HTTPBasicCredentials | None = Depends(security)) -> bool:
     """
     Protect admin endpoints with HTTP Basic auth.
 
     - Enabled when both ADMIN_USER and ADMIN_PASSWORD are set.
-    - If not configured, admin routes remain open (for local/dev convenience),
-      but you SHOULD set these in production/beta.
+    - Missing credentials fail closed unless ADMIN_ALLOW_UNAUTHENTICATED=true is
+      explicitly set for a local development process.
     """
     if not _admin_auth_enabled():
-        return True
+        allow_unsafe = str(os.getenv("ADMIN_ALLOW_UNAUTHENTICATED", "false")).strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+        if allow_unsafe:
+            return True
+        raise HTTPException(status_code=503, detail="Admin authentication is not configured")
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic"})
     expected_user = os.getenv("ADMIN_USER", "")
     expected_pw = os.getenv("ADMIN_PASSWORD", "")
     ok = secrets.compare_digest(credentials.username or "", expected_user) and secrets.compare_digest(
@@ -90,6 +98,10 @@ def _purge_user_trash_images(user_id: str) -> int:
     - A trashed item is defined as: meta JSON exists and meta.status != "active".
     - Deletes: <id>.png/.mp3/.wav/etc, thumb/<id>.webp, thumb/<id>.jpg, <id>.json
     """
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        return asset_service.purge_trash_for_owner(user_id)
+
     base = _user_base_dir(user_id)
     if not os.path.isdir(base):
         return 0

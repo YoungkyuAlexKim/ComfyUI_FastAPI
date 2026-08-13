@@ -12,6 +12,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 import hashlib
+import secrets
 from io import BytesIO
 import sqlite3
 import shutil
@@ -28,9 +29,18 @@ from .config import HEALTHZ_CONFIG
 from .config import COMFY_INPUT_DIR
 from .job_manager import JobManager, RoutingJobManager, Job
 from .job_store import JobStore
+from .asset_store import AssetStore
 from .logging_utils import setup_logging
 from .config import UPLOAD_CONFIG
-from .auth.user_management import _ensure_anon_id_cookie, _get_anon_id_from_request, _get_anon_id_from_ws, ANON_COOKIE_NAME, ANON_COOKIE_PREFIX
+from .auth.user_management import (
+    _ensure_anon_id_cookie,
+    _get_anon_id_from_request,
+    _get_anon_id_from_ws,
+    _set_principal_cookies,
+    prepare_request_principal,
+    ANON_COOKIE_NAME,
+    ANON_COOKIE_PREFIX,
+)
 from .services.media_store import (
     _user_base_dir,
     _date_partition_path,
@@ -51,6 +61,7 @@ from .routers.audio import router as audio_router
 from .routers.admin_feed import router as admin_feed_router
 from .routers.characters import router as characters_router
 from .routers.global_characters import router as global_characters_router
+from .routers.assets import router as assets_router
 from .ws.manager import manager
 from .ws.routes import router as ws_router
 from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActiveResponse, TranslateResponse
@@ -58,9 +69,12 @@ from .services.generation import run_generation_processor
 from .services.generation_commands import (
     dispatch_legacy_web_request,
     generation_context_from_http_request,
+    resolve_client_ip,
 )
 from .services.generation_controls import GenerationControlService, GenerationPolicyError
 from .services.generation_submission import GenerationSubmissionService
+from .services.asset_service import AssetService
+from .services.asset_runtime import configure_asset_service
 from .mcp_server import create_mcp_integration
 from .services.openrouter_client import (
     OpenRouterUpstreamError,
@@ -88,6 +102,18 @@ app.include_router(audio_router)
 app.include_router(admin_feed_router)
 app.include_router(characters_router)
 app.include_router(global_characters_router)
+app.include_router(assets_router)
+
+
+@app.middleware("http")
+async def principal_session_middleware(request: Request, call_next):
+    """Upgrade legacy browser identities to a signed server session."""
+
+    principal_id, needs_upgrade = prepare_request_principal(request)
+    response = await call_next(request)
+    if needs_upgrade:
+        _set_principal_cookies(request, response, principal_id)
+    return response
 
 # --- Beta access gate (shared password) ---
 @app.middleware("http")
@@ -241,12 +267,16 @@ generation_controls = GenerationControlService(JOB_DB_PATH)
 generation_submissions = GenerationSubmissionService(job_manager, generation_controls)
 from .feed_store import FeedStore
 feed_store = FeedStore(JOB_DB_PATH)
+asset_store = AssetStore(JOB_DB_PATH)
+asset_service = AssetService(asset_store, SERVER_CONFIG["output_dir"])
+configure_asset_service(asset_service)
 try:
     app.state.connection_manager = manager
     app.state.job_manager = job_manager
     app.state.job_store = job_store
     app.state.generation_controls = generation_controls
     app.state.feed_store = feed_store
+    app.state.asset_service = asset_service
 except Exception as e:
     logger.debug({"event": "app_state_init_failed", "error": str(e)})
 
@@ -323,6 +353,41 @@ async def feed_trash_access_middleware(request: Request, call_next):
         return Response(status_code=404)
     return await call_next(request)
 
+
+@app.middleware("http")
+async def private_sidecar_middleware(request: Request, call_next):
+    """Protect user media while preserving existing output URLs."""
+
+    path = request.url.path or ""
+    prefix = "/outputs/users/"
+    if path.startswith("/outputs/feed/") and path.lower().endswith(".json"):
+        return Response(status_code=404)
+    if not path.startswith(prefix):
+        return await call_next(request)
+    if path.lower().endswith(".json"):
+        return Response(status_code=404)
+
+    relative = path[len(prefix) :]
+    owner_id = relative.split("/", 1)[0]
+    if not owner_id:
+        return Response(status_code=404)
+    if _is_admin_basic_auth_header(request.headers.get("Authorization")):
+        return await call_next(request)
+
+    expected_owner = _get_anon_id_from_request(request)
+    if owner_id.startswith("mcp-ip-"):
+        peer_ip = getattr(getattr(request, "client", None), "host", None)
+        client_ip, _ = resolve_client_ip(
+            peer_ip,
+            request.headers.get("x-forwarded-for"),
+            os.getenv("TRUSTED_PROXY_CIDRS"),
+        )
+        digest = hashlib.sha256(f"mcp-ip:{client_ip}".encode("utf-8")).hexdigest()[:24]
+        expected_owner = f"mcp-ip-{digest}"
+    if not secrets.compare_digest(owner_id, expected_owner):
+        return Response(status_code=404)
+    return await call_next(request)
+
 # --- Helpers ---
 def _wait_for_input_visibility(filename: str, timeout_sec: float = 1.5, poll_ms: int = 50) -> bool:
     try:
@@ -376,12 +441,7 @@ async def create_page(request: Request):
     )
     # Always require API key for this feature to appear (avoid confusing UI)
     prompt_translate_enabled = bool(prompt_translate_enabled and api_key_present)
-    existing = request.cookies.get(ANON_COOKIE_NAME)
-    if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
-        anon_id = existing
-    else:
-        # Use a deterministic value for both template + cookie (avoid mismatch between UI and backend owner_id)
-        anon_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
+    anon_id = _get_anon_id_from_request(request)
     response = templates.TemplateResponse(
         "index.html",
         {
@@ -404,11 +464,7 @@ async def create_page(request: Request):
 
 @app.get("/feed", response_class=HTMLResponse, tags=["Page"])
 async def feed_page(request: Request):
-    existing = request.cookies.get(ANON_COOKIE_NAME)
-    if existing and isinstance(existing, str) and existing.startswith(ANON_COOKIE_PREFIX):
-        anon_id = existing
-    else:
-        anon_id = ANON_COOKIE_PREFIX + uuid.uuid4().hex
+    anon_id = _get_anon_id_from_request(request)
     response = templates.TemplateResponse(
         "feed.html",
         {
@@ -838,6 +894,15 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.on_event("startup")
 async def on_startup():
+    if asset_store.migration_version("asset_backfill") < 1:
+        asset_backfill = await asyncio.to_thread(asset_service.backfill_legacy)
+        if int(asset_backfill.get("errors") or 0) == 0:
+            asset_store.mark_migration("asset_backfill", 1)
+        logger.info({"event": "asset_catalog_backfill", **asset_backfill})
+    else:
+        asset_reconcile = await asyncio.to_thread(asset_service.backfill_legacy, only_missing=True)
+        asset_audit = await asyncio.to_thread(asset_service.audit)
+        logger.info({"event": "asset_catalog_reconcile", **asset_reconcile, "audit": asset_audit})
     app.state.mcp_lifespan_context = mcp_integration.lifespan_context_factory()
     await app.state.mcp_lifespan_context.__aenter__()
     loop = asyncio.get_running_loop()

@@ -33,8 +33,23 @@ def _paginate(items: list, page: int, size: int):
 async def list_audio(page: int = 1, size: int = 24, request: Request = None):
     anon_id = _get_anon_id_from_request(request)
     logger.info({"event": "list_audio", "owner_id": anon_id, "page": page, "size": size})
-    items = _gather_user_audio(anon_id, include_trash=False)
-    slice_items, meta = _paginate(items, page, size)
+    page_val = max(1, int(page))
+    size_val = max(1, min(100, int(size)))
+    asset_service = getattr(request.app.state, "asset_service", None)
+    if asset_service is not None:
+        total = asset_service.count_media(anon_id, "audio")
+        slice_items = asset_service.list_media(
+            anon_id, "audio", limit=size_val, offset=(page_val - 1) * size_val
+        )
+        meta = {
+            "page": page_val,
+            "size": size_val,
+            "total": total,
+            "total_pages": max(1, (total + size_val - 1) // size_val),
+        }
+    else:
+        items = _gather_user_audio(anon_id, include_trash=False)
+        slice_items, meta = _paginate(items, page_val, size_val)
     response_items = []
     for it in slice_items:
         response_items.append({

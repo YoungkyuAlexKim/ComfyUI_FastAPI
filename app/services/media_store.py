@@ -13,6 +13,9 @@ except Exception:
     Image = None
 
 from ..config import SERVER_CONFIG
+from ..auth.user_management import require_principal_id
+from .asset_runtime import get_asset_service
+from .asset_service import atomic_write_bytes, atomic_write_json
 
 # Reuse output directory from server config
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
@@ -557,7 +560,12 @@ def _maybe_postprocess_grid_image(image_bytes: bytes, req) -> tuple[bytes, Optio
         return image_bytes, {"grid_border_removed": False, "reason": "exception"}
 
 def _user_base_dir(anon_id: str) -> str:
-    return os.path.join(OUTPUT_DIR, "users", anon_id)
+    principal_id = require_principal_id(anon_id)
+    users_root = os.path.realpath(os.path.join(OUTPUT_DIR, "users"))
+    target = os.path.realpath(os.path.join(users_root, principal_id))
+    if os.path.commonpath([users_root, target]) != users_root:
+        raise ValueError("Principal storage path escaped the users root")
+    return target
 
 
 def _date_partition_path(base_dir: str, dt: datetime) -> str:
@@ -566,8 +574,10 @@ def _date_partition_path(base_dir: str, dt: datetime) -> str:
 
 def _build_web_path(abs_path: str) -> str:
     # Assumes OUTPUT_DIR is served at /outputs
-    abs_outputs = os.path.abspath(OUTPUT_DIR)
-    abs_target = os.path.abspath(abs_path)
+    abs_outputs = os.path.realpath(OUTPUT_DIR)
+    abs_target = os.path.realpath(abs_path)
+    if os.path.commonpath([abs_outputs, abs_target]) != abs_outputs:
+        raise ValueError("Media path escaped the output root")
     rel = os.path.relpath(abs_target, abs_outputs).replace("\\", "/")
     return f"/outputs/{rel}"
 
@@ -580,6 +590,7 @@ def _save_image_and_meta(
     *,
     extra_meta: Optional[dict] = None,
     postprocess: bool = True,
+    source_job_id: Optional[str] = None,
 ) -> Tuple[str, str]:
     now = datetime.now(timezone.utc)
     user_dir = _user_base_dir(anon_id)
@@ -597,8 +608,7 @@ def _save_image_and_meta(
         except Exception:
             post_meta = None
 
-    with open(image_path, "wb") as f:
-        f.write(image_bytes)
+    atomic_write_bytes(image_path, image_bytes)
 
     # Thumbnail (webp preferred; fallback to jpg)
     thumb_rel_dir = os.path.join(dated_dir, "thumb")
@@ -666,6 +676,7 @@ def _save_image_and_meta(
         "sha256": sha256,
         "created_at": now.isoformat(),
         "status": "active",
+        "source_job_id": source_job_id,
         "thumb": _build_web_path(thumb_path_written) if thumb_path_written else None,
         "tags": [],
     }
@@ -674,8 +685,18 @@ def _save_image_and_meta(
     if isinstance(extra_meta, dict):
         meta.update(extra_meta)
     meta_path = os.path.join(dated_dir, f"{image_id}.json")
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
+    atomic_write_json(meta_path, meta)
+
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        asset_service.register(
+            owner_id=anon_id,
+            kind="image",
+            media_path=image_path,
+            metadata_path=meta_path,
+            metadata=meta,
+            source_job_id=source_job_id,
+        )
 
     return image_path, meta_path
 
@@ -686,6 +707,7 @@ def _save_game_ui_group(
     assets: list,
     req,
     original_filename: str,
+    source_job_id: Optional[str] = None,
 ) -> Tuple[str, dict]:
     """Persist one source sheet, four gallery children, derivatives, and a ZIP."""
     if len(assets or []) != 4:
@@ -701,8 +723,7 @@ def _save_game_ui_group(
     sheet_path = os.path.join(group_dir, "source_sheet.png")
     manifest_path = os.path.join(group_dir, "manifest.json")
     zip_path = os.path.join(group_dir, f"game_ui_{group_id}.zip")
-    with open(sheet_path, "wb") as f:
-        f.write(source_sheet_bytes)
+    atomic_write_bytes(sheet_path, source_sheet_bytes)
 
     background_mode = str(getattr(req, "game_ui_background_mode", "transparent") or "transparent")
     transparent = background_mode == "transparent"
@@ -724,8 +745,7 @@ def _save_game_ui_group(
         for size_key, png_bytes in dict(getattr(asset, "size_pngs", {}) or {}).items():
             dimensions = dict(getattr(asset, "size_dimensions", {}) or {}).get(str(size_key), (0, 0))
             size_path = os.path.join(cell_dir, f"{size_key}.png")
-            with open(size_path, "wb") as f:
-                f.write(png_bytes)
+            atomic_write_bytes(size_path, png_bytes)
             size_urls[str(size_key)] = {
                 "url": _build_web_path(size_path),
                 "width": int(dimensions[0]),
@@ -757,6 +777,7 @@ def _save_game_ui_group(
             original_filename,
             extra_meta=extra_meta,
             postprocess=False,
+            source_job_id=source_job_id,
         )
         try:
             with open(meta_path, "r", encoding="utf-8") as f:
@@ -791,10 +812,10 @@ def _save_game_ui_group(
         "download_url": download_url,
         "items": items,
     }
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(group, f, ensure_ascii=False, indent=2)
+    atomic_write_json(manifest_path, group)
 
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.write(sheet_path, arcname="source_sheet.png")
         archive.write(manifest_path, arcname="manifest.json")
         for item, asset in zip(items, assets):
@@ -805,6 +826,11 @@ def _save_game_ui_group(
                     f"sizes/{dimensions[0]}x{dimensions[1]}/cell_{item['index']:02d}.png",
                     png_bytes,
                 )
+    atomic_write_bytes(zip_path, zip_buffer.getvalue())
+
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        asset_service.register_group(owner_id=anon_id, manifest_path=manifest_path, metadata=group)
 
     return items[0]["url"], group
 
@@ -813,6 +839,12 @@ def _input_base_dir(anon_id: str) -> str:
 
 
 def _locate_input_png_path(anon_id: str, image_id: str) -> Optional[str]:
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        row = asset_service.get(anon_id, image_id)
+        if row and row.get("kind") == "input":
+            path = asset_service.resolve_storage_path(row.get("storage_path"))
+            return path if path and os.path.isfile(path) else None
     base = _input_base_dir(anon_id)
     if not os.path.isdir(base):
         return None
@@ -833,8 +865,7 @@ def _save_input_image_and_meta(anon_id: str, image_bytes: bytes, original_filena
     filename = f"{input_id}.png"
     image_path = os.path.join(dated_dir, filename)
 
-    with open(image_path, "wb") as f:
-        f.write(image_bytes)
+    atomic_write_bytes(image_path, image_bytes)
 
     # Thumbnail
     thumb_rel_dir = os.path.join(dated_dir, "thumb")
@@ -885,13 +916,25 @@ def _save_input_image_and_meta(anon_id: str, image_bytes: bytes, original_filena
         "tags": [],
     }
     meta_path = os.path.join(dated_dir, f"{input_id}.json")
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
+    atomic_write_json(meta_path, meta)
+
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        asset_service.register(
+            owner_id=anon_id,
+            kind="input",
+            media_path=image_path,
+            metadata_path=meta_path,
+            metadata=meta,
+        )
 
     return image_path, meta_path
 
 
 def _gather_user_inputs(anon_id: str, include_trash: bool = False) -> List[dict]:
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        return asset_service.list_media(anon_id, "input", include_trash=include_trash)
     base = _input_base_dir(anon_id)
     if not os.path.isdir(base):
         return []
@@ -944,6 +987,9 @@ def _gather_user_inputs(anon_id: str, include_trash: bool = False) -> List[dict]
 
 
 def _locate_input_meta_path(anon_id: str, image_id: str) -> Optional[str]:
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        return asset_service.locate_metadata(anon_id, image_id, kind="input")
     base = _input_base_dir(anon_id)
     if not os.path.isdir(base):
         return None
@@ -955,6 +1001,9 @@ def _locate_input_meta_path(anon_id: str, image_id: str) -> Optional[str]:
 
 
 def _update_input_status(anon_id: str, image_id: str, status: str) -> bool:
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        return asset_service.update_status(anon_id, image_id, status, kind="input")
     meta_path = _locate_input_meta_path(anon_id, image_id)
     if not meta_path:
         return False
@@ -962,14 +1011,16 @@ def _update_input_status(anon_id: str, image_id: str, status: str) -> bool:
         with open(meta_path, "r", encoding="utf-8") as f:
             meta = json.load(f)
         meta["status"] = status
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
+        atomic_write_json(meta_path, meta)
         return True
     except Exception:
         return False
 
 
 def _gather_user_images(anon_id: str, include_trash: bool = False) -> List[dict]:
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        return asset_service.list_media(anon_id, "image", include_trash=include_trash)
     base = _user_base_dir(anon_id)
     if not os.path.isdir(base):
         return []
@@ -1042,6 +1093,9 @@ def _gather_user_images(anon_id: str, include_trash: bool = False) -> List[dict]
 
 
 def _locate_image_meta_path(anon_id: str, image_id: str) -> Optional[str]:
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        return asset_service.locate_metadata(anon_id, image_id, kind="image")
     base = _user_base_dir(anon_id)
     if not os.path.isdir(base):
         return None
@@ -1053,6 +1107,9 @@ def _locate_image_meta_path(anon_id: str, image_id: str) -> Optional[str]:
 
 
 def _update_image_status(anon_id: str, image_id: str, status: str) -> bool:
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        return asset_service.update_status(anon_id, image_id, status, kind="image")
     meta_path = _locate_image_meta_path(anon_id, image_id)
     if not meta_path:
         return False
@@ -1060,8 +1117,7 @@ def _update_image_status(anon_id: str, image_id: str, status: str) -> bool:
         with open(meta_path, "r", encoding="utf-8") as f:
             meta = json.load(f)
         meta["status"] = status
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
+        atomic_write_json(meta_path, meta)
         return True
     except Exception:
         return False
@@ -1070,7 +1126,7 @@ def _update_image_status(anon_id: str, image_id: str, status: str) -> bool:
 # ── Audio (ACE-Step) storage ──────────────────────────────────────────
 
 def _audio_base_dir(anon_id: str) -> str:
-    return os.path.join(OUTPUT_DIR, "users", anon_id, "audio")
+    return os.path.join(_user_base_dir(anon_id), "audio")
 
 
 def _save_audio_and_meta(
@@ -1078,6 +1134,7 @@ def _save_audio_and_meta(
     audio_bytes: bytes,
     req,
     original_filename: str,
+    source_job_id: Optional[str] = None,
 ) -> Tuple[str, str]:
     """Save audio file + JSON sidecar, mirroring _save_image_and_meta structure."""
     now = datetime.now(timezone.utc)
@@ -1097,8 +1154,15 @@ def _save_audio_and_meta(
     audio_filename = f"{audio_id}{ext}"
     audio_path = os.path.join(dated_dir, audio_filename)
 
-    with open(audio_path, "wb") as f:
-        f.write(audio_bytes)
+    atomic_write_bytes(audio_path, audio_bytes)
+    # Master before hashing/catalog registration so metadata always describes
+    # the final artifact. A missing optional audio dependency is harmless.
+    try:
+        if _master_audio_file(audio_path):
+            with open(audio_path, "rb") as mastered_file:
+                audio_bytes = mastered_file.read()
+    except Exception:
+        pass
 
     # Build metadata
     import hashlib as _hl
@@ -1126,18 +1190,32 @@ def _save_audio_and_meta(
         "sha256": sha,
         "created_at": now.isoformat(),
         "status": "active",
+        "source_job_id": source_job_id,
         "tags": [],
     }
 
     meta_path = os.path.join(dated_dir, f"{audio_id}.json")
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
+    atomic_write_json(meta_path, meta)
+
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        asset_service.register(
+            owner_id=anon_id,
+            kind="audio",
+            media_path=audio_path,
+            metadata_path=meta_path,
+            metadata=meta,
+            source_job_id=source_job_id,
+        )
 
     return audio_path, meta_path
 
 
 def _gather_user_audio(anon_id: str, include_trash: bool = False) -> List[dict]:
     """List audio files for a user, newest first."""
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        return asset_service.list_media(anon_id, "audio", include_trash=include_trash)
     base = _audio_base_dir(anon_id)
     if not os.path.isdir(base):
         return []
@@ -1181,6 +1259,9 @@ def _gather_user_audio(anon_id: str, include_trash: bool = False) -> List[dict]:
 
 
 def _locate_audio_meta_path(anon_id: str, audio_id: str) -> Optional[str]:
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        return asset_service.locate_metadata(anon_id, audio_id, kind="audio")
     base = _audio_base_dir(anon_id)
     if not os.path.isdir(base):
         return None
@@ -1216,15 +1297,29 @@ def _master_audio_file(audio_path: str) -> bool:
 
         result = board(audio, sr)
 
-        # Write back (overwrite)
-        with AudioFile(audio_path, 'w', sr, channels, quality="V0") as f:
-            f.write(result)
+        # Write to a sibling temporary file, then atomically replace the
+        # original so readers never observe a partially encoded artifact.
+        base, extension = os.path.splitext(audio_path)
+        temp_path = f"{base}.{uuid.uuid4().hex}.tmp{extension}"
+        try:
+            with AudioFile(temp_path, 'w', sr, channels, quality="V0") as f:
+                f.write(result)
+            os.replace(temp_path, audio_path)
+        finally:
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
         return True
     except Exception:
         return False
 
 
 def _update_audio_status(anon_id: str, audio_id: str, status: str) -> bool:
+    asset_service = get_asset_service()
+    if asset_service is not None:
+        return asset_service.update_status(anon_id, audio_id, status, kind="audio")
     meta_path = _locate_audio_meta_path(anon_id, audio_id)
     if not meta_path:
         return False
@@ -1232,8 +1327,7 @@ def _update_audio_status(anon_id: str, audio_id: str, status: str) -> bool:
         with open(meta_path, "r", encoding="utf-8") as f:
             meta = json.load(f)
         meta["status"] = status
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
+        atomic_write_json(meta_path, meta)
         return True
     except Exception:
         return False

@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import uuid
@@ -12,6 +11,7 @@ except Exception:
     Image = None
 
 from .media_store import OUTPUT_DIR, _build_web_path
+from .asset_service import atomic_write_bytes, atomic_write_json
 
 
 def _feed_active_root() -> str:
@@ -74,7 +74,8 @@ def _copy_png_to_feed(
 ) -> Tuple[str, Optional[str]]:
     _ensure_dirs(dest_dir)
     dest_png = os.path.join(dest_dir, f"{dest_base_name}.png")
-    shutil.copy2(src_png_path, dest_png)
+    with open(src_png_path, "rb") as source:
+        atomic_write_bytes(dest_png, source.read())
 
     thumb_dir = os.path.join(dest_dir, "thumb")
     os.makedirs(thumb_dir, exist_ok=True)
@@ -132,10 +133,35 @@ def publish_to_feed(
     }
 
     meta_path = os.path.join(dest_dir, f"{post_id}.json")
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
+    atomic_write_json(meta_path, meta)
 
     return meta
+
+
+def discard_published_assets(meta: dict) -> None:
+    """Best-effort rollback for files created before a feed DB insert failed."""
+
+    urls = [
+        meta.get("image_url"),
+        meta.get("thumb_url"),
+        meta.get("input_image_url"),
+        meta.get("input_thumb_url"),
+    ]
+    image_fs = _outputs_url_to_fs(meta.get("image_url"))
+    if image_fs:
+        urls.append(_build_web_path(os.path.splitext(image_fs)[0] + ".json"))
+    for url in urls:
+        path = _outputs_url_to_fs(url)
+        if not path:
+            continue
+        relative = os.path.relpath(os.path.abspath(path), os.path.abspath(OUTPUT_DIR)).replace("\\", "/")
+        if not relative.startswith("feed/") or relative.startswith("feed/trash/"):
+            continue
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+        except OSError:
+            pass
 
 
 def _active_fs_to_trash_fs(active_fs: str) -> Optional[str]:

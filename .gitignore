@@ -56,6 +56,7 @@ coverage.xml
 *.log
 local_settings.py
 db.sqlite3
+db/*.secret
 
 # Flask stuff:
 instance/
@@ -156,6 +157,7 @@ cache/
 # Logs
 *.log
 logs/
+backups/
 
 # Temporary files
 *.tmp

@@ -71,7 +71,14 @@ async def admin_feed_delete(post_id: str, request: Request):
             input_image_url=post.get("input_image_url"),
             input_thumb_url=post.get("input_thumb_url"),
         )
-        store.update_status(post_id, "trash")
+        if not store.update_status(post_id, "trash"):
+            restore_post_assets_from_trash(
+                active_image_url=post.get("image_url"),
+                active_thumb_url=post.get("thumb_url"),
+                input_image_url=post.get("input_image_url"),
+                input_thumb_url=post.get("input_thumb_url"),
+            )
+            raise RuntimeError("Feed status update failed")
         return {"ok": True}
     except Exception as e:
         logger.error({"event": "admin_feed_delete_failed", "post_id": post_id, "error": str(e)})
@@ -95,7 +102,14 @@ async def admin_feed_restore(post_id: str, request: Request):
             input_image_url=post.get("input_image_url"),
             input_thumb_url=post.get("input_thumb_url"),
         )
-        store.update_status(post_id, "active")
+        if not store.update_status(post_id, "active"):
+            move_post_assets_to_trash(
+                active_image_url=post.get("image_url"),
+                active_thumb_url=post.get("thumb_url"),
+                input_image_url=post.get("input_image_url"),
+                input_thumb_url=post.get("input_thumb_url"),
+            )
+            raise RuntimeError("Feed status update failed")
         return {"ok": True}
     except Exception as e:
         logger.error({"event": "admin_feed_restore_failed", "post_id": post_id, "error": str(e)})
