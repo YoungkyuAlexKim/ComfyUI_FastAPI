@@ -162,6 +162,32 @@ class JobStore:
             )
         return items
 
+    def fetch_by_id(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch one persisted job without relying on the recent-jobs window."""
+
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT id, owner_id, type, status, progress, created_at, started_at, ended_at, error, result_json, COALESCE(artifact_available,0), workflow_id, payload_json FROM jobs WHERE id = ?",
+                (str(job_id or "").strip(),),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "owner_id": row[1],
+            "type": row[2],
+            "status": row[3],
+            "progress": row[4],
+            "created_at": row[5],
+            "started_at": row[6],
+            "ended_at": row[7],
+            "error": row[8],
+            "result": json_loads_safe(row[9]) if row[9] is not None else {},
+            "artifact_available": bool(row[10]),
+            "workflow_id": row[11],
+            "payload": json_loads_safe(row[12]) if row[12] is not None else {},
+        }
+
 
 def json_dumps_safe(obj: Any) -> str:
     try:

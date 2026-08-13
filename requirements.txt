@@ -7,3 +7,5 @@ python-multipart
 Pillow
 python-dotenv
 psd-tools
+mcp==2.0.0
+httpx

@@ -60,6 +60,8 @@ from .services.generation_commands import (
     generation_context_from_http_request,
 )
 from .services.generation_controls import GenerationControlService, GenerationPolicyError
+from .services.generation_submission import GenerationSubmissionService
+from .mcp_server import create_mcp_integration
 from .services.openrouter_client import (
     OpenRouterUpstreamError,
     generate_text,
@@ -100,8 +102,9 @@ async def beta_access_middleware(request: Request, call_next):
         return await call_next(request)
 
     path = request.url.path or ""
-    # Allow login endpoints and health check without auth
-    if path.startswith("/beta-login") or path == "/healthz":
+    # MCP has its own internal-network/IP boundary and cannot use browser cookies.
+    # Allow it through the legacy beta password gate.
+    if path.startswith("/beta-login") or path == "/healthz" or path.startswith("/mcp"):
         return await call_next(request)
 
     if is_request_authed(request.cookies):
@@ -235,6 +238,7 @@ _external_job_manager = JobManager(worker_count=4)  # env에서 startup 시 재�
 job_manager = RoutingJobManager(_comfy_job_manager, _external_job_manager, WORKFLOW_CONFIGS)
 job_store = JobStore(JOB_DB_PATH)
 generation_controls = GenerationControlService(JOB_DB_PATH)
+generation_submissions = GenerationSubmissionService(job_manager, generation_controls)
 from .feed_store import FeedStore
 feed_store = FeedStore(JOB_DB_PATH)
 try:
@@ -571,7 +575,7 @@ async def generate_image(request: GenerateRequest, http_request: Request):
             "yes",
             "on",
         }
-        admission = generation_controls.admit(resolved.payload, cost_confirmed=cost_confirmed)
+        submission = generation_submissions.submit(resolved, cost_confirmed=cost_confirmed)
     except GenerationPolicyError as e:
         logger.info(
             {
@@ -584,41 +588,27 @@ async def generate_image(request: GenerateRequest, http_request: Request):
             }
         )
         raise HTTPException(status_code=e.status_code, detail=e.api_detail())
+    except RuntimeError as e:
+        logger.info({"event": "enqueue_rejected", "owner_id": anon_id, "reason": str(e), "path": "/api/v1/generate"})
+        raise HTTPException(status_code=429, detail=str(e))
 
-    if admission.is_duplicate:
-        duplicate_position = job_manager.get_position(admission.duplicate_job_id) or 0
+    if submission.duplicate:
         logger.info(
             {
                 "event": "generate_idempotency_replay",
                 "owner_id": anon_id,
                 "request_id": resolved.command.context.request_id,
-                "job_id": admission.duplicate_job_id,
+                "job_id": submission.job_id,
             }
         )
-        return {"job_id": admission.duplicate_job_id, "status": "duplicate", "position": duplicate_position}
+        return {"job_id": submission.job_id, "status": "duplicate", "position": submission.position}
 
-    resolved.payload["control_request_id"] = admission.control_request_id
-    resolved.payload["estimated_cost_usd"] = admission.estimated_cost_usd
-    resolved.payload["cost_confirmed"] = cost_confirmed
-    try:
-        job = job_manager.enqueue(anon_id, "generate", resolved.payload)
-    except RuntimeError as e:
-        if admission.control_request_id:
-            generation_controls.mark_enqueue_failed(admission.control_request_id, str(e))
-        # Queue limit reached
-        logger.info({"event": "enqueue_rejected", "owner_id": anon_id, "reason": str(e), "path": "/api/v1/generate"})
-        raise HTTPException(status_code=429, detail=str(e))
-    except Exception as e:
-        if admission.control_request_id:
-            generation_controls.mark_enqueue_failed(admission.control_request_id, str(e))
-        raise
-    position = job_manager.get_position(job.id)
     logger.info(
         {
             "event": "enqueue",
             "owner_id": anon_id,
-            "job_id": job.id,
-            "position": position,
+            "job_id": submission.job_id,
+            "position": submission.position,
             "request_id": resolved.command.context.request_id,
             "request_source": resolved.command.context.source,
             "client_ip": resolved.command.context.client_ip,
@@ -627,10 +617,10 @@ async def generate_image(request: GenerateRequest, http_request: Request):
             "workflow_id": resolved.workflow_id,
             "provider": resolved.provider,
             "model": resolved.model,
-            "estimated_cost_usd": admission.estimated_cost_usd,
+            "estimated_cost_usd": submission.estimated_cost_usd,
         }
     )
-    return {"job_id": job.id, "status": "queued", "position": position}
+    return {"job_id": submission.job_id, "status": "queued", "position": submission.position}
 
 
 # Images routes moved to app/routers/images.py
@@ -837,6 +827,9 @@ async def translate_prompt_endpoint(text: str = Form(...), mode: str = Form("ima
 
 # WebSocket routes moved to app/ws/routes.py
 
+mcp_integration = create_mcp_integration(job_manager, job_store, generation_controls)
+app.state.mcp_server = mcp_integration.server
+app.mount("/mcp", mcp_integration.http_app, name="mcp")
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -845,6 +838,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.on_event("startup")
 async def on_startup():
+    app.state.mcp_lifespan_context = mcp_integration.lifespan_context_factory()
+    await app.state.mcp_lifespan_context.__aenter__()
     loop = asyncio.get_running_loop()
     manager.set_loop(loop)
 
@@ -1021,3 +1016,11 @@ async def on_startup():
                 pass
 
     asyncio.create_task(_seethrough_cleanup_loop())
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    job_manager.stop()
+    mcp_lifespan_context = getattr(app.state, "mcp_lifespan_context", None)
+    if mcp_lifespan_context is not None:
+        await mcp_lifespan_context.__aexit__(None, None, None)
