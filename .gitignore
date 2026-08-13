@@ -93,6 +93,8 @@ celerybeat-schedule
 
 # Environments
 .env
+# Host-specific address memo. Runtime configuration comes from .env/deployment config.
+/ipAdress.txt
 오픈라우터API키.txt
 .venv
 env/

@@ -14,9 +14,15 @@ git status --short
 
 - 테스트 성공
 - `missing_files`, `missing_metadata`, `missing_group_files`가 모두 0
-- 기능 커밋에 `db/app_data.db`, `outputs`, `backups`, `*.secret`이 없음
-- `.env`에 관리자 인증과 사내망 프록시 설정이 존재함
+- 기능 커밋에 `db/app_data.db`, 런타임 `outputs/users`·`outputs/feed`, `backups`,
+  `*.secret`이 없음. 검토된 `outputs/global/characters` 번들만 예외
+- `.env`에 관리자 인증이 있고, 직접 연결 또는 신뢰 프록시 중 실제 배포 경계와
+  `TRUSTED_PROXY_CIDRS` 설정이 일치함
 - `INPUTS_MAX_BYTES`, `INPUTS_MAX_PIXELS`가 프록시 body limit과 일관됨
+
+런타임 설정의 기준은 `.env` 또는 배포 환경의 secret 주입입니다. 루트의
+`ipAdress.txt` 같은 호스트별 메모는 애플리케이션이 읽지 않으며 Git에 넣지 않습니다.
+API 키를 별도 평문 파일에 보관하는 방식도 운영 설정이나 백업으로 간주하지 않습니다.
 
 ## 실행
 
@@ -35,11 +41,42 @@ git status --short
 운영 실행기는 `0.0.0.0:8000`에서 수신합니다. 외부 노출 여부는 애플리케이션이
 아니라 인프라 방화벽과 리버스 프록시가 결정해야 합니다.
 
+`run_server.bat`은 개발용 reload와 브라우저 자동 열기를 사용합니다.
+`run_server_prod.bat`은 브라우저를 열지 않으며 실행 중인 콘솔이 서버 프로세스입니다.
+시작 전에 다음을 확인합니다.
+
+```powershell
+Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
+Invoke-RestMethod http://127.0.0.1:8000/healthz | ConvertTo-Json -Depth 5
+```
+
+이미 listener와 정상 health 응답이 있으면 서버가 실행 중이므로 실행 파일을 다시 열지
+않습니다. 두 번째 Uvicorn은 같은 포트를 bind하지 못해 더블클릭 콘솔이 바로 닫힐 수
+있습니다. 시작 오류를 확인할 때는 기존 PowerShell에서 실행해 출력을 보존합니다.
+
+```powershell
+cd C:\Works\ComfyUI_FastAPI
+.\run_server_prod.bat
+```
+
+기존 서버를 교체할 때는 먼저 관리자 화면에서 active job이 0인지 확인한 뒤 해당
+listener의 PID만 종료합니다. 포트에 연결된 프로세스를 확인하지 않고 광범위하게 Python
+프로세스를 종료하지 않습니다.
+
+### 로컬 초기화 스크립트
+
+`reset_local_data.bat`은 개발 환경을 완전히 다시 시작할 때만 쓰는 파괴적 도구입니다.
+운영 서버나 복구 절차에서 실행하지 않습니다. 이 스크립트는 `db/app_data.db`와 WAL,
+`outputs/users`를 삭제하므로 이미지·입력·오디오·Game UI 파일과 작업·피드·통제 등 DB
+레코드를 잃습니다. `outputs/feed`와 `outputs/global` 파일을 일관된 복구 세트로 다루는
+도구도 아닙니다. 실행이 꼭 필요하면 서버를 중지하고 외부 완전 백업을 검증한 뒤에만
+명시적으로 `YES`를 입력합니다.
+
 ## 운영 DB Git 추적 해제 최초 배포
 
-`db/app_data.db`를 Git index에서 제거하는 커밋은 일반 코드 배포와 다르게 취급합니다.
-다른 clone이 이 삭제 커밋을 처음 받을 때 해당 호스트 DB가 삭제되거나 merge 충돌이
-생길 수 있으므로 blind `git pull`을 하지 않습니다.
+`db/app_data.db`를 Git index에서 제거한 커밋 `d1e23e0`은 일반 코드 배포와 다르게
+취급합니다. 이 커밋을 아직 적용하지 않은 clone에서 최초로 받을 때 해당 호스트 DB가
+삭제되거나 merge 충돌이 생길 수 있으므로 blind `git pull`을 하지 않습니다.
 
 각 배포 호스트에서 커밋 적용 전에 다음 순서를 지킵니다.
 

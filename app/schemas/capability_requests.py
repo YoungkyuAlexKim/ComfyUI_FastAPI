@@ -1,4 +1,4 @@
-"""Provider-neutral request contracts for web/API and future MCP tools.
+"""Provider-neutral request contracts shared by web/API and MCP adapters.
 
 These models describe user intent instead of exposing internal workflow IDs.
 Authentication and principal resolution deliberately live outside request bodies.
@@ -124,4 +124,3 @@ MCP_CAPABILITY_REQUEST_MODELS = {
     "separate_layers": SeparateLayersRequest,
     "generate_music": GenerateMusicRequest,
 }
-

@@ -26,7 +26,7 @@ class WorkflowItem(BaseModel):
     hidden: Optional[bool] = None
     # Workflow provider routing hint (e.g., "comfyui" or "openrouter")
     provider: Optional[str] = None
-    # Stable product taxonomy shared by the web UI and future MCP capabilities.
+    # Stable product taxonomy shared by the web UI and MCP capability contracts.
     category: Optional[str] = None
     capability: Optional[str] = None
     mcp_public: Optional[bool] = None

@@ -35,6 +35,11 @@ Copy-Item .env.example .env
 .\run_server.bat
 ```
 
+`run_server.bat`은 개발용으로 reload를 켜고 브라우저를 자동으로 엽니다.
+`run_server_prod.bat`은 운영용 단일 프로세스를 실행하며 브라우저를 자동으로 열지
+않습니다. 이미 8000 포트의 LC AI Canvas가 정상 실행 중이면 두 번째 실행 파일을
+열지 말고 기존 서버에 접속합니다.
+
 - 생성 화면: `http://127.0.0.1:8000/create`
 - 피드: `http://127.0.0.1:8000/feed`
 - API 문서: `http://127.0.0.1:8000/docs`
@@ -80,7 +85,8 @@ Uvicorn의 자동 프록시 헤더 신뢰를 끄며, 신뢰 가능한 프록시�
 
 ## 중요한 운영 원칙
 
-- `db/app_data.db`, `outputs`, 백업 파일, 쿠키 서명 키를 기능 커밋에 넣지 않습니다.
+- `db/app_data.db`, 런타임 `outputs/users`·`outputs/feed`, 백업 파일, 쿠키 서명 키를
+  기능 커밋에 넣지 않습니다. 검토된 번들 자산 `outputs/global/characters`만 예외입니다.
 - MCP `/mcp`는 OAuth가 없는 현재 단계에서 반드시 사내망으로 제한합니다.
 - `PRINCIPAL_IDENTITY_MODE=compat`은 기존 쿠키 전환 기간에만 사용하고,
   전환 확인 후 `enforced`로 변경합니다.

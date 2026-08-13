@@ -9,13 +9,13 @@ LC AI Canvas는 사내 생성 요청을 웹 UI와 MCP에서 받아 동일한 실
 제공하고, 모델·공급자·내부 워크플로우 ID는 서버가 결정합니다.
 
 ```text
-웹 UI ─┐
-       ├─ GenerationCommand ─ CapabilityDispatcher ─ JobManager
-MCP ───┘                                      │
-                                              ├─ OpenRouter
-                                              └─ ComfyUI
-                                                     │
-                                      AssetService ──┴─ 파일 + SQLite
+웹 생성 ─┐
+         ├─ GenerationCommand ─ CapabilityDispatcher ─ JobManager
+MCP 생성 ┘                                      │
+                                                ├─ OpenRouter
+                                                └─ ComfyUI
+                                                       │
+웹/MCP 자산 API ─────────────── AssetService ──────────┴─ 파일 + SQLite
 ```
 
 ## 제품 기능
@@ -45,6 +45,8 @@ MCP ───┘                                      │
 - `app/services/generation.py`: OpenRouter/ComfyUI 실행 처리
 - `app/job_manager.py`, `app/job_store.py`: 실행 큐와 영속 작업 기록
 - `app/services/asset_service.py`, `app/asset_store.py`: 자산 소유권·수명주기·카탈로그
+- `app/services/input_assets.py`: 웹/MCP 입력 이미지의 공통 검증·정규화·등록
+- `app/asset_admin.py`: 백필, audit, SQLite 및 완전 백업 검증 CLI
 - `app/mcp_server.py`: 내부망용 Streamable HTTP MCP 어댑터
 - `app/routers/*`: 이미지, 입력, 피드, 캐릭터, 관리자 API
 
@@ -63,7 +65,7 @@ MCP ───┘                                      │
 
 1. 방화벽/리버스 프록시와 선택적 CIDR 정책이 클라이언트를 제한합니다.
 2. 서버가 신뢰 가능한 경로로 해석한 IP를 해시해 MCP principal을 만듭니다.
-3. MCP 도구도 동일한 capability dispatcher와 generation control을 통과합니다.
+3. MCP 생성 도구도 동일한 capability dispatcher와 generation control을 통과합니다.
 4. 소유자 범위 자산 목록·조회, 첨부 등록, 참고 이미지 검증도 같은 `AssetService`를
    사용합니다.
 5. 첨부 이미지는 웹과 MCP 모두 공통 디코딩·크기 제한·PNG 정규화 계층을 통과합니다.
@@ -112,7 +114,8 @@ IP는 웹 갤러리 소유권으로 사용하지 않고 감사 정보로만 기�
 
 1. 사용자 의도는 `app/schemas/capability_requests.py`에 provider-neutral하게 정의합니다.
 2. capability와 variant를 `CAPABILITY_ROUTES`에서 내부 workflow에 매핑합니다.
-3. 웹과 MCP 모두 `GenerationCommand` 및 `GenerationSubmissionService`를 통과합니다.
+3. 웹과 MCP의 생성 요청은 `GenerationCommand` 및 `GenerationSubmissionService`를
+   통과합니다. 읽기·첨부 자산 도구는 `AssetService`를 직접 사용합니다.
 4. 결과 파일은 직접 저장하지 않고 `AssetService`를 사용합니다.
 5. 위험하거나 비싼 작업에는 비용 확인과 멱등성 키를 유지합니다.
 6. MCP 도구는 실제 구현과 테스트가 끝난 capability만 공개합니다.
@@ -126,3 +129,5 @@ IP는 웹 갤러리 소유권으로 사용하지 않고 감사 정보로만 기�
   fallback 제거
 - 운영 UI에 자산 감사 및 저장소 통계 연결
 - 실프로젝트 품질 검증 후 캐릭터 시트·스토리보드 등 특화 capability의 단계적 공개
+- 운영 실행기에 기존 8000 포트 인스턴스 감지, 오류 시 콘솔 유지, 명시적 로그 파일을
+  추가해 더블클릭 진단성을 개선

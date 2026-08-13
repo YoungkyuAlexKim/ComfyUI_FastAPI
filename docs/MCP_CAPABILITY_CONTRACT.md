@@ -41,12 +41,13 @@ principal, client IP, request ID, source, resolved provider/model/workflow는 �
 ```text
 create_image + generate       → NanoBanana
 create_image + edit           → NanoBanana_Img2Img
-create_game_ui_assets         → GameUI_Elements
-create_character_sheet        → Turnaround / Expression workflow
-create_storyboard             → Storyboard workflow
-remove_background             → RMBG2
-separate_layers               → seethrough-basic
-generate_music                → AceStep15XL
+create_game_ui_assets + default        → GameUI_Elements
+create_character_sheet + turnaround    → NanoBanana_TurnaroundSheet
+create_character_sheet + expressions   → NanoBanana_ExpressionPortraitSheet
+create_storyboard + default             → NanoBanana_StoryboardCutboard
+remove_background + default             → RMBG2
+separate_layers + default               → seethrough-basic
+generate_music + default                → AceStep15XL
 ```
 
 왼쪽 계약은 안정적으로 유지하고 오른쪽 workflow, provider, model은 서버 내부에서
@@ -59,9 +60,13 @@ variant, resolved workflow/provider/model을 저장합니다. `X-Forwarded-For`�
 ## capability별 핵심 제약
 
 - 이미지 편집은 최소 한 개의 `reference_image_ids`가 필요합니다.
+- MCP 기본 생성은 `square|landscape|portrait`, `1K|2K`, 참고 이미지 최대 14장을
+  공개합니다. provider별 실제 참고 이미지 한도는 실행 시 더 작게 제한될 수 있습니다.
 - MCP 참고 이미지는 호출자의 active `image` 또는 `input` 자산이어야 하며 enqueue 전에
   소유권과 실제 파일 존재를 확인합니다.
-- MCP 첨부 등록은 PNG/JPEG/WEBP만 허용하고 공통 입력 제한과 카탈로그 저장을 사용합니다.
+- MCP 첨부 등록은 필수 `mime_type`과 실제 이미지 형식이 일치하는 PNG/JPEG/WEBP만
+  허용하고 공통 입력 제한과 카탈로그 저장을 사용합니다. provider를 호출하지 않으므로
+  `GenerationCommand`나 비용 통제를 거치지 않습니다.
 - Game UI는 현재 `2x2`, 참고 이미지 최대 3장, 2K만 지원합니다.
 - 턴어라운드는 3·5·8뷰, 표정 시트는 4·9개 계약을 사용합니다.
 - 스토리보드는 참고 이미지 한 장과 6·9컷을 사용합니다.
@@ -71,7 +76,8 @@ variant, resolved workflow/provider/model을 저장합니다. `X-Forwarded-For`�
 
 ## 운영 통제
 
-웹과 MCP 생성은 모두 `GenerationControlService`를 통과합니다.
+웹과 MCP의 생성 요청은 모두 `GenerationControlService`를 통과합니다. 자산 목록·조회와
+첨부 등록은 생성 요청이 아니며 `AssetService`의 소유권·저장 경계를 따릅니다.
 
 - 전사 일일 요청 및 예상 비용 한도
 - source + principal + idempotency key 범위의 중복 방지

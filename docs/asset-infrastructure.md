@@ -7,7 +7,7 @@
 ## 기준 구조
 
 파일시스템은 바이트를 저장하고 SQLite는 소유권, 종류, 상태, 검색 경로의 기준
-카탈로그입니다. 웹과 향후 MCP 자산 도구는 폴더를 직접 순회하지 않고
+카탈로그입니다. 웹과 MCP 자산 도구는 폴더를 직접 순회하지 않고
 `AssetService`를 사용합니다.
 
 주요 테이블:
@@ -21,10 +21,11 @@
 
 ## 현재 마이그레이션 결과
 
-2026-08-13 체크포인트에서 다음을 등록하고 검증했습니다.
+2026-08-13 기능 구현 및 실서버 스모크 체크포인트에서 다음을 검증했습니다.
 
-- 자산 1,243개
+- 자산 1,244개
 - Game UI 그룹 4개
+- migration marker `asset_backfill=1`, `asset_catalog=2`
 - 손상 JSON 0
 - 누락 원본 0
 - 누락 메타데이터 0
@@ -119,6 +120,6 @@ manifest를 하나의 검증된 세트로 만듭니다.
 
 - `principal_identity_cookie_issued` 로그를 통한 활성 사용자 승격 관찰과 `enforced` 전환
 - 완전 백업 스크립트를 외부 저장소에 예약하고 staging 복구 훈련
-- `ASSET_CATALOG_FALLBACK_ENABLED=false` canary 통과 후 `media_store.py`의 폴더 스캔
-  fallback 제거
+- 격리 테스트에서 통과한 `ASSET_CATALOG_FALLBACK_ENABLED=false` 설정을 운영 canary로
+  검증한 후 `media_store.py`의 폴더 스캔 fallback 제거
 - UI가 소유권 확인 자산 endpoint를 기본 URL로 사용하도록 점진 전환
