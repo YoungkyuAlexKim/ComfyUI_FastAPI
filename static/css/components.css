@@ -2635,6 +2635,16 @@
     font-weight: 800;
 }
 
+#gallery-panel .game-ui-gallery-group__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#gallery-panel .game-ui-gallery-group__delete span {
+    margin-left: 5px;
+}
+
 #gallery-panel .game-ui-gallery-group__cells {
     display: grid;
     --game-ui-gallery-cell-size: 112px;
@@ -2669,6 +2679,7 @@
     #gallery-panel .game-ui-gallery-group__cells[data-grid-columns="4"] {
         --game-ui-gallery-cell-size: min(20vw, 88px);
     }
+    #gallery-panel .game-ui-gallery-group__delete span { display: none; }
 }
 
 @media (max-width: 640px) {

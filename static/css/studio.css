@@ -281,12 +281,12 @@ body {
 
 .workflow-banner::before {
     background-position: center;
-    filter: saturate(0.86) contrast(1.02) brightness(0.68);
     transform: scale(1.015);
 }
 
 .workflow-banner-scrim {
-    opacity: 1;
+    /* Image banners already contain their own caption treatment. */
+    opacity: calc(1 - var(--wf-banner-hasimg, 0));
     background: rgba(5, 7, 10, 0.48);
 }
 

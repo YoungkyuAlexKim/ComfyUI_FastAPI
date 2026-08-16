@@ -28,7 +28,10 @@
         @media (max-width: 480px){ .admin-gallery{ grid-template-columns: repeat(3,1fr);} }
         .admin-thumb { position: relative; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; }
         .admin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .admin-thumb.admin-thumb--game-ui { display: grid; grid-template-columns: repeat(var(--admin-game-ui-columns, 2), minmax(0, 1fr)); gap: 2px; padding: 2px; }
+        .admin-thumb.admin-thumb--game-ui img { min-width: 0; min-height: 0; }
         .admin-actions { display: flex; gap: 6px; margin-top: 4px; }
+        .admin-actions .btn { width: 100%; }
         .btn { padding: 6px 10px; border: 1px solid var(--bg-surface); background: var(--bg-card); color: var(--text-primary); border-radius: 8px; cursor: pointer; }
         .btn:hover { background: var(--bg-tertiary); border-color: var(--bg-hover); }
         .btn.danger { border-color: #ef4444; color: #ef4444; }
@@ -431,33 +434,74 @@
 
         function renderImages(items){
             gallery.innerHTML = '';
+            const units = [];
+            const groups = new Map();
             items.forEach(it => {
+                const groupId = String((it.meta && it.meta.game_ui_group_id) || '').trim();
+                if (!groupId) {
+                    units.push({ groupId: '', items: [it] });
+                    return;
+                }
+                let unit = groups.get(groupId);
+                if (!unit) {
+                    unit = { groupId, items: [] };
+                    groups.set(groupId, unit);
+                    units.push(unit);
+                }
+                unit.items.push(it);
+            });
+
+            units.forEach(unit => {
+                const it = unit.items[0];
+                const isGameUiGroup = !!unit.groupId;
                 const wrap = document.createElement('div');
                 const thumb = document.createElement('div');
                 thumb.className = 'admin-thumb';
-                const img = document.createElement('img');
-                img.src = it.thumb_url || it.url;
-                img.alt = it.id;
-                thumb.appendChild(img);
+                if (isGameUiGroup) {
+                    thumb.classList.add('admin-thumb--game-ui');
+                    const rawGrid = String((it.meta && it.meta.game_ui_grid) || '2x2').toLowerCase();
+                    const match = rawGrid.match(/^([234])x\1$/);
+                    thumb.style.setProperty('--admin-game-ui-columns', match ? match[1] : '2');
+                    unit.items
+                        .slice()
+                        .sort((a, b) => Number(a.meta?.game_ui_cell_index || 0) - Number(b.meta?.game_ui_cell_index || 0))
+                        .forEach(child => {
+                            const image = document.createElement('img');
+                            image.src = child.thumb_url || child.url;
+                            image.alt = `${unit.groupId} 묶음 셀`;
+                            thumb.appendChild(image);
+                        });
+                } else {
+                    const img = document.createElement('img');
+                    img.src = it.thumb_url || it.url;
+                    img.alt = it.id;
+                    thumb.appendChild(img);
+                }
                 // status badge
                 const badge = document.createElement('span');
                 const isActive = (it.status === 'active');
                 badge.className = 'status-badge ' + (isActive ? 'badge-active' : 'badge-trash');
-                badge.textContent = isActive ? '활성' : '휴지통';
+                badge.textContent = isGameUiGroup
+                    ? `${isActive ? '활성' : '휴지통'} · ${unit.items.length}개`
+                    : (isActive ? '활성' : '휴지통');
                 thumb.appendChild(badge);
                 const actions = document.createElement('div');
                 actions.className = 'admin-actions';
                 if (isActive) {
                     const delBtn = document.createElement('button');
                     delBtn.className = 'btn danger';
-                    delBtn.textContent = '휴지통으로';
-                    delBtn.addEventListener('click', () => updateImage(it.id, 'delete'));
+                    delBtn.textContent = isGameUiGroup ? '묶음 휴지통으로' : '휴지통으로';
+                    delBtn.addEventListener('click', () => isGameUiGroup
+                        ? updateGameUiGroup(unit.groupId, 'delete')
+                        : updateImage(it.id, 'delete'));
                     actions.appendChild(delBtn);
                 } else {
                     const resBtn = document.createElement('button');
                     resBtn.className = 'btn success';
-                    resBtn.textContent = '복구';
-                    resBtn.addEventListener('click', () => updateImage(it.id, 'restore'));
+                    resBtn.textContent = isGameUiGroup ? '묶음 복구' : '복구';
+                    resBtn.addEventListener('click', () => isGameUiGroup
+                        ? updateGameUiGroup(unit.groupId, 'restore')
+                        : updateImage(it.id, 'restore'));
                     actions.appendChild(resBtn);
                 }
                 wrap.appendChild(thumb);
@@ -515,6 +559,17 @@
             if (!currentUser) return;
             const url = action === 'delete' ? `/api/v1/admin/images/${id}/delete` : `/api/v1/admin/images/${id}/restore`;
             const res = await fetch(url, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ user_id: currentUser }) });
+            if (res.ok){ loadImages(); }
+        }
+
+        async function updateGameUiGroup(groupId, action){
+            if (!currentUser) return;
+            const url = `/api/v1/admin/game-ui-groups/${encodeURIComponent(groupId)}/${action}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type':'application/json' },
+                body: JSON.stringify({ user_id: currentUser })
+            });
             if (res.ok){ loadImages(); }
         }
 

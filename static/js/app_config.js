@@ -137,6 +137,11 @@
         url: '/static/img/banner/img_banner_AceStep.png',
         showTitle: false,
         showDescription: false,
+      },
+      'GameUI_Elements': {
+        url: '/static/img/banner/img_banner_GameUI_Elements.png',
+        showTitle: false,
+        showDescription: false,
       }
     }
   };

@@ -23,7 +23,7 @@ MCP 생성 ┘                                      │
 | capability | 현재 웹 구현 | 실행 경로 | MCP 상태 |
 |---|---|---|---|
 | `create_image` | 기본 생성·참고 이미지 편집 | OpenRouter | 텍스트 생성·소유 자산 참고 편집 공개 |
-| `create_game_ui_assets` | 2×2·3×3·4×4 후보 시트와 그룹 내보내기 | GPT Image 2/OpenRouter | 2×2 고정 계약 공개 |
+| `create_game_ui_assets` | 2×2·3×3·4×4 후보 시트, 그룹 내보내기·삭제·복구 | GPT Image 2/OpenRouter | 2×2 고정 생성 계약 공개 |
 | `create_character_sheet` | 턴어라운드·표정 시트 | OpenRouter | 계약만 준비 |
 | `create_storyboard` | 6·9컷 스토리보드 | OpenRouter | 계약만 준비 |
 | `remove_background` | RMBG | ComfyUI | 계약만 준비 |

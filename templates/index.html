@@ -4877,7 +4877,20 @@
         const deleteSelectedBtn = document.getElementById('delete-selected-btn');
         const selectedCountEl = document.getElementById('selected-count');
         let selectionMode = false;
-        const selectedIds = new Set();
+        const selectedKeys = new Set();
+
+        function gallerySelectionKey(item) {
+            const groupId = String((item && item.meta && item.meta.game_ui_group_id) || '').trim();
+            return groupId ? `group:${groupId}` : `asset:${item && item.id ? item.id : ''}`;
+        }
+
+        function applySelectionClass(selectionKey, selected) {
+            document.querySelectorAll('.gallery-item').forEach((element) => {
+                if (element.dataset.selectionKey === selectionKey) {
+                    element.classList.toggle('selected', selected);
+                }
+            });
+        }
 
         function setSelectionMode(enable){
             selectionMode = !!enable;
@@ -4908,9 +4921,9 @@
                     if (galleryActionsEl) {
                         galleryActionsEl.classList.remove('fade-out');
                     }
-                    selectedIds.clear();
+                    selectedKeys.clear();
                     updateSelectedCount();
-                    renderGallery(galleryItems);
+                    document.querySelectorAll('.gallery-item').forEach(el => el.classList.remove('selected'));
                 }, 300); // Match animation duration
             }
 
@@ -4923,26 +4936,26 @@
         }
 
         function updateSelectedCount(){
-            const n = selectedIds.size;
-            if (selectedCountEl) selectedCountEl.textContent = `${n}개 선택됨`;
+            const n = selectedKeys.size;
+            if (selectedCountEl) selectedCountEl.textContent = `${n}개 항목 선택됨`;
             if (deleteSelectedBtn) deleteSelectedBtn.disabled = n === 0;
         }
 
         selectToggleBtn?.addEventListener('click', () => setSelectionMode(!selectionMode));
         selectAllBtn?.addEventListener('click', () => {
-            galleryItems.forEach(it => selectedIds.add(it.id));
+            galleryItems.forEach(it => selectedKeys.add(gallerySelectionKey(it)));
             // 썸네일 클래스를 즉시 반영
             document.querySelectorAll('.gallery-item').forEach(el => el.classList.add('selected'));
             updateSelectedCount();
         });
         clearSelectionBtn?.addEventListener('click', () => {
-            selectedIds.clear();
+            selectedKeys.clear();
             document.querySelectorAll('.gallery-item').forEach(el => el.classList.remove('selected'));
             updateSelectedCount();
         });
         deleteSelectedBtn?.addEventListener('click', () => {
-            if (selectedIds.size === 0) return;
-            openBatchDeleteConfirm(Array.from(selectedIds));
+            if (selectedKeys.size === 0) return;
+            openBatchDeleteConfirm(Array.from(selectedKeys));
         });
 
         function getLocalDateKey(d) {
@@ -5140,6 +5153,8 @@
                 const a = document.createElement('button');
                 a.className = 'gallery-item';
                 a.dataset.imageId = it.id;
+                const selectionKey = gallerySelectionKey(it);
+                a.dataset.selectionKey = selectionKey;
                 a.setAttribute('aria-label', '이미지 보기');
                 try {
                     const wfId = (it && it.meta && it.meta.workflow_id) ? String(it.meta.workflow_id) : '';
@@ -5165,7 +5180,7 @@
                 a.appendChild(sel);
 
                 // selection-mode handling below
-                if (selectionMode && selectedIds.has(it.id)) a.classList.add('selected');
+                if (selectionMode && selectedKeys.has(selectionKey)) a.classList.add('selected');
                 a.addEventListener('click', () => {
                     openLightboxAt(i);
                 });
@@ -5173,13 +5188,12 @@
                     if (!selectionMode) return; // 기본 라이트박스 동작은 위에서 처리
                     ev.preventDefault();
                     ev.stopPropagation();
-                    const id = it.id;
-                    if (selectedIds.has(id)) {
-                        selectedIds.delete(id);
-                        a.classList.remove('selected');
+                    if (selectedKeys.has(selectionKey)) {
+                        selectedKeys.delete(selectionKey);
+                        applySelectionClass(selectionKey, false);
                     } else {
-                        selectedIds.add(id);
-                        a.classList.add('selected');
+                        selectedKeys.add(selectionKey);
+                        applySelectionClass(selectionKey, true);
                     }
                     updateSelectedCount();
                 }, true);
@@ -5203,6 +5217,9 @@
                             ? rawAssetCount
                             : gridColumns * gridColumns;
                         const zipUrl = String((it.meta && it.meta.game_ui_group_download_url) || '');
+                        const actions = document.createElement('div');
+                        actions.className = 'game-ui-gallery-group__actions';
+                        header.appendChild(label);
                         if (zipUrl) {
                             const zipLink = document.createElement('a');
                             zipLink.className = 'chip-btn';
@@ -5210,11 +5227,21 @@
                             zipLink.download = `game_ui_${gameUiGroupId}.zip`;
                             zipLink.innerHTML = '<i class="fas fa-file-zipper"></i> ZIP';
                             zipLink.addEventListener('click', (event) => event.stopPropagation());
-                            header.appendChild(label);
-                            header.appendChild(zipLink);
-                        } else {
-                            header.appendChild(label);
+                            actions.appendChild(zipLink);
                         }
+                        const deleteGroupButton = document.createElement('button');
+                        deleteGroupButton.type = 'button';
+                        deleteGroupButton.className = 'chip-btn chip-btn--danger game-ui-gallery-group__delete';
+                        deleteGroupButton.title = 'UI 엘리먼트 묶음 전체 삭제';
+                        deleteGroupButton.setAttribute('aria-label', 'UI 엘리먼트 묶음 전체 삭제');
+                        deleteGroupButton.innerHTML = '<i class="fas fa-trash"></i><span>묶음 삭제</span>';
+                        deleteGroupButton.addEventListener('click', (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            openBatchDeleteConfirm([`group:${gameUiGroupId}`]);
+                        });
+                        actions.appendChild(deleteGroupButton);
+                        header.appendChild(actions);
                         const cells = document.createElement('div');
                         cells.className = 'game-ui-gallery-group__cells';
                         cells.style.setProperty('--game-ui-grid-columns', String(gridColumns));
@@ -5452,12 +5479,17 @@
             document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ov.classList.contains('open')) closeBatchConfirm(); });
             return ov;
         }
-        let pendingBatchIds = [];
-        function openBatchDeleteConfirm(ids) {
-            pendingBatchIds = Array.isArray(ids) ? ids.slice() : [];
+        let pendingBatchKeys = [];
+        function openBatchDeleteConfirm(keys) {
+            pendingBatchKeys = Array.isArray(keys) ? keys.slice() : [];
             const ov = ensureBatchConfirmModal();
             const textEl = document.getElementById('batch-confirm-text');
-            if (textEl) textEl.textContent = `선택한 ${pendingBatchIds.length}개 이미지를 삭제할까요?`;
+            const groupCount = pendingBatchKeys.filter(key => String(key).startsWith('group:')).length;
+            if (textEl) {
+                textEl.textContent = pendingBatchKeys.length === 1 && groupCount === 1
+                    ? '이 UI 엘리먼트 묶음 전체를 삭제할까요? 모든 셀이 함께 휴지통으로 이동합니다.'
+                    : `선택한 ${pendingBatchKeys.length}개 항목을 삭제할까요? UI 엘리먼트 묶음은 모든 셀이 함께 이동합니다.`;
+            }
             ov.classList.add('open');
             ov.setAttribute('aria-hidden', 'false');
             const cancelBtn = document.getElementById('batch-confirm-cancel');
@@ -5468,13 +5500,21 @@
         function closeBatchConfirm() {
             const ov = document.getElementById('confirm-overlay-batch');
             if (ov) { ov.classList.remove('open'); ov.setAttribute('aria-hidden', 'true'); }
-            pendingBatchIds = [];
+            pendingBatchKeys = [];
         }
         async function doBatchDelete() {
-            if (!pendingBatchIds.length) return;
+            if (!pendingBatchKeys.length) return;
             try {
                 const delEndpoint = gallerySource === 'inputs' ? '/api/v1/inputs' : gallerySource === 'audio' ? '/api/v1/audio' : '/api/v1/images';
-                const tasks = pendingBatchIds.map(id => fetch(`${delEndpoint}/${id}/delete`, { method: 'POST' }));
+                const tasks = pendingBatchKeys.map(key => {
+                    const rawKey = String(key || '');
+                    if (gallerySource === 'generated' && rawKey.startsWith('group:')) {
+                        const groupId = rawKey.slice('group:'.length);
+                        return fetch(`/api/v1/game-ui-groups/${encodeURIComponent(groupId)}/delete`, { method: 'POST' });
+                    }
+                    const assetId = rawKey.startsWith('asset:') ? rawKey.slice('asset:'.length) : rawKey;
+                    return fetch(`${delEndpoint}/${encodeURIComponent(assetId)}/delete`, { method: 'POST' });
+                });
                 const results = await Promise.allSettled(tasks);
                 const failed = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
                 if (failed > 0) {
@@ -5485,7 +5525,7 @@
             } finally {
                 closeBatchConfirm();
                 // 상태 초기화 및 새로고침
-                selectedIds.clear();
+                selectedKeys.clear();
                 setSelectionMode(false);
                 fetchGallery(true);
             }

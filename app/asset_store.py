@@ -359,6 +359,126 @@ class AssetStore:
             )
             return cur.rowcount == 1
 
+    def get_group(self, group_id: str, owner_id: str | None = None) -> Optional[dict[str, Any]]:
+        sql = "SELECT * FROM asset_groups WHERE group_id=?"
+        params: list[Any] = [group_id]
+        if owner_id is not None:
+            sql += " AND owner_id=?"
+            params.append(owner_id)
+        with self._connect() as con:
+            return self._decode(con.execute(sql, params).fetchone())
+
+    def list_groups(self, owner_id: str, *, include_trash: bool = False) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM asset_groups WHERE owner_id=?"
+        params: list[Any] = [owner_id]
+        if not include_trash:
+            sql += " AND status='active'"
+        sql += " ORDER BY created_at DESC, group_id DESC"
+        with self._connect() as con:
+            return [self._decode(row) for row in con.execute(sql, params).fetchall()]
+
+    def list_group_assets(self, group_id: str, owner_id: str) -> list[dict[str, Any]]:
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT * FROM assets WHERE group_id=? AND owner_id=? ORDER BY created_at, asset_id",
+                (group_id, owner_id),
+            ).fetchall()
+        return [self._decode(row) for row in rows]
+
+    def update_group_bundle_status(
+        self,
+        group_id: str,
+        owner_id: str,
+        status: str,
+        *,
+        group_metadata: dict[str, Any],
+        asset_metadata: dict[str, dict[str, Any]],
+    ) -> int:
+        """Atomically change one group and every child to the same lifecycle state."""
+
+        if status not in {"active", "trash"}:
+            raise ValueError("Invalid asset status")
+        now = time.time()
+        deleted_at = now if status == "trash" else None
+        with self._connect() as con:
+            group = con.execute(
+                "SELECT group_id FROM asset_groups WHERE group_id=? AND owner_id=?",
+                (group_id, owner_id),
+            ).fetchone()
+            if group is None:
+                return 0
+            rows = con.execute(
+                "SELECT asset_id FROM assets WHERE group_id=? AND owner_id=? ORDER BY asset_id",
+                (group_id, owner_id),
+            ).fetchall()
+            asset_ids = [str(row["asset_id"]) for row in rows]
+            if not asset_ids:
+                return 0
+            if set(asset_ids) != set(asset_metadata):
+                raise ValueError("Asset group metadata does not match its catalog children")
+            for asset_id in asset_ids:
+                con.execute(
+                    """
+                    UPDATE assets
+                    SET status=?, updated_at=?, deleted_at=?, metadata_json=json(?)
+                    WHERE asset_id=? AND owner_id=? AND group_id=?
+                    """,
+                    (
+                        status,
+                        now,
+                        deleted_at,
+                        json.dumps(asset_metadata[asset_id], ensure_ascii=False),
+                        asset_id,
+                        owner_id,
+                        group_id,
+                    ),
+                )
+            cursor = con.execute(
+                """
+                UPDATE asset_groups
+                SET status=?, updated_at=?, metadata_json=json(?)
+                WHERE group_id=? AND owner_id=?
+                """,
+                (
+                    status,
+                    now,
+                    json.dumps(group_metadata, ensure_ascii=False),
+                    group_id,
+                    owner_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise sqlite3.IntegrityError("Asset group status update lost ownership")
+        return len(asset_ids)
+
+    def delete_group_bundle(self, group_id: str, owner_id: str) -> int:
+        """Delete a catalog group and all of its children in one transaction."""
+
+        with self._connect() as con:
+            group = con.execute(
+                "SELECT group_id FROM asset_groups WHERE group_id=? AND owner_id=?",
+                (group_id, owner_id),
+            ).fetchone()
+            if group is None:
+                return 0
+            child_count = int(
+                con.execute(
+                    "SELECT COUNT(*) FROM assets WHERE group_id=? AND owner_id=?",
+                    (group_id, owner_id),
+                ).fetchone()[0]
+            )
+            con.execute(
+                "DELETE FROM assets WHERE group_id=? AND owner_id=?",
+                (group_id, owner_id),
+            )
+            cursor = con.execute(
+                "DELETE FROM asset_groups WHERE group_id=? AND owner_id=?",
+                (group_id, owner_id),
+            )
+            if cursor.rowcount != 1:
+                raise sqlite3.IntegrityError("Asset group deletion lost ownership")
+        return child_count
+
     def delete(self, asset_id: str, owner_id: str) -> bool:
         with self._connect() as con:
             cur = con.execute("DELETE FROM assets WHERE asset_id=? AND owner_id=?", (asset_id, owner_id))

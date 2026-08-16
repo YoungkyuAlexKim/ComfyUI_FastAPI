@@ -91,6 +91,39 @@ def _list_user_ids() -> list[str]:
     return sorted(entries)
 
 
+def _paginate_images_preserving_groups(items: list[dict], page: int, size: int) -> tuple[list[dict], int]:
+    """Keep a Game UI bundle on one admin page while preserving item order."""
+
+    blocks: list[list[dict]] = []
+    by_key: dict[str, list[dict]] = {}
+    for item in items:
+        metadata = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+        group_id = str(metadata.get("game_ui_group_id") or "").strip()
+        key = f"group:{group_id}" if group_id else f"asset:{item.get('id')}"
+        block = by_key.get(key)
+        if block is None:
+            block = []
+            by_key[key] = block
+            blocks.append(block)
+        block.append(item)
+
+    pages: list[list[list[dict]]] = []
+    current: list[list[dict]] = []
+    current_weight = 0
+    for block in blocks:
+        weight = max(1, len(block))
+        if current and current_weight + weight > size:
+            pages.append(current)
+            current = []
+            current_weight = 0
+        current.append(block)
+        current_weight += weight
+    if current:
+        pages.append(current)
+    selected = pages[page - 1] if page <= len(pages) else []
+    return [item for block in selected for item in block], len(pages)
+
+
 def _purge_user_trash_images(user_id: str) -> int:
     """
     Permanently delete all trashed items (images + audio) for a given user.
@@ -300,10 +333,8 @@ async def admin_images(user_id: str, page: int = 1, size: int = 24, include: str
 
     size = max(1, min(100, size))
     page = max(1, page)
-    start = (page - 1) * size
-    end = start + size
     total = len(items)
-    slice_items = items[start:end]
+    slice_items, total_pages = _paginate_images_preserving_groups(items, page, size)
     response_items = []
     from datetime import datetime, timezone  # local import to avoid heavy global deps
     for it in slice_items:
@@ -312,9 +343,9 @@ async def admin_images(user_id: str, page: int = 1, size: int = 24, include: str
             "url": it["url"],
             "thumb_url": it.get("thumb_url"),
             "status": it.get("status"),
+            "meta": it.get("meta"),
             "created_at": datetime.fromtimestamp(it["mtime"], tz=timezone.utc).isoformat(),
         })
-    total_pages = (total + size - 1) // size
     return {
         "items": response_items,
         "page": page,
@@ -404,6 +435,27 @@ async def admin_restore(image_id: str, req: AdminUpdateRequest):
     if not ok:
         raise HTTPException(status_code=404, detail="Image not found")
     return {"ok": True}
+
+
+def _admin_update_game_ui_group(req: AdminUpdateRequest, group_id: str, status: str) -> bool:
+    service = get_asset_service()
+    if service is None:
+        raise HTTPException(status_code=503, detail="Asset catalog is not initialized")
+    return service.update_group_status(req.user_id, group_id, status)
+
+
+@router.post("/api/v1/admin/game-ui-groups/{group_id}/delete", tags=["Admin"])
+async def admin_soft_delete_game_ui_group(group_id: str, req: AdminUpdateRequest):
+    if not _admin_update_game_ui_group(req, group_id, "trash"):
+        raise HTTPException(status_code=404, detail="Game UI group not found")
+    return {"ok": True, "scope": "group", "group_id": group_id}
+
+
+@router.post("/api/v1/admin/game-ui-groups/{group_id}/restore", tags=["Admin"])
+async def admin_restore_game_ui_group(group_id: str, req: AdminUpdateRequest):
+    if not _admin_update_game_ui_group(req, group_id, "active"):
+        raise HTTPException(status_code=404, detail="Game UI group not found")
+    return {"ok": True, "scope": "group", "group_id": group_id}
 
 
 @router.post("/api/v1/admin/audio/{audio_id}/delete", tags=["Admin"])

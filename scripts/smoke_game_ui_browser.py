@@ -233,9 +233,7 @@ def _drive_browser(debug_port: int) -> dict:
               const zipBytes = new Uint8Array(await zipResponse.arrayBuffer());
               const grouped = await (await fetch('/api/v1/images?page=1&size=10&preserve_groups=true')).json();
               const ordinary = await (await fetch('/api/v1/images?page=1&size=10')).json();
-              const deletedId = grouped.items[0].id;
-              const deleted = await fetch(`/api/v1/images/${deletedId}/delete`, {method:'POST'});
-              document.getElementById('tab-generated').click();
+              const groupId = grouped.items[0].meta.game_ui_group_id;
               return {
                 selectedGrid:document.querySelector('input[name="game-ui-grid"]:checked').value,
                 resultCells:document.querySelectorAll('#game-ui-result-grid .game-ui-result__cell').length,
@@ -248,23 +246,57 @@ def _drive_browser(debug_port: int) -> dict:
                 groupedCount:grouped.items.length,
                 groupedTotalPages:grouped.total_pages,
                 ordinaryCount:ordinary.items.length,
-                deletedId,
-                deleteStatus:deleted.status
+                groupId,
+                groupDeleteButtons:document.querySelectorAll('.game-ui-gallery-group__delete').length,
+                bannerImage:getComputedStyle(
+                  document.getElementById('workflow-banner'), '::before'
+                ).backgroundImage.includes('img_banner_GameUI_Elements.png'),
+                bannerFilter:getComputedStyle(
+                  document.getElementById('workflow-banner'), '::before'
+                ).filter,
+                bannerScrimOpacity:Number(getComputedStyle(
+                  document.querySelector('.workflow-banner-scrim')
+                ).opacity)
               };
             })()
             """,
             await_promise=True,
         )
-        cdp.wait_for(
-            "document.querySelectorAll('.game-ui-gallery-group__cells .gallery-item').length === 15"
+        result["groupSelection"] = cdp.evaluate(
+            """
+            (() => {
+              document.getElementById('select-toggle-btn').click();
+              document.querySelector('.game-ui-gallery-group__cells .gallery-item').click();
+              return {
+                selectedCells:document.querySelectorAll('.game-ui-gallery-group__cells .gallery-item.selected').length,
+                selectedUnits:document.getElementById('selected-count').textContent.trim()
+              };
+            })()
+            """
         )
-        result["partialLabel"] = cdp.evaluate(
-            "document.querySelector('.game-ui-gallery-group__header span').textContent.trim()"
+        cdp.evaluate(
+            """
+            new Promise(resolve => {
+              document.getElementById('select-toggle-btn').click();
+              setTimeout(() => resolve(true), 350);
+            })
+            """,
+            await_promise=True,
+        )
+        cdp.evaluate("document.querySelector('.game-ui-gallery-group__delete').click(); true")
+        cdp.wait_for("document.getElementById('confirm-overlay-batch').classList.contains('open')")
+        result["deleteConfirmation"] = cdp.evaluate(
+            "document.getElementById('batch-confirm-text').textContent.trim()"
+        )
+        cdp.evaluate("document.getElementById('batch-confirm-ok').click(); true")
+        cdp.wait_for("document.querySelectorAll('.game-ui-gallery-group__cells .gallery-item').length === 0")
+        result["deletedGalleryCells"] = cdp.evaluate(
+            "document.querySelectorAll('.game-ui-gallery-group__cells .gallery-item').length"
         )
         result["restoreStatus"] = cdp.evaluate(
             f"""
             (async () => {{
-              const restored = await fetch('/api/v1/images/{result['deletedId']}/restore', {{method:'POST'}});
+              const restored = await fetch('/api/v1/game-ui-groups/{result['groupId']}/restore', {{method:'POST'}});
               document.getElementById('tab-generated').click();
               return restored.status;
             }})()
@@ -293,6 +325,32 @@ def _drive_browser(debug_port: int) -> dict:
         )
         result["reloadGalleryCells"] = cdp.evaluate(
             "document.querySelectorAll('.game-ui-gallery-group__cells .gallery-item').length"
+        )
+        owner_id = str(result["zipPath"]).split("/")[3]
+        cdp.command("Page.navigate", {"url": cdp.evaluate("location.origin") + "/admin"})
+        cdp.wait_for("document.readyState === 'complete' && document.querySelectorAll('.admin-user').length > 0")
+        selected_admin_user = cdp.evaluate(
+            f"""
+            (() => {{
+              const target = Array.from(document.querySelectorAll('.admin-user'))
+                .find(element => element.textContent.trim() === {json.dumps(owner_id)});
+              if (!target) return false;
+              target.click();
+              return true;
+            }})()
+            """
+        )
+        if not selected_admin_user:
+            raise RuntimeError("Generated owner was not listed in the admin UI")
+        cdp.wait_for("document.querySelectorAll('.admin-thumb--game-ui').length === 1")
+        result["adminGroupCards"] = cdp.evaluate(
+            "document.querySelectorAll('.admin-thumb--game-ui').length"
+        )
+        result["adminGroupImages"] = cdp.evaluate(
+            "document.querySelectorAll('.admin-thumb--game-ui img').length"
+        )
+        result["adminGroupAction"] = cdp.evaluate(
+            "document.querySelector('.admin-thumb--game-ui + .admin-actions .btn').textContent.trim()"
         )
         return result
     finally:
@@ -329,7 +387,9 @@ def run_smoke(*, keep_temp: bool = False) -> dict:
             "COMFYUI_SERVER": f"127.0.0.1:{fake_port}",
             "ASSET_CATALOG_FALLBACK_ENABLED": "false",
             "BETA_PASSWORD": "",
-            "ADMIN_ALLOW_UNAUTHENTICATED": "false",
+            "ADMIN_USER": "",
+            "ADMIN_PASSWORD": "",
+            "ADMIN_ALLOW_UNAUTHENTICATED": "true",
             "LOG_LEVEL": "WARNING",
             "LOG_TO_FILE": "false",
             "HEALTHZ_DISK_MIN_FREE_MB": "1",
@@ -406,25 +466,41 @@ def run_smoke(*, keep_temp: bool = False) -> dict:
             "groupedCount": 16,
             "groupedTotalPages": 1,
             "ordinaryCount": 10,
-            "deleteStatus": 200,
+            "groupDeleteButtons": 1,
+            "bannerImage": True,
+            "bannerScrimOpacity": 0,
+            "deletedGalleryCells": 0,
             "restoreStatus": 200,
             "galleryCells": 16,
             "galleryColumns": 4,
             "restoredGrid": "4x4",
             "reloadGalleryCells": 16,
+            "adminGroupCards": 1,
+            "adminGroupImages": 16,
+            "adminGroupAction": "묶음 휴지통으로",
         }
         failures = {
             key: {"expected": value, "actual": browser.get(key)}
             for key, value in expected.items()
             if browser.get(key) != value
         }
-        if "15/16개" not in str(browser.get("partialLabel") or ""):
-            failures["partialLabel"] = {
-                "expected": "contains 15/16개",
-                "actual": browser.get("partialLabel"),
+        if "묶음 전체" not in str(browser.get("deleteConfirmation") or ""):
+            failures["deleteConfirmation"] = {
+                "expected": "contains 묶음 전체",
+                "actual": browser.get("deleteConfirmation"),
+            }
+        if browser.get("groupSelection") != {"selectedCells": 16, "selectedUnits": "1개 항목 선택됨"}:
+            failures["groupSelection"] = {
+                "expected": {"selectedCells": 16, "selectedUnits": "1개 항목 선택됨"},
+                "actual": browser.get("groupSelection"),
             }
         if not report["prompt_has_sixteen"] or not report["prompt_has_four_by_four"]:
             failures["prompt"] = {"expected": "4x4 exact-count clauses", "actual": prompt}
+        if "brightness(0.68)" in str(browser.get("bannerFilter") or ""):
+            failures["bannerFilter"] = {
+                "expected": "no forced low-brightness filter",
+                "actual": browser.get("bannerFilter"),
+            }
         if report["zip"] != {
             "manifest_grid": "4x4",
             "manifest_count": 16,

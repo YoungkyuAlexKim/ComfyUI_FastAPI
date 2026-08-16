@@ -203,8 +203,108 @@ class GameUiAssetTests(unittest.TestCase):
                 with open(manifest_path, "r", encoding="utf-8") as handle:
                     saved_group = json.load(handle)
                 self.assertEqual(saved_group["prompt"], "붉은 화염 스킬 아이콘")
+                self.assertEqual(saved_group["status"], "active")
                 self.assertEqual(service.store.group_stats(), {"game_ui_group:active": 1})
                 self.assertEqual(service.count_media("tester", "image"), 4)
+
+                # A legacy child-level call is promoted to one atomic group
+                # transition so a partially deleted bundle cannot be created.
+                child_id = gallery_items[0]["id"]
+                self.assertTrue(service.update_status("tester", child_id, "trash", kind="image"))
+                self.assertEqual(service.count_media("tester", "image"), 0)
+                trashed = service.list_media("tester", "image", include_trash=True)
+                self.assertEqual({item["status"] for item in trashed}, {"trash"})
+                self.assertEqual(service.store.group_stats(), {"game_ui_group:trash": 1})
+                self.assertEqual(json.loads(Path(manifest_path).read_text(encoding="utf-8"))["status"], "trash")
+                self.assertFalse(service.update_group_status("other-owner", group["id"], "active"))
+
+                self.assertTrue(service.update_group_status("tester", group["id"], "active"))
+                self.assertEqual(service.count_media("tester", "image"), 4)
+                self.assertEqual(service.store.group_stats(), {"game_ui_group:active": 1})
+                self.assertEqual(json.loads(Path(manifest_path).read_text(encoding="utf-8"))["status"], "active")
+
+    def test_group_status_failure_restores_every_sidecar_and_catalog_row(self):
+        sheet = _synthetic_sheet()
+        assets = process_game_ui_sheet(sheet, normalize_game_ui_options("transparent"))
+        req = SimpleNamespace(
+            workflow_id="GameUI_Elements",
+            aspect_ratio="square",
+            image_size="2K",
+            image_model="openai/gpt-image-2",
+            image_quality="medium",
+            seed=321,
+            user_prompt="server prompt",
+            game_ui_original_prompt="원자적 상태 전환 테스트",
+            game_ui_background_mode="transparent",
+            game_ui_grid="2x2",
+            input_image_id=None,
+            input_image_ids=None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            service = AssetService(AssetStore(os.path.join(tmp, "catalog.db")), tmp)
+            with mock.patch.object(media_store, "OUTPUT_DIR", tmp), mock.patch.object(
+                asset_runtime, "_asset_service", service
+            ):
+                _, group = media_store._save_game_ui_group("tester", sheet, assets, req, "test")
+                rows = service.store.list_group_assets(group["id"], "tester")
+                tracked_paths = [
+                    Path(service.resolve_storage_path(row["metadata_path"])) for row in rows
+                ]
+                group_row = service.get_group("tester", group["id"])
+                tracked_paths.append(Path(service.resolve_storage_path(group_row["manifest_path"])))
+                originals = {path: path.read_bytes() for path in tracked_paths}
+
+                with mock.patch.object(
+                    service.store,
+                    "update_group_bundle_status",
+                    side_effect=RuntimeError("simulated status transaction failure"),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "simulated status transaction failure"):
+                        service.update_group_status("tester", group["id"], "trash")
+
+                self.assertTrue(all(path.read_bytes() == originals[path] for path in tracked_paths))
+                self.assertEqual(service.store.group_stats(), {"game_ui_group:active": 1})
+                self.assertEqual(
+                    {row["status"] for row in service.store.list_group_assets(group["id"], "tester")},
+                    {"active"},
+                )
+
+    def test_group_purge_removes_archive_sheet_derivatives_and_catalog_bundle(self):
+        sheet = _synthetic_sheet()
+        assets = process_game_ui_sheet(sheet, normalize_game_ui_options("transparent"))
+        req = SimpleNamespace(
+            workflow_id="GameUI_Elements",
+            aspect_ratio="square",
+            image_size="2K",
+            image_model="openai/gpt-image-2",
+            image_quality="medium",
+            seed=654,
+            user_prompt="server prompt",
+            game_ui_original_prompt="그룹 영구 삭제 테스트",
+            game_ui_background_mode="transparent",
+            game_ui_grid="2x2",
+            input_image_id=None,
+            input_image_ids=None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            service = AssetService(AssetStore(os.path.join(tmp, "catalog.db")), tmp)
+            with mock.patch.object(media_store, "OUTPUT_DIR", tmp), mock.patch.object(
+                asset_runtime, "_asset_service", service
+            ):
+                _, group = media_store._save_game_ui_group("tester", sheet, assets, req, "test")
+                child_ids = [item["id"] for item in group["items"]]
+                archive_path = Path(
+                    service.resolve_storage_path(group["download_url"].removeprefix("/outputs/"))
+                )
+                group_dir = archive_path.parent
+                self.assertTrue(group_dir.is_dir())
+
+                self.assertTrue(service.update_group_status("tester", group["id"], "trash"))
+                self.assertEqual(service.purge_trash_for_owner("tester"), 4)
+                self.assertFalse(group_dir.exists())
+                self.assertIsNone(service.get_group("tester", group["id"]))
+                self.assertTrue(all(service.get("tester", child_id) is None for child_id in child_ids))
+                self.assertEqual(service.store.group_stats(), {})
 
     def test_group_storage_uses_selected_grid_in_catalog_manifest_and_zip(self):
         sheet, _ = _synthetic_grid(3)

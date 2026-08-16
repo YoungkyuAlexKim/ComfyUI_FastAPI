@@ -50,6 +50,10 @@ class ApplicationStartupTests(unittest.TestCase):
             with TestClient(app) as client:
                 health = client.get("/healthz")
                 create_page = client.get("/create")
+                banner_config = client.get("/static/js/app_config.js")
+                game_ui_banner = client.get(
+                    "/static/img/banner/img_banner_GameUI_Elements.png"
+                )
                 workflows = client.get("/api/v1/workflows")
                 initialized = client.post("/mcp/", headers=headers, json=initialize)
                 listed = client.post(
@@ -59,6 +63,12 @@ class ApplicationStartupTests(unittest.TestCase):
                 )
                 assert health.status_code == 200, health.text
                 assert create_page.status_code == 200, create_page.text
+                assert banner_config.status_code == 200, banner_config.text
+                assert "img_banner_GameUI_Elements.png" in banner_config.text
+                assert game_ui_banner.status_code == 200, game_ui_banner.text
+                assert game_ui_banner.headers["content-type"] == "image/png"
+                with Image.open(BytesIO(game_ui_banner.content)) as banner_image:
+                    assert banner_image.size == (422, 180)
                 assert 'name="game-ui-grid" value="3x3"' in create_page.text
                 assert 'name="game-ui-grid" value="4x4"' in create_page.text
                 assert "preserve_groups', 'true'" in create_page.text

@@ -8,6 +8,7 @@ from io import BytesIO
 import json
 import os
 from pathlib import Path
+import shutil
 import threading
 import time
 import uuid
@@ -194,13 +195,16 @@ class AssetService:
         kind = str(metadata.get("kind") or "")
         if kind != "game_ui_group":
             raise ValueError("Invalid asset group kind")
+        status = str(metadata.get("status") or "active")
+        if status not in {"active", "trash"}:
+            status = "active"
         archive_path = self._path_from_output_url(metadata.get("download_url"))
         preview_path = self._path_from_output_url(metadata.get("sheet_url"))
         return {
             "group_id": group_id,
             "owner_id": principal_id,
             "kind": kind,
-            "status": "active",
+            "status": status,
             "manifest_path": self._relative_path(manifest_path),
             "archive_path": self._relative_path(archive_path),
             "preview_path": self._relative_path(preview_path),
@@ -438,6 +442,13 @@ class AssetService:
             return None
         return self.store.get(safe_asset_id, principal_id)
 
+    def get_group(self, owner_id: str, group_id: str) -> Optional[dict[str, Any]]:
+        principal_id = require_principal_id(owner_id)
+        safe_group_id = _valid_asset_id(group_id)
+        if not safe_group_id:
+            return None
+        return self.store.get_group(safe_group_id, principal_id)
+
     def locate_metadata(self, owner_id: str, asset_id: str, *, kind: str | None = None) -> Optional[str]:
         row = self.get(owner_id, asset_id)
         if not row or (kind is not None and row.get("kind") != kind):
@@ -453,6 +464,9 @@ class AssetService:
             row = self.get(principal_id, asset_id)
             if not row or (kind is not None and row.get("kind") != kind):
                 return False
+            group_id = _valid_asset_id(row.get("group_id"))
+            if row.get("kind") == "image" and group_id:
+                return self.update_group_status(principal_id, group_id, status)
             meta_path = self.resolve_storage_path(row.get("metadata_path"))
             old_meta = dict(row.get("metadata") or {})
             new_meta = dict(old_meta)
@@ -467,6 +481,70 @@ class AssetService:
                 raise
             return updated
 
+    def update_group_status(self, owner_id: str, group_id: str, status: str) -> bool:
+        """Move a Game UI bundle and all of its children together.
+
+        JSON sidecars are updated before the single SQLite transaction. If any
+        write or catalog update fails, every file already touched is restored
+        to its exact previous bytes.
+        """
+
+        if status not in {"active", "trash"}:
+            raise ValueError("Invalid asset status")
+        principal_id = require_principal_id(owner_id)
+        safe_group_id = _valid_asset_id(group_id)
+        if not safe_group_id:
+            return False
+        with self._status_lock:
+            group = self.store.get_group(safe_group_id, principal_id)
+            if not group or group.get("kind") != "game_ui_group":
+                return False
+            children = self.store.list_group_assets(safe_group_id, principal_id)
+            if not children:
+                return False
+
+            group_metadata = dict(group.get("metadata") or {})
+            group_metadata["status"] = status
+            child_metadata: dict[str, dict[str, Any]] = {}
+            writes: list[tuple[Path, bytes | None]] = []
+
+            def write_status_file(relative_path: object, metadata: dict[str, Any]) -> None:
+                relative = relative_path if isinstance(relative_path, str) else None
+                resolved = self.resolve_storage_path(relative)
+                if not resolved:
+                    return
+                path = Path(resolved)
+                previous = path.read_bytes() if path.is_file() else None
+                atomic_write_json(path, metadata)
+                writes.append((path, previous))
+
+            try:
+                for child in children:
+                    asset_id = str(child["asset_id"])
+                    metadata = dict(child.get("metadata") or {})
+                    metadata["status"] = status
+                    child_metadata[asset_id] = metadata
+                    write_status_file(child.get("metadata_path"), metadata)
+                write_status_file(group.get("manifest_path"), group_metadata)
+                updated = self.store.update_group_bundle_status(
+                    safe_group_id,
+                    principal_id,
+                    status,
+                    group_metadata=group_metadata,
+                    asset_metadata=child_metadata,
+                )
+                return updated == len(children)
+            except Exception:
+                for path, previous in reversed(writes):
+                    try:
+                        if previous is None:
+                            path.unlink(missing_ok=True)
+                        else:
+                            atomic_write_bytes(path, previous)
+                    except OSError:
+                        pass
+                raise
+
     def purge_trash_for_owner(self, owner_id: str) -> int:
         """Permanently remove trashed catalog assets for one owner.
 
@@ -477,9 +555,46 @@ class AssetService:
 
         principal_id = require_principal_id(owner_id)
         rows = self.store.list(principal_id, include_trash=True)
+        groups = self.store.list_groups(principal_id, include_trash=True)
         purged = 0
+        grouped_asset_ids: set[str] = set()
+        for group in groups:
+            group_id = str(group.get("group_id") or "")
+            children = self.store.list_group_assets(group_id, principal_id)
+            grouped_asset_ids.update(str(child["asset_id"]) for child in children)
+            if group.get("status") != "trash" or not children:
+                continue
+            # A partially trashed legacy bundle must never be physically
+            # dismantled. New status transitions make this state impossible.
+            if any(child.get("status") != "trash" for child in children):
+                continue
+            candidate_paths = [
+                self.resolve_storage_path(group.get("manifest_path")),
+                self.resolve_storage_path(group.get("archive_path")),
+                self.resolve_storage_path(group.get("preview_path")),
+            ]
+            existing_parents = {Path(path).resolve().parent for path in candidate_paths if path}
+            if len(existing_parents) != 1:
+                continue
+            group_dir = next(iter(existing_parents))
+            owner_root = (self.users_root / principal_id).resolve()
+            try:
+                group_dir.relative_to(owner_root)
+            except ValueError:
+                continue
+            if group_dir.name != group_id or group_dir.parent.name != "game_ui_groups":
+                continue
+            try:
+                if group_dir.exists():
+                    shutil.rmtree(group_dir)
+            except OSError:
+                continue
+            purged += self.store.delete_group_bundle(group_id, principal_id)
+
         for row in rows:
             if row.get("status") != "trash":
+                continue
+            if str(row.get("asset_id")) in grouped_asset_ids:
                 continue
             paths = [
                 self.resolve_storage_path(row.get("storage_path")),

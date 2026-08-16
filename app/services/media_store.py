@@ -843,6 +843,7 @@ def _save_game_ui_group(
         group = {
             "id": group_id,
             "kind": "game_ui_group",
+            "status": "active",
             "workflow_id": getattr(req, "workflow_id", None),
             "prompt": original_prompt,
             "background_mode": background_mode,

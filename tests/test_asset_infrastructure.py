@@ -25,7 +25,7 @@ from app.auth.user_management import (
 )
 from app.services.asset_service import AssetService, atomic_write_json
 from app.services import asset_runtime, media_store
-from app.routers.admin import require_admin
+from app.routers.admin import _paginate_images_preserving_groups, require_admin
 from fastapi import HTTPException
 
 
@@ -78,6 +78,27 @@ class AdminBoundaryTests(unittest.TestCase):
     def test_unsafe_admin_bypass_requires_explicit_opt_in(self):
         with mock.patch.dict(os.environ, {"ADMIN_ALLOW_UNAUTHENTICATED": "true"}, clear=True):
             self.assertTrue(require_admin(None))
+
+    def test_admin_pagination_keeps_game_ui_bundle_on_one_page(self):
+        items = [
+            {"id": f"recent{index}", "meta": {}}
+            for index in range(12)
+        ]
+        items.extend(
+            {
+                "id": f"cell{index}",
+                "meta": {"game_ui_group_id": "group4x4"},
+            }
+            for index in range(16)
+        )
+        items.append({"id": "oldest", "meta": {}})
+
+        first, first_pages = _paginate_images_preserving_groups(items, 1, 24)
+        second, second_pages = _paginate_images_preserving_groups(items, 2, 24)
+        self.assertEqual(len(first), 12)
+        self.assertEqual(len(second), 17)
+        self.assertEqual(first_pages, 2)
+        self.assertEqual(second_pages, 2)
 
 
 class AssetServiceTests(unittest.TestCase):

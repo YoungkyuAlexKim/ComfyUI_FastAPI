@@ -137,3 +137,29 @@ async def user_restore_image(image_id: str, request: Request):
     return {"ok": True}
 
 
+def _update_game_ui_group_status(request: Request, group_id: str, status: str) -> bool:
+    asset_service = getattr(request.app.state, "asset_service", None)
+    if asset_service is None:
+        raise HTTPException(status_code=503, detail="Asset catalog is not initialized")
+    owner_id = _get_anon_id_from_request(request)
+    return asset_service.update_group_status(owner_id, group_id, status)
+
+
+@router.post("/api/v1/game-ui-groups/{group_id}/delete")
+async def user_soft_delete_game_ui_group(group_id: str, request: Request):
+    owner_id = _get_anon_id_from_request(request)
+    logger.info({"event": "user_soft_delete_game_ui_group", "owner_id": owner_id, "group_id": group_id})
+    if not _update_game_ui_group_status(request, group_id, "trash"):
+        raise HTTPException(status_code=404, detail="Game UI group not found")
+    return {"ok": True, "scope": "group", "group_id": group_id}
+
+
+@router.post("/api/v1/game-ui-groups/{group_id}/restore")
+async def user_restore_game_ui_group(group_id: str, request: Request):
+    owner_id = _get_anon_id_from_request(request)
+    logger.info({"event": "user_restore_game_ui_group", "owner_id": owner_id, "group_id": group_id})
+    if not _update_game_ui_group_status(request, group_id, "active"):
+        raise HTTPException(status_code=404, detail="Game UI group not found")
+    return {"ok": True, "scope": "group", "group_id": group_id}
+
+
