@@ -55,6 +55,12 @@ class ApplicationStartupTests(unittest.TestCase):
                     "/static/img/banner/img_banner_GameUI_Elements.png"
                 )
                 workflows = client.get("/api/v1/workflows")
+                admin_auth = ("startup-admin", "startup-pass")
+                admin_page = client.get("/admin", auth=admin_auth)
+                cost_report = client.get(
+                    "/api/v1/admin/generation-controls/cost-report?days=30",
+                    auth=admin_auth,
+                )
                 initialized = client.post("/mcp/", headers=headers, json=initialize)
                 listed = client.post(
                     "/mcp/",
@@ -63,12 +69,18 @@ class ApplicationStartupTests(unittest.TestCase):
                 )
                 assert health.status_code == 200, health.text
                 assert create_page.status_code == 200, create_page.text
+                assert 'id="mcp-link-card"' in create_page.text
                 assert banner_config.status_code == 200, banner_config.text
                 assert "img_banner_GameUI_Elements.png" in banner_config.text
                 assert game_ui_banner.status_code == 200, game_ui_banner.text
                 assert game_ui_banner.headers["content-type"] == "image/png"
                 with Image.open(BytesIO(game_ui_banner.content)) as banner_image:
                     assert banner_image.size == (422, 180)
+                assert admin_page.status_code == 200, admin_page.text
+                assert 'id="cost-ip-table"' in admin_page.text
+                assert 'id="cost-filter-ip"' in admin_page.text
+                assert cost_report.status_code == 200, cost_report.text
+                assert cost_report.json()["summary"]["actual_cost_record_count"] == 0
                 assert 'name="game-ui-grid" value="3x3"' in create_page.text
                 assert 'name="game-ui-grid" value="4x4"' in create_page.text
                 assert "preserve_groups', 'true'" in create_page.text
@@ -77,15 +89,19 @@ class ApplicationStartupTests(unittest.TestCase):
                     "2x2", "3x3", "4x4"
                 ]
                 assert "lc_principal" not in health.headers.get("set-cookie", "")
-                assert initialized.json()["result"]["serverInfo"]["version"] == "0.4.0"
+                assert initialized.json()["result"]["serverInfo"]["version"] == "0.7.0"
                 assert "lc_principal" not in initialized.headers.get("set-cookie", "")
                 names = {item["name"] for item in listed.json()["result"]["tools"]}
                 assert {
                     "list_image_assets",
                     "get_image_asset",
                     "create_input_image_asset",
+                    "plan_generation",
                     "create_managed_image_asset",
                     "create_game_ui_assets",
+                    "create_character_sheet",
+                    "create_storyboard",
+                    "remove_background",
                 } <= names
 
                 image = Image.new("RGB", (8, 6), (20, 40, 60))
@@ -132,17 +148,122 @@ class ApplicationStartupTests(unittest.TestCase):
                     "BETA_PASSWORD": "",
                     "MCP_ALLOWED_CLIENT_CIDRS": "",
                     "ASSET_CATALOG_FALLBACK_ENABLED": "false",
+                    "ADMIN_USER": "startup-admin",
+                    "ADMIN_PASSWORD": "startup-pass",
                 }
             )
-            completed = subprocess.run(
-                [sys.executable, "-c", script],
-                cwd=Path(__file__).resolve().parents[1],
-                env=environment,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
+            completed = None
+            for _ in range(2):
+                completed = subprocess.run(
+                    [sys.executable, "-c", script],
+                    cwd=Path(__file__).resolve().parents[1],
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+                if completed.returncode not in {3221225477, -1073741819}:
+                    break
+        self.assertEqual(
+            completed.returncode,
+            0,
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+        )
+
+    def test_beta_gate_allows_only_ip_owned_mcp_output(self):
+        script = textwrap.dedent(
+            """
+            import hashlib
+            import os
+            from pathlib import Path
+            import zipfile
+
+            from fastapi.testclient import TestClient
+
+            output_root = Path(os.environ["OUTPUT_DIR"])
+            client_ip = "testclient"
+            owner = "mcp-ip-" + hashlib.sha256(
+                f"mcp-ip:{client_ip}".encode("utf-8")
+            ).hexdigest()[:24]
+            foreign_owner = "mcp-ip-" + hashlib.sha256(
+                b"mcp-ip:203.0.113.9"
+            ).hexdigest()[:24]
+
+            relative = Path("2026/08/17/game_ui_groups/group-1/group.zip")
+            owned_zip = output_root / "users" / owner / relative
+            foreign_zip = output_root / "users" / foreign_owner / relative
+            owned_zip.parent.mkdir(parents=True, exist_ok=True)
+            foreign_zip.parent.mkdir(parents=True, exist_ok=True)
+            for archive_path in (owned_zip, foreign_zip):
+                with zipfile.ZipFile(archive_path, "w") as archive:
+                    archive.writestr("manifest.json", '{"count": 4}')
+                    archive.writestr("masters/cell_01.png", b"png-placeholder")
+
+            hidden_sidecar = owned_zip.with_name("manifest.json")
+            hidden_sidecar.write_text('{"private": true}', encoding="utf-8")
+
+            from app.main import app
+
+            owned_url = f"/outputs/users/{owner}/{relative.as_posix()}"
+            foreign_url = f"/outputs/users/{foreign_owner}/{relative.as_posix()}"
+            sidecar_url = owned_url.rsplit("/", 1)[0] + "/manifest.json"
+
+            with TestClient(app) as client:
+                beta_page = client.get("/create", follow_redirects=False)
+                owned = client.get(owned_url, follow_redirects=False)
+                spoofed = client.get(
+                    owned_url,
+                    headers={"X-Forwarded-For": "203.0.113.9"},
+                    follow_redirects=False,
+                )
+                foreign = client.get(foreign_url, follow_redirects=False)
+                sidecar = client.get(sidecar_url, follow_redirects=False)
+
+                assert beta_page.status_code == 303, beta_page.text
+                assert beta_page.headers["location"] == "/beta-login"
+                assert owned.status_code == 200, owned.text
+                assert owned.headers["content-type"] in {
+                    "application/zip",
+                    "application/x-zip-compressed",
+                }, owned.headers["content-type"]
+                assert owned.content.startswith(b"PK")
+                assert "lc_principal" not in owned.headers.get("set-cookie", "")
+                assert spoofed.status_code == 200, spoofed.text
+                assert foreign.status_code == 404, foreign.text
+                assert sidecar.status_code == 404, sidecar.text
+            """
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output_dir = root / "outputs"
+            output_dir.mkdir()
+            environment = dict(os.environ)
+            environment.update(
+                {
+                    "JOB_DB_PATH": str(root / "app_data.db"),
+                    "OUTPUT_DIR": str(output_dir),
+                    "PRINCIPAL_COOKIE_SECRET": "startup-test-secret-" + ("x" * 40),
+                    "LOG_TO_FILE": "false",
+                    "BETA_PASSWORD": "beta-test-password",
+                    "MCP_ALLOWED_CLIENT_CIDRS": "",
+                    "TRUSTED_PROXY_CIDRS": "",
+                    "ASSET_CATALOG_FALLBACK_ENABLED": "false",
+                }
             )
+            completed = None
+            for _ in range(2):
+                completed = subprocess.run(
+                    [sys.executable, "-c", script],
+                    cwd=Path(__file__).resolve().parents[1],
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+                if completed.returncode not in {3221225477, -1073741819}:
+                    break
         self.assertEqual(
             completed.returncode,
             0,

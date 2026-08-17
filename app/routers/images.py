@@ -4,6 +4,7 @@ from ..logging_utils import setup_logging
 from ..auth.user_management import _get_anon_id_from_request
 from ..services.media_store import _gather_user_images, _update_image_status
 from ..schemas.api_models import PaginatedImages
+from ..services.principal_links import linked_mcp_owner_ids
 
 
 logger = setup_logging()
@@ -84,14 +85,15 @@ async def list_images(
     size_val = max(1, min(100, int(size)))
     asset_service = getattr(request.app.state, "asset_service", None)
     if asset_service is not None:
+        owner_ids = [anon_id, *linked_mcp_owner_ids(request, anon_id)]
         if preserve_groups:
-            slice_items, meta = asset_service.list_media_group_preserving_page(
-                anon_id, "image", page=page_val, size=size_val
+            slice_items, meta = asset_service.list_media_group_preserving_page_for_owners(
+                owner_ids, "image", page=page_val, size=size_val
             )
         else:
-            total = asset_service.count_media(anon_id, "image")
-            slice_items = asset_service.list_media(
-                anon_id, "image", limit=size_val, offset=(page_val - 1) * size_val
+            total = asset_service.count_media_for_owners(owner_ids, "image")
+            slice_items = asset_service.list_media_for_owners(
+                owner_ids, "image", limit=size_val, offset=(page_val - 1) * size_val
             )
             meta = {
                 "page": page_val,
@@ -113,6 +115,7 @@ async def list_images(
             "created_at": datetime.fromtimestamp(it["mtime"], tz=timezone.utc).isoformat(),
             "meta": it.get("meta"),
             "thumb_url": it.get("thumb_url"),
+            "linked_from_mcp": it.get("owner_id") != anon_id,
         })
     return {"items": response_items, **meta}
 

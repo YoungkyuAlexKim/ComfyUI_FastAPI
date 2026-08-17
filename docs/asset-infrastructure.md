@@ -1,6 +1,6 @@
 # 자산 인프라
 
-> 최종 업데이트: 2026-08-13
+> 최종 업데이트: 2026-08-17
 >
 > 상태: 운영 데이터 백필 완료, 호환 전환 중
 
@@ -15,6 +15,7 @@
 - `assets`: 이미지, 입력 이미지, 오디오
 - `asset_groups`: Game UI 그룹
 - `schema_migrations`: 카탈로그와 백필 버전
+- `principal_links`, `principal_link_events`: 웹↔MCP 갤러리 연결과 감사 이력
 
 저장 경로는 `OUTPUT_DIR` 기준 상대 경로로 기록합니다. 기존 파일은 백필 중 이동하거나
 이름을 바꾸지 않습니다.
@@ -36,12 +37,17 @@
 - 누락 그룹 파일 0
 - 기존 폴더 조회와 카탈로그 조회 70명 × 3종 비교 불일치 0
 
-이 수치는 체크포인트 기록이며 운영 중 계속 증가합니다. 현재 값은 다음 명령으로
+이 수치는 체크포인트 기록이며 운영 중 생성·삭제·복구에 따라 변합니다. 현재 값은 다음 명령으로
 확인합니다.
 
 ```powershell
 .\venv\Scripts\python.exe -m app.asset_admin audit
 ```
+
+가장 최근인 2026-08-17 read-only 재감사 스냅샷은 자산 1,278개, active Game UI 그룹 5개이며
+`missing_files`, `missing_metadata`, `missing_group_files`가 모두 0입니다. 이전 스냅샷과의
+개수 차이는 운영 중 생성·삭제·복구에 따라 달라질 수 있으므로 고정 개수보다 누락 0과
+카탈로그 무결성을 성공 기준으로 사용합니다.
 
 ## 백필과 재조정
 
@@ -86,9 +92,25 @@
 - principal ID는 영문·숫자·`_`·`-`만 허용하고 모든 사용자 경로에서 재검증합니다.
 - `OUTPUT_DIR` 또는 사용자 root를 벗어나는 경로는 거부합니다.
 - `/api/v1/assets/{asset_id}/content|thumbnail`은 소유자와 active 상태를 확인합니다.
-- 기존 `/outputs/users/...` URL도 같은 웹/MCP principal만 접근할 수 있습니다.
+- 기존 `/outputs/users/...` URL은 같은 owner 또는 명시적으로 연결된 웹 principal만 접근할
+  수 있으며, 관계없는 principal에는 404를 반환합니다.
 - 사용자 및 피드 JSON sidecar는 정적 URL로 제공하지 않습니다.
 - 공개 피드 이미지는 사용자 개인 갤러리와 별도의 복사본입니다.
+
+웹 서명 쿠키 principal과 MCP IP principal은 서로 다른 원본 소유권 공간입니다. 자동 병합은
+하지 않지만 `MCP_WEB_LINK_ENABLED=true`이면 같은 원본 IP의 웹 사용자가 갤러리 안내에서
+한 번 명시적으로 연결할 수 있습니다. 연결 관계는 SQLite `principal_links`에 영구 저장되고
+연결·재확인·충돌·해제는 `principal_link_events`에 기록됩니다.
+
+연결 후 웹의 생성 이미지 갤러리는 웹 owner와 연결된 MCP owner를 시간순으로 함께 조회하되
+각 catalog row와 파일의 원래 owner는 바꾸지 않습니다. MCP 이미지는 `MCP`로 표시되고 웹에서
+직접 삭제하거나 쇼케이스에 공유하지 않습니다. 편집에 사용하면 웹 input으로 복사해 이후
+작업을 분리합니다. 연결을 해제하면 목록에서만 빠지고 MCP 원본은 삭제되지 않습니다. 한 MCP
+workspace는 한 웹 principal에만 연결할 수 있어 쿠키가 다른 사용자의 자동 takeover를 막습니다.
+
+2026-08-17 실제 동일 PC 웹 갤러리에서 연결 안내를 누른 뒤 MCP 생성 이미지 2개와 `MCP`
+표시가 나타나는 것을 확인했습니다. 자동 회귀는 DB 재개방 후 지속성, 멱등 연결, 충돌 차단,
+웹 input 복사와 연결 해제 후 원본 보존을 검사합니다.
 
 ## 브라우저 principal 전환
 
@@ -131,6 +153,6 @@ manifest를 하나의 검증된 세트로 만듭니다.
 - `principal_admin readiness`로 활성 사용자 승격의 quiet window와 검증 백업을 확인한 뒤
   `enforced` 전환
 - `manage_backup_task.ps1`로 외부 저장소를 지정하고 `restore-drill`까지 성공시킴
-- 실제 데이터 parity까지 통과한 `asset_admin catalog-canary` 결과에 완전 백업·복구 gate를
-  더한 뒤 `ASSET_CATALOG_FALLBACK_ENABLED=false` 실서버 canary와 폴더 스캔 제거
+- 검증 호스트의 `ASSET_CATALOG_FALLBACK_ENABLED=false` canary는 통과했습니다. 외부
+  완전 백업·복구 gate와 관찰 기간을 마친 뒤 구형 폴더 스캔 코드를 별도 변경으로 제거
 - UI가 소유권 확인 자산 endpoint를 기본 URL로 사용하도록 점진 전환

@@ -4863,6 +4863,11 @@
             grid: document.getElementById('gallery-grid'),
             loadMoreBtn: document.getElementById('gallery-load-more')
         };
+        const mcpLinkCard = document.getElementById('mcp-link-card');
+        const mcpLinkTitle = document.getElementById('mcp-link-title');
+        const mcpLinkDescription = document.getElementById('mcp-link-description');
+        const mcpLinkAction = document.getElementById('mcp-link-action');
+        let mcpLinkStatus = null;
         let galleryItems = [];
         let nextCursor = null;
         let galleryLoading = false;
@@ -4943,9 +4948,9 @@
 
         selectToggleBtn?.addEventListener('click', () => setSelectionMode(!selectionMode));
         selectAllBtn?.addEventListener('click', () => {
-            galleryItems.forEach(it => selectedKeys.add(gallerySelectionKey(it)));
+            galleryItems.filter(it => !it.linked_from_mcp).forEach(it => selectedKeys.add(gallerySelectionKey(it)));
             // 썸네일 클래스를 즉시 반영
-            document.querySelectorAll('.gallery-item').forEach(el => el.classList.add('selected'));
+            document.querySelectorAll('.gallery-item:not(.gallery-item--linked-mcp)').forEach(el => el.classList.add('selected'));
             updateSelectedCount();
         });
         clearSelectionBtn?.addEventListener('click', () => {
@@ -5078,6 +5083,76 @@
             if (file) uploadInputsFile(file);
         });
 
+        function renderMcpLinkStatus(status) {
+            mcpLinkStatus = status || null;
+            if (!mcpLinkCard || !status || status.enabled === false) {
+                if (mcpLinkCard) mcpLinkCard.hidden = true;
+                return;
+            }
+            const state = String(status.state || 'empty');
+            const candidateCount = Number(status.candidate_image_count || 0);
+            const linkedCount = Number(status.linked_image_count || 0);
+            const workspaceCount = Number(status.linked_workspace_count || 0);
+            mcpLinkAction.hidden = false;
+            mcpLinkAction.disabled = false;
+            mcpLinkAction.classList.remove('chip-btn--danger');
+            if (state === 'connected') {
+                mcpLinkTitle.textContent = '이 PC의 AI 작업이 연결되어 있습니다';
+                mcpLinkDescription.textContent = `MCP 생성 이미지 ${linkedCount}개를 이 갤러리에서 함께 봅니다.`;
+                mcpLinkAction.textContent = '연결 해제';
+                mcpLinkAction.classList.add('chip-btn--danger');
+            } else if (state === 'available') {
+                mcpLinkTitle.textContent = `이 PC에서 만든 AI 이미지 ${candidateCount}개`;
+                mcpLinkDescription.textContent = '한 번 연결하면 앞으로 웹 갤러리에서 함께 볼 수 있습니다.';
+                mcpLinkAction.textContent = '연결하기';
+            } else if (state === 'conflict') {
+                mcpLinkTitle.textContent = '이미 연결된 AI 작업 공간입니다';
+                mcpLinkDescription.textContent = '다른 웹 작업 공간의 연결을 자동으로 가져오지 않습니다. 관리자에게 확인해주세요.';
+                mcpLinkAction.hidden = true;
+            } else if (workspaceCount > 0) {
+                mcpLinkTitle.textContent = `AI 작업 공간 ${workspaceCount}개 연결됨`;
+                mcpLinkDescription.textContent = `이전 MCP 생성 이미지 ${linkedCount}개를 함께 표시하고 있습니다.`;
+                mcpLinkAction.hidden = true;
+            } else {
+                mcpLinkCard.hidden = true;
+                return;
+            }
+            mcpLinkCard.hidden = false;
+        }
+
+        async function loadMcpLinkStatus() {
+            try {
+                const response = await fetch('/api/v1/principal-links/mcp', { cache: 'no-store' });
+                if (!response.ok) throw new Error(`status ${response.status}`);
+                renderMcpLinkStatus(await response.json());
+            } catch (error) {
+                console.debug('[mcp-link] status unavailable', error);
+                if (mcpLinkCard) mcpLinkCard.hidden = true;
+            }
+        }
+
+        mcpLinkAction?.addEventListener('click', async () => {
+            if (!mcpLinkStatus) return;
+            const connected = mcpLinkStatus.state === 'connected';
+            if (connected && !confirm('이 PC의 MCP 생성 이미지를 웹 갤러리에서 분리할까요? 원본 이미지는 삭제되지 않습니다.')) return;
+            mcpLinkAction.disabled = true;
+            try {
+                const response = await fetch('/api/v1/principal-links/mcp', {
+                    method: connected ? 'DELETE' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}'
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || `status ${response.status}`);
+                showStatus(connected ? 'MCP 작업 공간 연결을 해제했습니다.' : '이 PC의 MCP 작업 공간을 연결했습니다.', 'success');
+                await loadMcpLinkStatus();
+                if (gallerySource === 'generated') fetchGallery(true);
+            } catch (error) {
+                showStatus(`MCP 작업 공간 연결 실패: ${error.message}`, 'error');
+                await loadMcpLinkStatus();
+            }
+        });
+
         async function fetchGallery(initial = false) {
             if (galleryLoading) return;
             galleryLoading = true;
@@ -5152,6 +5227,7 @@
                 const i = idx;
                 const a = document.createElement('button');
                 a.className = 'gallery-item';
+                if (it.linked_from_mcp) a.classList.add('gallery-item--linked-mcp');
                 a.dataset.imageId = it.id;
                 const selectionKey = gallerySelectionKey(it);
                 a.dataset.selectionKey = selectionKey;
@@ -5188,6 +5264,7 @@
                     if (!selectionMode) return; // 기본 라이트박스 동작은 위에서 처리
                     ev.preventDefault();
                     ev.stopPropagation();
+                    if (it.linked_from_mcp) return;
                     if (selectedKeys.has(selectionKey)) {
                         selectedKeys.delete(selectionKey);
                         applySelectionClass(selectionKey, false);
@@ -5240,7 +5317,7 @@
                             event.stopPropagation();
                             openBatchDeleteConfirm([`group:${gameUiGroupId}`]);
                         });
-                        actions.appendChild(deleteGroupButton);
+                        if (!it.linked_from_mcp) actions.appendChild(deleteGroupButton);
                         header.appendChild(actions);
                         const cells = document.createElement('div');
                         cells.className = 'game-ui-gallery-group__cells';
@@ -5744,7 +5821,7 @@
             try {
                 const btn = document.getElementById('lb-share-feed');
                 const isGenerated = (metaItem && metaItem.source) ? (metaItem.source === 'generated') : (gallerySource === 'generated');
-                const canShow = !!(btn && isGenerated && metaItem && metaItem.id);
+                const canShow = !!(btn && isGenerated && metaItem && metaItem.id && !metaItem.linked_from_mcp);
                 if (btn) btn.style.display = canShow ? '' : 'none';
             } catch (_) {}
             // ensure fade-in restarts
@@ -5927,6 +6004,7 @@
                 toggle.setAttribute('aria-label','갤러리 닫기');
                 try { toggle.setAttribute('title','갤러리 닫기'); } catch(_) {}
                 // Ensure upload icon reflects current active tab on initial open
+                loadMcpLinkStatus();
                 switchGallery(gallerySource || 'generated');
             }
             function closeDrawer(){
@@ -6009,6 +6087,7 @@
 
         loadWorkflows();
         // 초기 진입: 생성 탭 로드
+        loadMcpLinkStatus();
         switchGallery('generated');
     });
     </script>

@@ -10,6 +10,9 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "category": "image_tools",
         "capability": "remove_background",
         "mcp_public": True,
+        "mcp_execution_class": "fast",
+        "provider": "comfyui",
+        "model": "RMBG-2.0",
 
         # 프롬프트/네거티브/시드 노드가 없는 단순 워크플로우이므로 매핑은 생략
         "default_user_prompt": "",
@@ -501,7 +504,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "description": "텍스트 설명과 가사를 입력하여 AI 음악(MP3)을 생성합니다.",
         "category": "music_generation",
         "capability": "generate_music",
-        "mcp_public": True,
+        "mcp_public": False,
+        "mcp_exclusion_reason": "heavy_local_workflow",
 
         # 프롬프트 노드: TextEncodeAceStepAudio1.5 (node 94) — tags 필드에 주입
         "prompt_node": "94",
@@ -642,7 +646,8 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
         "hidden": False,
         "category": "image_tools",
         "capability": "separate_layers",
-        "mcp_public": True,
+        "mcp_public": False,
+        "mcp_exclusion_reason": "heavy_local_workflow",
 
         "default_user_prompt": "",
         "style_prompt": "",

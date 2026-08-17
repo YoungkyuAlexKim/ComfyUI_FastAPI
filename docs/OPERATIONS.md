@@ -1,6 +1,6 @@
 # 운영 런북
 
-> 최종 업데이트: 2026-08-13
+> 최종 업데이트: 2026-08-17
 
 ## 배포 전 확인
 
@@ -18,6 +18,9 @@ git status --short
   `*.secret`이 없음. 검토된 `outputs/global/characters` 번들만 예외
 - `.env`에 관리자 인증이 있고, 직접 연결 또는 신뢰 프록시 중 실제 배포 경계와
   `TRUSTED_PROXY_CIDRS` 설정이 일치함
+- 인프라팀이 MCP 사용자 PC별 원본 IP 고유성·재할당 이력, 프록시/VPN의 원본 IP 보존,
+  8000 포트의 사내망 제한을 보장함. 허용 대역이 확정되면 선택적으로
+  `MCP_ALLOWED_CLIENT_CIDRS`를 함께 설정
 - `INPUTS_MAX_BYTES`, `INPUTS_MAX_PIXELS`가 프록시 body limit과 일관됨
 
 런타임 설정의 기준은 `.env` 또는 배포 환경의 secret 주입입니다. 루트의
@@ -47,7 +50,10 @@ API 키를 별도 평문 파일에 보관하는 방식도 운영 설정이나 �
 
 - 기존 8000 포트의 LC AI Canvas가 정상이면 중복 실행 없이 종료
 - 포트가 점유됐지만 health가 실패하면 소유 PID를 출력하고 시작 차단
+- 포트별 `logs/server-<port>.lock`으로 동시에 시작되는 두 launcher를 원자적으로 차단
+- launcher가 시작한 cmd·Python 자식 트리를 감독하고 종료 시 남은 자식을 정리
 - Uvicorn 출력을 UTC timestamp가 붙은 `logs/server-<mode>-*.log`에 보존
+- 공식 launcher에서는 중복 `LOG_TO_FILE` handler를 끄고 위 세션 로그를 단일 기준으로 사용
 - 시작 오류 시 더블클릭 콘솔을 `pause`로 유지
 
 자동화 환경에서 오류 pause를 끄려면 `LC_CANVAS_NO_PAUSE=1`을 설정합니다. 서버를
@@ -55,6 +61,13 @@ API 키를 별도 평문 파일에 보관하는 방식도 운영 설정이나 �
 
 ```powershell
 .\scripts\start_server.ps1 -Mode Production -CheckOnly -NoBrowser
+```
+
+별도 포트와 임시 DB·outputs에서 실제 시작·health·로그·프로세스 정리를 회귀 검사할 수
+있습니다. 현재 8000번 운영 서버와 운영 데이터는 건드리지 않습니다.
+
+```powershell
+.\scripts\smoke_server_launcher.ps1
 ```
 
 수동 진단은 다음 명령을 사용합니다.
@@ -119,7 +132,10 @@ listener의 PID만 종료합니다. 포트에 연결된 프로세스를 확인�
 6. 입력 이미지 업로드 및 참고 이미지 편집
 7. Game UI 웹 2×2·3×3·4×4 생성, 선택 수와 개별 결과 수 일치, ZIP 다운로드
 8. 기존 2×2 Game UI 그룹이 갤러리에서 그대로 열리고 ZIP을 받을 수 있는지 확인
-9. 필요 시 MCP의 고정 2×2 capability 목록, 생성, job polling, 결과 조회
+9. MCP 13개 도구와 5개 공개 생성 capability 목록, 고정 2×2 Game UI 생성,
+   job polling, 결과 조회
+10. 소유 input 한 장으로 RMBG 배경 제거, 투명 PNG와 `comfyui/RMBG-2.0/0.0` 감사 기록
+11. 같은 PC의 웹 갤러리에서 MCP 작업 공간을 연결하고 `MCP` 표시 이미지 조회
 
 Game UI의 코드·브라우저 경로는 운영 서버와 운영 데이터를 사용하지 않고 먼저 검사할 수
 있습니다. Microsoft Edge가 설치된 Windows 호스트에서 다음 명령을 실행합니다.
@@ -130,8 +146,9 @@ Game UI의 코드·브라우저 경로는 운영 서버와 운영 데이터를 �
 
 이 스모크는 임시 DB·outputs와 로컬 가짜 OpenRouter 응답을 사용해 4×4 요청, 16셀 분리,
 크기별 다운로드, ZIP manifest, 묶음 보존 페이지네이션, 그룹 선택·삭제·복구, 새로고침 복원,
-관리자 화면의 단일 그룹 카드 렌더링을
-검사하고 임시 데이터를 정리합니다. 실제 GPT Image 2의 지시 준수율·경계 침범·소형
+관리자 화면의 단일 그룹 카드와 Game UI 배너 적용을 검사하고 임시 데이터를 정리합니다.
+배너는 실제 Edge 계산 스타일에서 전용 이미지 적용, 스크림 투명도 0, 강제 저밝기 필터
+제거까지 확인합니다. 실제 GPT Image 2의 지시 준수율·경계 침범·소형
 가독성은 검사하지 않으므로 배포 전 실제 3×3·4×4 표본 확인을 별도로 수행합니다.
 2026-08-13 체크포인트에서는 GPT Image 2 2K/Medium 4×4 실서버 표본도 정상 결과를
 확인했습니다. 모델·프롬프트·후처리가 바뀌면 이 표본 검사를 다시 수행합니다.
@@ -341,8 +358,124 @@ PNG/JPEG/WEBP만 실제 디코딩하고 EXIF 방향을 반영한 뒤 PNG로 정�
 - 인프라에서 `/mcp`를 회사 네트워크 요청에만 허용합니다.
 - `TRUSTED_PROXY_CIDRS`에는 실제 신뢰 프록시만 넣습니다.
 - 필요하면 `MCP_ALLOWED_CLIENT_CIDRS`로 애플리케이션 2차 허용 목록을 설정합니다.
+- `MCP_WEB_LINK_ENABLED=true`는 같은 원본 IP에서만 웹↔MCP 갤러리 연결을 허용합니다.
+  네트워크 신원 구조가 바뀌면 우선 `false`로 내려 연결 생성을 중지합니다.
 - 잘못된 CIDR 정책은 MCP 요청을 503으로 차단합니다.
-- OAuth가 추가되기 전에는 인터넷에 직접 공개하지 않습니다.
+- 인프라 협의에 따라 OAuth 전환 없이 확인된 IP의 해시를 principal과 감사 기준으로
+  사용합니다. NAT·DHCP 제약을 수용하는 사내망 전용 운영이며 인터넷에 직접 공개하지 않습니다.
+
+IP 기반 운영의 책임 경계는 다음과 같습니다.
+
+- 인프라팀: 사용자 PC별 원본 IP 고유성, DHCP 예약·재할당 이력, PC 교체·퇴사 시 IP
+  이력 관리, 프록시/VPN의 원본 IP 보존, 8000 포트와 `/mcp`의 사내망 제한
+- 애플리케이션: 신뢰 프록시만 `X-Forwarded-For`에 사용, 서버가 확정한 IP의 해시를 MCP
+  principal로 사용, IP·기능·모델별 비용 감사, 다른 MCP IP 자산 접근 차단
+- 운영자: 네트워크 변경 후 여러 PC 요청이 관리자 비용 화면에서 서로 다른 IP로 기록되는지
+  확인하고, 하나의 IP로 합쳐지면 MCP 확대 전에 프록시/NAT 구성을 수정
+
+이 조건을 인프라가 보장하는 동안 별도 OAuth나 인증용 계정 pairing은 현재 1차 범위에 필요하지
+않습니다. `MCP_ALLOWED_CLIENT_CIDRS`는 방화벽을 대체하지 않는 선택적 2차 방어입니다.
+
+2026-08-17 검증 호스트는 고정 사설 IPv4 `/24`, 직접 연결, Uvicorn
+`0.0.0.0:8000`, ComfyUI `127.0.0.1:8188` 구조입니다. 리버스 프록시/VPN 프로세스는 없고
+로컬 MCP와 다른 PC의 웹 요청이 DB에서 서로 다른 원본 IP로 관찰됐습니다. 검증 호스트의
+`TRUSTED_PROXY_CIDRS`와 `MCP_ALLOWED_CLIENT_CIDRS`는 비어 있으므로 네트워크 구조가 바뀌면
+이 스냅샷과 신뢰 경계를 다시 확인합니다.
+
+초기에는 생성량을 제한하지 않으므로 `GENERATION_DAILY_REQUEST_LIMIT`,
+`GENERATION_DAILY_COST_LIMIT_USD`, `GENERATION_COST_CONFIRMATION_THRESHOLD_USD`를 모두
+`0`으로 유지합니다. 이는 무제한/비활성을 뜻합니다. `GENERATION_COST_ESTIMATES_JSON`은
+차단 여부와 별개로 제출 응답에 정직한 보수적 예상 비용을 표시하는 용도이며, 완료 후
+provider actual cost가 별도로 기록됩니다.
+
+가격표에 일치하는 항목이 없으면 제출 응답은 `estimated_cost_usd=null`과
+`cost_estimate_available=false`를 반환합니다. 이는 무료 또는 0달러가 아니라 사전 비용을
+알 수 없다는 뜻입니다. 명시적으로 등록한 0달러 가격만 알려진 0으로 취급합니다. 비용 한도나
+비용 확인 임계값을 0보다 크게 켤 때 해당 요청의 추정값이 없으면 안전하게 제출을 거절하므로,
+먼저 실제 사용하는 모델·크기·품질 가격표를 채워야 합니다.
+
+예외적으로 `resolved_provider=comfyui`인 로컬 workflow는 외부 provider API 비용이 없으므로
+가격표와 무관하게 알려진 `0.0`을 반환합니다. 이는 로컬 GPU·전력·인프라 자원까지 무료라는
+뜻은 아닙니다.
+
+### IP별 비용 통계
+
+관리자 `/admin`의 `사용·비용 통계` 탭은 선택 기간의 실제 비용을 IP·기능·모델별로
+보여줍니다. IP는 화면에서 기본 마스킹하고 서버가 확정한 원본 IP로 필터링합니다. 같은
+IP에서 여러 웹 쿠키 principal이 사용돼도 IP 비용은 한 행으로 합산합니다.
+
+- API: `GET /api/v1/admin/generation-controls/cost-report`
+- 필터: `days`, `client_ip`, `capability`, `model`, `limit`
+- `actual_cost_record_count=0`: 실제 비용 합계가 0달러라는 뜻이 아니라 아직 수집값이 없음
+- `missing_actual_cost_count`: 완료됐지만 provider actual cost가 기록되지 않은 요청 수
+- `unknown_estimate_count`: 가격표가 없어 사전 비용을 알 수 없었던 요청 수
+
+이 통계는 IP를 사람 단위 신원으로 추정하지 않습니다. NAT에서는 여러 사용자가 합쳐지고,
+DHCP 변경 시 같은 사용자가 나뉠 수 있으므로 내부 비용 관찰과 이상 탐지용으로 사용합니다.
+완료된 ComfyUI 로컬 작업은 외부 provider API actual cost가 알려진 `0.0`이므로 미수집으로
+분류하지 않습니다. 이는 GPU·전력·인프라 원가가 0이라는 뜻은 아닙니다.
+
+### VS Code Codex 연결 점검
+
+검증 워크스테이션에서는 Codex 공유 설정에 `lc_ai_canvas` Streamable HTTP endpoint가
+등록되어 있고 2026-08-17 MCP 초기화 HTTP 200을 확인했습니다. 설정과 서버 상태는 다음
+명령으로 확인합니다.
+
+```powershell
+codex mcp get lc_ai_canvas
+codex mcp list
+Invoke-RestMethod http://127.0.0.1:8000/healthz
+```
+
+서버를 먼저 실행한 뒤 VS Code 명령 팔레트에서 `Developer: Reload Window`를 실행합니다.
+기존 대화가 MCP 도구를 새로 읽지 못하면 새 Codex 대화를 열고
+`list_generation_capabilities`부터 호출합니다. MCP 0.7.0은 RMBG 배경 제거를 포함해 13개 도구와
+5개 공개 생성 capability를 제공합니다. 2026-08-17에는 읽기, 첨부 등록, 멱등성 재시도,
+기본 생성·참고 편집, Game UI 2×2, 캐릭터 턴어라운드 3뷰, 표정 4개, 스토리보드 6컷,
+RMBG 반복 생성, job/result polling, MCP image content와 소유 그룹 ZIP 다운로드를
+실클라이언트로 확인했습니다.
+
+MCP 0.7.0의 모든 공개 생성 쓰기는 먼저 `plan_generation`을 호출합니다. hosted 모호 요청은
+`missing_decisions`를 사용자에게 한 번에 질문하고, 사용자가 선택을 위임한 경우에만
+`selection_mode=recommend`를 사용합니다. 준비된 plan ID는 30분 동안 메모리에 유지되므로
+서버 재시작이나 만료 후에는 다시 계획해야 합니다. plan ID·프롬프트·참고 자산·옵션이
+일치하지 않으면 큐 등록 전에 거절됩니다. 계획 호출과 이 거절 경로는 provider 비용을
+발생시키지 않습니다.
+
+`remove_background`는 소유한 active image/input 한 장만 받고 `RMBG2`/`RMBG-2.0`으로
+고정됩니다. provider API 비용은 `0.0`으로 기록되지만 로컬 단일 ComfyUI 큐와 GPU를
+사용합니다. See-Through와 ACE-Step은 무거운 로컬 workflow이므로 MCP에 노출하지 않습니다.
+
+실제 ComfyUI를 사용하되 DB와 outputs는 임시 경로로 격리해 단일 큐를 확인할 수 있습니다.
+두 RMBG 작업을 즉시 연속 제출하고, 둘째가 queued 상태였다가 첫째 종료 후 시작하는지,
+MCP image content 두 건과 provider API actual cost `0.0` 두 건이 기록되는지 검사합니다.
+
+```powershell
+.\venv\Scripts\python.exe -m scripts.smoke_rmbg_queue
+```
+
+MCP는 IP principal, 웹은 서명 쿠키 principal을 사용하며 원본 소유권은 자동으로 합치지
+않습니다. 같은 PC의 웹 갤러리는 MCP 생성 이미지를 발견하면 한 번 클릭 연결을 제안합니다.
+연결 후에도 MCP 목록에 웹 자산이 역으로 나타나지는 않으므로 첫 MCP 자산 목록이 비어 있어도
+연결 오류로 판단하지 않습니다.
+
+### 웹 갤러리에서 MCP 작업 공간 연결
+
+1. MCP로 이미지 한 장 이상을 만든 동일 PC에서 `/create`를 엽니다.
+2. 갤러리의 “이 PC에서 만든 AI 이미지” 안내에서 `연결하기`를 누릅니다.
+3. 생성 이미지에 `MCP` 배지가 표시되고 재시작 후에도 남는지 확인합니다.
+4. MCP 이미지를 편집에 쓰면 웹 input 복사본이 생기는지 확인합니다.
+5. `연결 해제` 후 웹 목록에서만 빠지고 MCP 원본과 audit 누락이 없는지 확인합니다.
+
+2026-08-17 실제 동일 PC 브라우저에서는 1~3단계를 수행해 연결 안내와 기존 MCP 이미지
+2개 표시를 확인했습니다. 4~5단계와 연결 지속성·멱등성·충돌 차단은 격리 자동 회귀
+테스트로 확인했습니다.
+
+API는 `GET|POST|DELETE /api/v1/principal-links/mcp`입니다. 대상 principal은 입력값을 받지
+않고 현재 요청의 검증된 IP에서 계산합니다. `409 mcp_workspace_already_linked`는 같은 IP가
+다른 웹 쿠키에 이미 연결된 상태이므로 자동 이전하지 말고 쿠키 초기화·PC 교체·IP 재할당
+이력을 확인합니다. 링크와 이벤트는 완전 DB 백업에 포함되는 `principal_links`,
+`principal_link_events`에 저장됩니다.
 
 ## 장애 대응
 
@@ -358,6 +491,19 @@ PNG/JPEG/WEBP만 실제 디코딩하고 EXIF 방향을 반영한 뒤 PNG로 정�
 현재 SQLite는 WAL과 `busy_timeout`을 사용합니다. 반복되는 lock 오류가 있으면 동시
 프로세스 수, 네트워크 드라이브 사용 여부, 장기 트랜잭션을 먼저 확인합니다. DB를
 네트워크 공유 폴더에 두지 않는 것을 권장합니다.
+
+### Windows 파일 로그 회전 경고
+
+공식 실행기는 모든 콘솔 로그를 고유한 `server-<mode>-<timestamp>.log`에 보존하고 자식
+프로세스의 중복 `LOG_TO_FILE`을 끕니다. 직접 Uvicorn을 실행해 여러 Python 프로세스가 같은
+`LOG_FILE_PATH`를 잡더라도 handler는 파일을 실제 기록할 때까지 열지 않으며, Windows 회전
+잠금이 발생하면 긴 `Logging error` traceback 대신 해당 프로세스 전용
+`app.pid-<pid>.log`로 한 번만 안내하고 계속 기록합니다.
+
+`smoke_server_launcher.ps1`에서 `.env` 상당의 `LOG_TO_FILE=true` 조건으로도 공유
+`app.log` 미변경, startup 완료, `WinError 32` 없음, 종료 후 잔류 프로세스·lock 0을
+확인했습니다. 외부 수집기가 필요해지는 다중 worker 배포에서는 stdout 수집을 단일 기준으로
+유지하고 여러 worker가 하나의 회전 파일을 직접 쓰게 하지 않습니다.
 
 ### OpenRouter 오류
 

@@ -268,6 +268,28 @@ async def admin_generation_events(request: Request, limit: int = 100):
     return {"events": controls.recent_events(limit)}
 
 
+@router.get("/api/v1/admin/generation-controls/cost-report", tags=["Admin"])
+async def admin_generation_cost_report(
+    request: Request,
+    days: int = 30,
+    client_ip: Optional[str] = None,
+    capability: Optional[str] = None,
+    model: Optional[str] = None,
+    limit: int = 50,
+):
+    controls = _generation_controls(request)
+    try:
+        return controls.cost_report(
+            days=days,
+            client_ip=client_ip,
+            capability=capability,
+            model=model,
+            limit=limit,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid cost report filter: {exc}")
+
+
 @router.post("/api/v1/admin/jobs/sweep", tags=["Admin"])
 async def admin_jobs_sweep(request: Request, limit: int = 200):
     try:

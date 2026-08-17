@@ -10,6 +10,7 @@ from app.schemas.capability_requests import (
     MCP_CAPABILITY_REQUEST_MODELS,
 )
 from app.workflow_configs import WORKFLOW_CONFIGS
+from app.services.generation_planning import PUBLIC_GENERATION_CAPABILITIES
 
 
 class CapabilityRequestTests(unittest.TestCase):
@@ -19,7 +20,14 @@ class CapabilityRequestTests(unittest.TestCase):
             for config in WORKFLOW_CONFIGS.values()
             if config.get("mcp_public")
         }
-        self.assertEqual(public_capabilities, set(MCP_CAPABILITY_REQUEST_MODELS))
+        public_contracts = {
+            "create_managed_image_asset" if capability == "create_image" else capability
+            for capability in public_capabilities
+        }
+        self.assertEqual(public_contracts, set(PUBLIC_GENERATION_CAPABILITIES))
+        self.assertTrue(public_capabilities <= set(MCP_CAPABILITY_REQUEST_MODELS))
+        self.assertFalse(WORKFLOW_CONFIGS["AceStep15XL"]["mcp_public"])
+        self.assertFalse(WORKFLOW_CONFIGS["seethrough-basic"]["mcp_public"])
 
     def test_game_ui_belongs_to_image_generation(self):
         config = WORKFLOW_CONFIGS["GameUI_Elements"]

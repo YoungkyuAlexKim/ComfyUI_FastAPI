@@ -228,8 +228,28 @@ class AssetStore:
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        clauses = ["owner_id=?"]
-        params: list[Any] = [owner_id]
+        return self.list_for_owners(
+            (owner_id,),
+            kinds=kinds,
+            include_trash=include_trash,
+            limit=limit,
+            offset=offset,
+        )
+
+    def list_for_owners(
+        self,
+        owner_ids: Iterable[str],
+        *,
+        kinds: Iterable[str] | None = None,
+        include_trash: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        owner_values = tuple(dict.fromkeys(str(owner_id) for owner_id in owner_ids))
+        if not owner_values:
+            return []
+        clauses = [f"owner_id IN ({','.join('?' for _ in owner_values)})"]
+        params: list[Any] = list(owner_values)
         kind_values = tuple(str(kind) for kind in (kinds or ()))
         if kind_values:
             clauses.append(f"kind IN ({','.join('?' for _ in kind_values)})")
@@ -251,6 +271,21 @@ class AssetStore:
         page: int,
         size: int,
     ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        return self.list_group_preserving_page_for_owners(
+            (owner_id,),
+            kind=kind,
+            page=page,
+            size=size,
+        )
+
+    def list_group_preserving_page_for_owners(
+        self,
+        owner_ids: Iterable[str],
+        *,
+        kind: str,
+        page: int,
+        size: int,
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
         """Paginate active assets without splitting a catalog group.
 
         ``size`` is a target asset capacity, not a hard result limit. A group
@@ -262,6 +297,10 @@ class AssetStore:
 
         page = max(1, int(page))
         size = max(1, int(size))
+        owner_values = tuple(dict.fromkeys(str(owner_id) for owner_id in owner_ids))
+        if not owner_values:
+            return [], {"page": page, "size": size, "total": 0, "total_pages": 0}
+        owner_placeholders = ",".join("?" for _ in owner_values)
         with self._connect() as con:
             # Keep the block calculation and row fetch on one WAL snapshot if
             # a gallery delete/restore completes concurrently.
@@ -269,7 +308,7 @@ class AssetStore:
             blocks = con.execute(
                 """
                 SELECT
-                    CASE
+                    owner_id || ':' || CASE
                         WHEN group_id IS NULL OR group_id = '' THEN 'asset:' || asset_id
                         ELSE 'group:' || group_id
                     END AS block_key,
@@ -279,11 +318,11 @@ class AssetStore:
                     MAX(created_at) AS sort_created_at,
                     MAX(asset_id) AS sort_asset_id
                 FROM assets
-                WHERE owner_id=? AND kind=? AND status='active'
+                WHERE owner_id IN ({owner_placeholders}) AND kind=? AND status='active'
                 GROUP BY block_key
                 ORDER BY sort_created_at DESC, sort_asset_id DESC
-                """,
-                (owner_id, kind),
+                """.format(owner_placeholders=owner_placeholders),
+                (*owner_values, kind),
             ).fetchall()
 
             pages: list[list[sqlite3.Row]] = []
@@ -306,7 +345,7 @@ class AssetStore:
             asset_ids = [str(block["asset_id"]) for block in selected if block["asset_id"]]
             group_ids = [str(block["group_id"]) for block in selected if block["group_id"]]
             clauses: list[str] = []
-            query_params: list[Any] = [owner_id, kind]
+            query_params: list[Any] = [*owner_values, kind]
             if asset_ids:
                 clauses.append(f"asset_id IN ({','.join('?' for _ in asset_ids)})")
                 query_params.extend(asset_ids)
@@ -317,7 +356,8 @@ class AssetStore:
             rows: list[dict[str, Any]] = []
             if clauses:
                 sql = (
-                    "SELECT * FROM assets WHERE owner_id=? AND kind=? AND status='active' AND ("
+                    f"SELECT * FROM assets WHERE owner_id IN ({owner_placeholders}) "
+                    "AND kind=? AND status='active' AND ("
                     + " OR ".join(clauses)
                     + ") ORDER BY created_at DESC, asset_id DESC"
                 )
@@ -331,8 +371,20 @@ class AssetStore:
         }
 
     def count(self, owner_id: str, *, kinds: Iterable[str] | None = None, include_trash: bool = False) -> int:
-        clauses = ["owner_id=?"]
-        params: list[Any] = [owner_id]
+        return self.count_for_owners((owner_id,), kinds=kinds, include_trash=include_trash)
+
+    def count_for_owners(
+        self,
+        owner_ids: Iterable[str],
+        *,
+        kinds: Iterable[str] | None = None,
+        include_trash: bool = False,
+    ) -> int:
+        owner_values = tuple(dict.fromkeys(str(owner_id) for owner_id in owner_ids))
+        if not owner_values:
+            return 0
+        clauses = [f"owner_id IN ({','.join('?' for _ in owner_values)})"]
+        params: list[Any] = list(owner_values)
         kind_values = tuple(str(kind) for kind in (kinds or ()))
         if kind_values:
             clauses.append(f"kind IN ({','.join('?' for _ in kind_values)})")

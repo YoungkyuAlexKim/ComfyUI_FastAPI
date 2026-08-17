@@ -1,5 +1,6 @@
 import gc
 import os
+import sqlite3
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -40,8 +41,65 @@ class GenerationControlTests(unittest.TestCase):
     def test_defaults_allow_requests_without_changing_current_web_behavior(self):
         result = self.controls.admit(self.payload())
         self.assertFalse(result.is_duplicate)
+        self.assertIsNone(result.estimated_cost_usd)
+        summary = self.controls.summary()
+        self.assertEqual(summary["total"], 1)
+        self.assertEqual(summary["unknown_estimate_count"], 1)
+
+    def test_explicit_zero_estimate_is_known_and_not_confused_with_unknown(self):
+        self.controls.update_policy(
+            {"cost_estimates_usd": {"openai/gpt-image-2|2K|medium": 0}}
+        )
+        result = self.controls.admit(self.payload())
         self.assertEqual(result.estimated_cost_usd, 0)
-        self.assertEqual(self.controls.summary()["total"], 1)
+        self.assertEqual(self.controls.summary()["unknown_estimate_count"], 0)
+
+    def test_local_comfyui_workflow_has_known_zero_provider_api_cost(self):
+        payload = self.payload()
+        payload.update(
+            {
+                "capability": "remove_background",
+                "resolved_workflow_id": "RMBG2",
+                "resolved_provider": "comfyui",
+                "resolved_model": None,
+            }
+        )
+        result = self.controls.admit(payload)
+        self.assertEqual(result.estimated_cost_usd, 0.0)
+        self.assertEqual(self.controls.summary()["unknown_estimate_count"], 0)
+        payload["control_request_id"] = result.control_request_id
+        self.controls.sync_job(SimpleNamespace(id="local-job-1", status="complete", payload=payload))
+        report = self.controls.cost_report(days=30, capability="remove_background")
+        self.assertEqual(report["summary"]["actual_cost_record_count"], 1)
+        self.assertEqual(report["summary"]["actual_cost_usd"], 0.0)
+        self.assertEqual(report["summary"]["missing_actual_cost_count"], 0)
+
+    def test_existing_completed_comfyui_request_is_backfilled_to_zero_actual_cost(self):
+        payload = self.payload()
+        payload.update(
+            {
+                "capability": "remove_background",
+                "resolved_workflow_id": "RMBG2",
+                "resolved_provider": "comfyui",
+                "resolved_model": "RMBG-2.0",
+            }
+        )
+        admitted = self.controls.admit(payload)
+        with sqlite3.connect(self.db_path) as connection:
+            connection.execute(
+                "UPDATE generation_control_requests SET status='complete' WHERE id=?",
+                (admitted.control_request_id,),
+            )
+        migrated = GenerationControlService(self.db_path, timezone_name="Asia/Seoul")
+        report = migrated.cost_report(days=30, capability="remove_background")
+        self.assertEqual(report["summary"]["actual_cost_record_count"], 1)
+        self.assertEqual(report["summary"]["missing_actual_cost_count"], 0)
+
+    def test_cost_policy_fails_closed_when_estimate_is_unknown(self):
+        self.controls.update_policy({"daily_cost_limit_usd": 1.0})
+        with self.assertRaises(GenerationPolicyError) as raised:
+            self.controls.admit(self.payload())
+        self.assertEqual(raised.exception.code, "cost_estimate_unavailable")
 
     def test_idempotency_replay_returns_original_job(self):
         payload = self.payload()
@@ -163,6 +221,83 @@ class GenerationControlTests(unittest.TestCase):
         self.assertEqual(summary["by_model"][0]["actual_cost_usd"], 0.123456)
         events = self.controls.recent_events()
         self.assertTrue(any(event["event_type"] == "job_status" for event in events))
+
+    def test_cost_report_aggregates_by_ip_and_supports_filters(self):
+        first = self.controls.admit(self.payload())
+        first_payload = self.payload()
+        first_payload.update({"control_request_id": first.control_request_id, "actual_cost_usd": 0.12})
+        self.controls.sync_job(SimpleNamespace(id="job-1", status="complete", payload=first_payload))
+
+        second_payload = self.payload(request_id="request-2", idempotency_key="idem-key-2")
+        second_payload.update({"principal_id": "anon-user-2", "client_ip": "10.1.2.3"})
+        second = self.controls.admit(second_payload)
+        second_payload.update({"control_request_id": second.control_request_id, "actual_cost_usd": 0.03})
+        self.controls.sync_job(SimpleNamespace(id="job-2", status="complete", payload=second_payload))
+
+        third_payload = self.payload(request_id="request-3", idempotency_key="idem-key-3")
+        third_payload.update({"principal_id": "anon-user-3", "client_ip": "2001:db8::1"})
+        third = self.controls.admit(third_payload)
+        third_payload["control_request_id"] = third.control_request_id
+        self.controls.sync_job(SimpleNamespace(id="job-3", status="complete", payload=third_payload))
+
+        report = self.controls.cost_report(days=30)
+        self.assertEqual(report["summary"]["total"], 3)
+        self.assertAlmostEqual(report["summary"]["actual_cost_usd"], 0.15)
+        self.assertEqual(report["summary"]["unknown_estimate_count"], 3)
+        self.assertEqual(report["summary"]["missing_actual_cost_count"], 1)
+        ipv4 = next(row for row in report["by_ip"] if row["client_ip"] == "10.1.2.3")
+        self.assertEqual(ipv4["masked_client_ip"], "10.1.2.x")
+        self.assertEqual(ipv4["principal_count"], 2)
+        self.assertEqual(ipv4["total"], 2)
+        self.assertAlmostEqual(ipv4["actual_cost_usd"], 0.15)
+
+        filtered = self.controls.cost_report(days=30, client_ip="2001:db8::1")
+        self.assertEqual(filtered["summary"]["total"], 1)
+        self.assertEqual(filtered["by_ip"][0]["masked_client_ip"], "2001:0db8:0000:…")
+
+    def test_existing_database_is_migrated_to_known_estimate_column(self):
+        legacy_path = os.path.join(self.directory.name, "legacy.db")
+        with sqlite3.connect(legacy_path) as connection:
+            connection.execute(
+                """
+                CREATE TABLE generation_control_requests (
+                    id TEXT PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    principal_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    day_key TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    job_id TEXT,
+                    client_ip TEXT,
+                    capability TEXT,
+                    capability_variant TEXT,
+                    workflow_id TEXT,
+                    provider TEXT,
+                    model TEXT,
+                    cost_confirmed INTEGER NOT NULL DEFAULT 0,
+                    estimated_cost_usd REAL NOT NULL DEFAULT 0,
+                    actual_cost_usd REAL,
+                    UNIQUE(source, principal_id, idempotency_key)
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO generation_control_requests (
+                    id, source, principal_id, idempotency_key, day_key,
+                    created_at, updated_at, status, estimated_cost_usd
+                ) VALUES ('legacy', 'web', 'user', 'key', '2026-08-17', 1, 1, 'complete', 0.25)
+                """
+            )
+
+        migrated = GenerationControlService(legacy_path, timezone_name="Asia/Seoul")
+        with sqlite3.connect(legacy_path) as connection:
+            known = connection.execute(
+                "SELECT estimated_cost_known FROM generation_control_requests WHERE id = 'legacy'"
+            ).fetchone()[0]
+        self.assertEqual(known, 1)
 
 
 if __name__ == "__main__":

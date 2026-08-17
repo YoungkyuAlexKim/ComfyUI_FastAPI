@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import ipaddress
 import json
 import math
 import os
@@ -42,7 +43,7 @@ class GenerationPolicyError(RuntimeError):
 @dataclass(frozen=True)
 class AdmissionResult:
     control_request_id: str | None
-    estimated_cost_usd: float
+    estimated_cost_usd: float | None
     duplicate_job_id: str | None = None
     duplicate_status: str | None = None
 
@@ -78,6 +79,21 @@ def _nonnegative_float(value: Any) -> float:
     if not math.isfinite(parsed):
         raise ValueError("Generation policy values must be finite numbers")
     return max(0.0, parsed)
+
+
+def _masked_client_ip(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw or raw == "unknown":
+        return "(unknown)"
+    try:
+        address = ipaddress.ip_address(raw)
+    except ValueError:
+        return raw[:8] + ("…" if len(raw) > 8 else "")
+    if address.version == 4:
+        parts = raw.split(".")
+        return ".".join(parts[:3] + ["x"])
+    parts = address.exploded.split(":")
+    return ":".join(parts[:3]) + ":…"
 
 
 class GenerationControlService:
@@ -148,6 +164,7 @@ class GenerationControlService:
                     model TEXT,
                     cost_confirmed INTEGER NOT NULL DEFAULT 0,
                     estimated_cost_usd REAL NOT NULL DEFAULT 0,
+                    estimated_cost_known INTEGER NOT NULL DEFAULT 0,
                     actual_cost_usd REAL,
                     UNIQUE(source, principal_id, idempotency_key)
                 );
@@ -156,6 +173,10 @@ class GenerationControlService:
                     ON generation_control_requests(day_key, status);
                 CREATE INDEX IF NOT EXISTS idx_generation_control_requests_job
                     ON generation_control_requests(job_id);
+                CREATE INDEX IF NOT EXISTS idx_generation_control_requests_created
+                    ON generation_control_requests(created_at, status);
+                CREATE INDEX IF NOT EXISTS idx_generation_control_requests_client
+                    ON generation_control_requests(client_ip, created_at);
 
                 CREATE TABLE IF NOT EXISTS generation_control_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,6 +200,36 @@ class GenerationControlService:
 
                 CREATE INDEX IF NOT EXISTS idx_generation_control_events_created
                     ON generation_control_events(created_at DESC);
+                """
+            )
+            request_columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(generation_control_requests)").fetchall()
+            }
+            if "estimated_cost_known" not in request_columns:
+                connection.execute(
+                    "ALTER TABLE generation_control_requests "
+                    "ADD COLUMN estimated_cost_known INTEGER NOT NULL DEFAULT 0"
+                )
+            # Legacy non-zero estimates came from an explicit policy match.
+            connection.execute(
+                """
+                UPDATE generation_control_requests
+                SET estimated_cost_known = 1
+                WHERE estimated_cost_known = 0 AND estimated_cost_usd > 0
+                """
+            )
+            # A completed local ComfyUI workflow has a known external provider
+            # API cost of zero.  Record that as an actual value so operations
+            # does not misclassify local completions as missing provider cost.
+            # GPU, electricity, and infrastructure cost remain out of scope.
+            connection.execute(
+                """
+                UPDATE generation_control_requests
+                SET actual_cost_usd = 0
+                WHERE status = 'complete'
+                  AND actual_cost_usd IS NULL
+                  AND LOWER(TRIM(COALESCE(provider, ''))) = 'comfyui'
                 """
             )
 
@@ -285,11 +336,20 @@ class GenerationControlService:
     def _day_key(self, timestamp: float | None = None) -> str:
         return datetime.fromtimestamp(timestamp or time.time(), tz=self.timezone).date().isoformat()
 
-    def estimate_cost(self, payload: Mapping[str, Any], policy: Mapping[str, Any] | None = None) -> float:
+    def estimate_cost(
+        self,
+        payload: Mapping[str, Any],
+        policy: Mapping[str, Any] | None = None,
+    ) -> float | None:
+        provider = str(payload.get("resolved_provider") or "").strip().lower()
+        if provider == "comfyui":
+            # Local workflows consume GPU/infrastructure resources but do not
+            # incur an external provider API charge.
+            return 0.0
         active_policy = policy or self.get_policy()
         estimates = active_policy.get("cost_estimates_usd") or {}
         if not isinstance(estimates, dict):
-            return 0.0
+            return None
         model = str(payload.get("resolved_model") or payload.get("image_model") or "").strip()
         size = str(payload.get("resolved_image_size") or payload.get("image_size") or "").strip().upper()
         quality = str(payload.get("resolved_image_quality") or payload.get("image_quality") or "").strip().lower()
@@ -307,7 +367,7 @@ class GenerationControlService:
                     return _nonnegative_float(estimates[key])
                 except (TypeError, ValueError):
                     continue
-        return 0.0
+        return None
 
     def admit(self, payload: Mapping[str, Any], *, cost_confirmed: bool = False) -> AdmissionResult:
         policy = self.get_policy()
@@ -330,7 +390,8 @@ class GenerationControlService:
             connection.execute("BEGIN IMMEDIATE")
             duplicate = connection.execute(
                 """
-                SELECT id, job_id, status, estimated_cost_usd, updated_at
+                SELECT id, job_id, status, estimated_cost_usd,
+                       estimated_cost_known, updated_at
                 FROM generation_control_requests
                 WHERE source = ? AND principal_id = ? AND idempotency_key = ?
                 """,
@@ -375,7 +436,11 @@ class GenerationControlService:
                 if duplicate["job_id"]:
                     return AdmissionResult(
                         control_request_id=duplicate["id"],
-                        estimated_cost_usd=float(duplicate["estimated_cost_usd"] or 0),
+                        estimated_cost_usd=(
+                            float(duplicate["estimated_cost_usd"] or 0)
+                            if bool(duplicate["estimated_cost_known"])
+                            else None
+                        ),
                         duplicate_job_id=duplicate["job_id"],
                         duplicate_status=duplicate["status"],
                     )
@@ -414,8 +479,8 @@ class GenerationControlService:
                     id, source, principal_id, idempotency_key, day_key,
                     created_at, updated_at, status, client_ip, capability,
                     capability_variant, workflow_id, provider, model,
-                    cost_confirmed, estimated_cost_usd
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'reserved', ?, ?, ?, ?, ?, ?, ?, ?)
+                    cost_confirmed, estimated_cost_usd, estimated_cost_known
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'reserved', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     request_id,
@@ -432,7 +497,8 @@ class GenerationControlService:
                     provider,
                     model,
                     1 if cost_confirmed else 0,
-                    estimate,
+                    float(estimate or 0),
+                    1 if estimate is not None else 0,
                 ),
             )
             self._event(
@@ -460,7 +526,7 @@ class GenerationControlService:
         source: str,
         capability: str,
         day_key: str,
-        estimate: float,
+        estimate: float | None,
         cost_confirmed: bool,
     ) -> GenerationPolicyError | None:
         if not policy.get("generation_enabled", True):
@@ -500,7 +566,17 @@ class GenerationControlService:
             )
 
         daily_cost_limit = float(policy.get("daily_cost_limit_usd") or 0)
-        if daily_cost_limit > 0 and cost_usd + estimate > daily_cost_limit:
+        threshold = float(policy.get("cost_confirmation_threshold_usd") or 0)
+        if estimate is None and (daily_cost_limit > 0 or threshold > 0):
+            return GenerationPolicyError(
+                "cost_estimate_unavailable",
+                "비용 제한 또는 확인 정책에 필요한 사전 비용 추정값이 없습니다.",
+                status_code=503,
+                details={"capability": capability},
+            )
+
+        estimate_value = float(estimate or 0)
+        if daily_cost_limit > 0 and cost_usd + estimate_value > daily_cost_limit:
             return GenerationPolicyError(
                 "daily_cost_limit_reached",
                 "전사 일일 생성 비용 한도에 도달했습니다.",
@@ -508,20 +584,24 @@ class GenerationControlService:
                 details={
                     "limit_usd": daily_cost_limit,
                     "used_usd": round(cost_usd, 6),
-                    "estimated_request_usd": round(estimate, 6),
+                    "estimated_request_usd": round(estimate_value, 6),
                     "day": day_key,
                 },
             )
 
         required_capabilities = set(policy.get("confirmation_required_capabilities") or [])
-        threshold = float(policy.get("cost_confirmation_threshold_usd") or 0)
-        confirmation_required = capability in required_capabilities or (threshold > 0 and estimate >= threshold)
+        confirmation_required = capability in required_capabilities or (
+            threshold > 0 and estimate is not None and estimate >= threshold
+        )
         if confirmation_required and not cost_confirmed:
             return GenerationPolicyError(
                 "cost_confirmation_required",
                 "이 생성 작업은 실행 전 비용 확인이 필요합니다.",
                 status_code=409,
-                details={"estimated_cost_usd": round(estimate, 6), "capability": capability},
+                details={
+                    "estimated_cost_usd": round(estimate, 6) if estimate is not None else None,
+                    "capability": capability,
+                },
             )
         return None
 
@@ -539,11 +619,20 @@ class GenerationControlService:
         now = time.time()
         with self._managed_connection() as connection:
             previous = connection.execute(
-                "SELECT status, actual_cost_usd FROM generation_control_requests WHERE id = ?",
+                "SELECT status, actual_cost_usd, provider "
+                "FROM generation_control_requests WHERE id = ?",
                 (control_request_id,),
             ).fetchone()
             if not previous:
                 return
+            provider = str(
+                payload.get("resolved_provider")
+                or payload.get("provider")
+                or previous["provider"]
+                or ""
+            ).strip().lower()
+            if status == "complete" and actual_cost_value is None and provider == "comfyui":
+                actual_cost_value = 0.0
             connection.execute(
                 """
                 UPDATE generation_control_requests
@@ -591,7 +680,10 @@ class GenerationControlService:
                        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error,
                        SUM(CASE WHEN status IN ('reserved', 'queued', 'running') THEN 1 ELSE 0 END) AS active,
                        COALESCE(SUM(estimated_cost_usd), 0) AS estimated_cost_usd,
-                       COALESCE(SUM(actual_cost_usd), 0) AS actual_cost_usd
+                       COALESCE(SUM(actual_cost_usd), 0) AS actual_cost_usd,
+                       SUM(CASE WHEN estimated_cost_known = 0 THEN 1 ELSE 0 END) AS unknown_estimate_count,
+                       SUM(CASE WHEN status = 'complete' AND actual_cost_usd IS NULL THEN 1 ELSE 0 END)
+                           AS missing_actual_cost_count
                 FROM generation_control_requests
                 WHERE day_key = ? AND status != 'enqueue_failed'
                 """,
@@ -614,7 +706,11 @@ class GenerationControlService:
                     SELECT COALESCE(NULLIF({column}, ''), '(unknown)') AS name,
                            COUNT(*) AS total,
                            COALESCE(SUM(estimated_cost_usd), 0) AS estimated_cost_usd,
-                           COALESCE(SUM(actual_cost_usd), 0) AS actual_cost_usd
+                           COALESCE(SUM(actual_cost_usd), 0) AS actual_cost_usd,
+                           SUM(CASE WHEN estimated_cost_known = 0 THEN 1 ELSE 0 END)
+                               AS unknown_estimate_count,
+                           SUM(CASE WHEN status = 'complete' AND actual_cost_usd IS NULL THEN 1 ELSE 0 END)
+                               AS missing_actual_cost_count
                     FROM generation_control_requests
                     WHERE day_key = ? AND status != 'enqueue_failed'
                     GROUP BY name
@@ -628,6 +724,8 @@ class GenerationControlService:
                         "total": int(group["total"] or 0),
                         "estimated_cost_usd": round(float(group["estimated_cost_usd"] or 0), 6),
                         "actual_cost_usd": round(float(group["actual_cost_usd"] or 0), 6),
+                        "unknown_estimate_count": int(group["unknown_estimate_count"] or 0),
+                        "missing_actual_cost_count": int(group["missing_actual_cost_count"] or 0),
                     }
                     for group in rows
                 ]
@@ -646,9 +744,209 @@ class GenerationControlService:
             "rejected": int(rejected or 0),
             "estimated_cost_usd": round(float(row["estimated_cost_usd"] or 0), 6),
             "actual_cost_usd": round(float(row["actual_cost_usd"] or 0), 6),
+            "unknown_estimate_count": int(row["unknown_estimate_count"] or 0),
+            "missing_actual_cost_count": int(row["missing_actual_cost_count"] or 0),
             "daily_request_limit": policy["daily_request_limit"],
             "daily_cost_limit_usd": policy["daily_cost_limit_usd"],
             "by_source": by_source,
+            "by_capability": by_capability,
+            "by_model": by_model,
+        }
+
+    def cost_report(
+        self,
+        *,
+        days: int = 30,
+        client_ip: str | None = None,
+        capability: str | None = None,
+        model: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        bounded_days = max(1, min(365, int(days)))
+        bounded_limit = max(1, min(500, int(limit)))
+        cutoff = time.time() - (bounded_days * 86400.0)
+        selected = {
+            "client_ip": str(client_ip or "").strip(),
+            "capability": str(capability or "").strip(),
+            "model": str(model or "").strip(),
+        }
+        conditions = ["created_at >= ?", "status != 'enqueue_failed'"]
+        params: list[Any] = [cutoff]
+        for column in ("client_ip", "capability", "model"):
+            value = selected[column]
+            if value:
+                conditions.append(f"{column} = ?")
+                params.append(value)
+        where_sql = " AND ".join(conditions)
+
+        with self._managed_connection() as connection:
+            summary = connection.execute(
+                f"""
+                SELECT COUNT(*) AS total,
+                       SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) AS complete,
+                       SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error,
+                       COALESCE(SUM(actual_cost_usd), 0) AS actual_cost_usd,
+                       COUNT(actual_cost_usd) AS actual_cost_record_count,
+                       COALESCE(SUM(CASE WHEN estimated_cost_known = 1
+                                         THEN estimated_cost_usd ELSE 0 END), 0) AS estimated_cost_usd,
+                       SUM(CASE WHEN estimated_cost_known = 0 THEN 1 ELSE 0 END)
+                           AS unknown_estimate_count,
+                       SUM(CASE WHEN status = 'complete' AND actual_cost_usd IS NULL THEN 1 ELSE 0 END)
+                           AS missing_actual_cost_count,
+                       COALESCE(SUM(CASE WHEN actual_cost_usd IS NOT NULL AND estimated_cost_known = 1
+                                         THEN estimated_cost_usd ELSE 0 END), 0)
+                           AS comparable_estimated_cost_usd,
+                       COALESCE(SUM(CASE WHEN actual_cost_usd IS NOT NULL AND estimated_cost_known = 1
+                                         THEN actual_cost_usd ELSE 0 END), 0)
+                           AS comparable_actual_cost_usd
+                FROM generation_control_requests
+                WHERE {where_sql}
+                """,
+                params,
+            ).fetchone()
+
+            def grouped(column: str) -> list[dict[str, Any]]:
+                if column not in {"day_key", "capability", "model"}:
+                    raise ValueError("Unsupported cost report group")
+                order_sql = "name DESC" if column == "day_key" else "actual_cost_usd DESC, total DESC, name ASC"
+                rows = connection.execute(
+                    f"""
+                    SELECT COALESCE(NULLIF({column}, ''), '(unknown)') AS name,
+                           COUNT(*) AS total,
+                           SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) AS complete,
+                           COALESCE(SUM(actual_cost_usd), 0) AS actual_cost_usd,
+                           COUNT(actual_cost_usd) AS actual_cost_record_count,
+                           SUM(CASE WHEN estimated_cost_known = 0 THEN 1 ELSE 0 END)
+                               AS unknown_estimate_count,
+                           SUM(CASE WHEN status = 'complete' AND actual_cost_usd IS NULL THEN 1 ELSE 0 END)
+                               AS missing_actual_cost_count
+                    FROM generation_control_requests
+                    WHERE {where_sql}
+                    GROUP BY name
+                    ORDER BY {order_sql}
+                    LIMIT ?
+                    """,
+                    [*params, bounded_limit],
+                ).fetchall()
+                return [
+                    {
+                        "name": row["name"],
+                        "total": int(row["total"] or 0),
+                        "complete": int(row["complete"] or 0),
+                        "actual_cost_usd": round(float(row["actual_cost_usd"] or 0), 6),
+                        "actual_cost_record_count": int(row["actual_cost_record_count"] or 0),
+                        "unknown_estimate_count": int(row["unknown_estimate_count"] or 0),
+                        "missing_actual_cost_count": int(row["missing_actual_cost_count"] or 0),
+                    }
+                    for row in rows
+                ]
+
+            ip_rows = connection.execute(
+                f"""
+                SELECT COALESCE(NULLIF(client_ip, ''), '(unknown)') AS client_ip,
+                       COUNT(DISTINCT COALESCE(NULLIF(principal_id, ''), '(unknown)')) AS principal_count,
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) AS complete,
+                       COALESCE(SUM(actual_cost_usd), 0) AS actual_cost_usd,
+                       COUNT(actual_cost_usd) AS actual_cost_record_count,
+                       SUM(CASE WHEN estimated_cost_known = 0 THEN 1 ELSE 0 END)
+                           AS unknown_estimate_count,
+                       SUM(CASE WHEN status = 'complete' AND actual_cost_usd IS NULL THEN 1 ELSE 0 END)
+                           AS missing_actual_cost_count,
+                       MAX(updated_at) AS last_seen_at
+                FROM generation_control_requests
+                WHERE {where_sql}
+                GROUP BY client_ip
+                ORDER BY actual_cost_usd DESC, total DESC, client_ip ASC
+                LIMIT ?
+                """,
+                [*params, bounded_limit],
+            ).fetchall()
+            by_ip = [
+                {
+                    "client_ip": row["client_ip"],
+                    "masked_client_ip": _masked_client_ip(row["client_ip"]),
+                    "principal_count": int(row["principal_count"] or 0),
+                    "total": int(row["total"] or 0),
+                    "complete": int(row["complete"] or 0),
+                    "actual_cost_usd": round(float(row["actual_cost_usd"] or 0), 6),
+                    "actual_cost_record_count": int(row["actual_cost_record_count"] or 0),
+                    "unknown_estimate_count": int(row["unknown_estimate_count"] or 0),
+                    "missing_actual_cost_count": int(row["missing_actual_cost_count"] or 0),
+                    "last_seen_at": float(row["last_seen_at"] or 0),
+                }
+                for row in ip_rows
+            ]
+
+            available_ip_rows = connection.execute(
+                """
+                SELECT COALESCE(NULLIF(client_ip, ''), '(unknown)') AS client_ip,
+                       COUNT(DISTINCT COALESCE(NULLIF(principal_id, ''), '(unknown)')) AS principal_count
+                FROM generation_control_requests
+                WHERE created_at >= ? AND status != 'enqueue_failed'
+                GROUP BY client_ip
+                ORDER BY client_ip ASC
+                """,
+                (cutoff,),
+            ).fetchall()
+
+            def distinct_values(column: str) -> list[str]:
+                if column not in {"capability", "model"}:
+                    raise ValueError("Unsupported cost filter")
+                rows = connection.execute(
+                    f"""
+                    SELECT DISTINCT {column} AS value
+                    FROM generation_control_requests
+                    WHERE created_at >= ? AND status != 'enqueue_failed'
+                      AND {column} IS NOT NULL AND {column} != ''
+                    ORDER BY value ASC
+                    """,
+                    (cutoff,),
+                ).fetchall()
+                return [str(row["value"]) for row in rows]
+
+            daily = grouped("day_key")
+            by_capability = grouped("capability")
+            by_model = grouped("model")
+            available_capabilities = distinct_values("capability")
+            available_models = distinct_values("model")
+
+        return {
+            "days_requested": bounded_days,
+            "timezone": self.timezone_name,
+            "filters": selected,
+            "available_filters": {
+                "client_ips": [
+                    {
+                        "value": row["client_ip"],
+                        "label": _masked_client_ip(row["client_ip"]),
+                        "principal_count": int(row["principal_count"] or 0),
+                    }
+                    for row in available_ip_rows
+                ],
+                "capabilities": available_capabilities,
+                "models": available_models,
+            },
+            "summary": {
+                "total": int(summary["total"] or 0),
+                "complete": int(summary["complete"] or 0),
+                "error": int(summary["error"] or 0),
+                "actual_cost_usd": round(float(summary["actual_cost_usd"] or 0), 6),
+                "actual_cost_record_count": int(summary["actual_cost_record_count"] or 0),
+                "estimated_cost_usd": round(float(summary["estimated_cost_usd"] or 0), 6),
+                "known_estimate_count": int(summary["total"] or 0)
+                - int(summary["unknown_estimate_count"] or 0),
+                "unknown_estimate_count": int(summary["unknown_estimate_count"] or 0),
+                "missing_actual_cost_count": int(summary["missing_actual_cost_count"] or 0),
+                "comparable_estimated_cost_usd": round(
+                    float(summary["comparable_estimated_cost_usd"] or 0), 6
+                ),
+                "comparable_actual_cost_usd": round(
+                    float(summary["comparable_actual_cost_usd"] or 0), 6
+                ),
+            },
+            "daily": daily,
+            "by_ip": by_ip,
             "by_capability": by_capability,
             "by_model": by_model,
         }

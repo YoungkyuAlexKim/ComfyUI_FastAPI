@@ -3,7 +3,7 @@
 @import url('base.css');
 @import url('animations.css');
 @import url('layout.css');
-@import url('components.css');
+@import url('components.css?v=20260817_01');
 @import url('music.css');
 @import url('responsive.css');
 @import url('studio.css?v=20260712_04');

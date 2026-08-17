@@ -43,6 +43,7 @@ class CreateCharacterSheetRequest(ControlledRequest):
     reference_image_id: str = Field(min_length=1)
     prompt: str = Field(default="", max_length=4_000)
     count: Optional[int] = None
+    image_size: Optional[Literal["1K", "2K"]] = None
     image_model: Optional[str] = None
     image_quality: Optional[ImageQuality] = None
 
@@ -60,6 +61,7 @@ class CreateStoryboardRequest(ControlledRequest):
     prompt: str = Field(min_length=1, max_length=8_000)
     reference_image_id: str = Field(min_length=1)
     cuts: Literal[6, 9] = 9
+    image_size: Optional[Literal["1K", "2K"]] = None
     image_model: Optional[str] = None
     image_quality: Optional[ImageQuality] = None
 

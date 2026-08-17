@@ -9,6 +9,7 @@ from ..services.media_store import (
     _build_web_path,
 )
 from ..services.input_assets import InputAssetError, input_max_bytes, register_input_image
+from ..services.principal_links import browser_asset_owner_ids
 from ..schemas.api_models import PaginatedImages as PaginatedInputs, UploadMediaResponse as UploadInputResponse, OkResponse
 
 logger = setup_logging()
@@ -119,15 +120,21 @@ async def user_copy_to_inputs(request: Request):
     if not image_id:
         raise HTTPException(status_code=400, detail="Missing id")
 
-    # Locate source PNG path
+    # Resolve the browser-owned image or an explicitly linked MCP image. The
+    # copy is written under the browser principal, so subsequent web edits do
+    # not mutate or depend on the original MCP workspace.
     try:
-        from ..services.media_store import _locate_image_meta_path
-        meta_path = _locate_image_meta_path(anon_id, image_id)
-        if not meta_path:
+        service = request.app.state.asset_service
+        row = service.get_for_owners(
+            browser_asset_owner_ids(request, anon_id),
+            image_id,
+            kind="image",
+            active_only=True,
+        )
+        if not row:
             raise HTTPException(status_code=404, detail="Source image not found")
-        base_dir = os.path.dirname(meta_path)
-        png_path = os.path.join(base_dir, f"{image_id}.png")
-        if not os.path.exists(png_path):
+        png_path = service.resolve_storage_path(row.get("storage_path"))
+        if not png_path or not os.path.isfile(png_path):
             raise HTTPException(status_code=404, detail="Source PNG not found")
     except HTTPException:
         raise
@@ -154,7 +161,6 @@ async def user_copy_to_inputs(request: Request):
         raise HTTPException(status_code=500, detail="Failed to read source image")
 
     try:
-        service = request.app.state.asset_service
         row, _ = register_input_image(
             service,
             anon_id,
@@ -166,10 +172,15 @@ async def user_copy_to_inputs(request: Request):
         path = service.resolve_storage_path(row.get("storage_path"))
         if not path:
             raise RuntimeError("Saved input path is unavailable")
-        return {"ok": True, "id": row["asset_id"], "url": _build_web_path(path)}
+        return {
+            "ok": True,
+            "id": row["asset_id"],
+            "url": f"/outputs/{str(row['storage_path']).replace(os.sep, '/')}",
+        }
     except InputAssetError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
-    except Exception:
+    except Exception as exc:
+        logger.exception({"event": "copy_input_save_failed", "owner_id": anon_id, "image_id": image_id, "error": str(exc)})
         raise HTTPException(status_code=500, detail="Failed to save input image")
 
 

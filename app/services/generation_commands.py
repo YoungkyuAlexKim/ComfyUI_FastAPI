@@ -87,10 +87,14 @@ class CapabilityDispatcher:
         default_model = (
             str(provider_config.get("model") or "").strip()
             if isinstance(provider_config, dict)
-            else ""
+            else str(config.get("model") or "").strip()
         )
         requested_model = str(command.parameters.get("image_model") or "").strip()
-        model = requested_model or default_model or None
+        model = (
+            (requested_model or default_model or None)
+            if provider_config
+            else (default_model or requested_model or None)
+        )
         requested_size = str(command.parameters.get("image_size") or "").strip().upper()
         requested_quality = str(command.parameters.get("image_quality") or "").strip().lower()
         resolved_size = requested_size or (

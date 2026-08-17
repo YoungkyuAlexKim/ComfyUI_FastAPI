@@ -122,17 +122,52 @@ class McpServerTests(unittest.TestCase):
         image.save(out, format="PNG")
         return base64.b64encode(out.getvalue()).decode("ascii")
 
+    def _plan(
+        self,
+        capability: str,
+        *,
+        prompt: str,
+        options: dict,
+        reference_image_ids=None,
+        selection_mode: str = "clarify",
+    ):
+        plan = self.service.plan_generation(
+            self.caller,
+            capability=capability,
+            prompt=prompt,
+            options=options,
+            selection_mode=selection_mode,
+            reference_image_ids=reference_image_ids,
+        )
+        self.assertTrue(plan["ready_to_generate"], plan)
+        self.assertIsNotNone(plan["plan_id"])
+        return plan
+
     def test_create_image_uses_capability_controls_and_mcp_audit_context(self):
+        plan = self._plan(
+            "create_managed_image_asset",
+            prompt="A clean blue potion icon",
+            options={
+                "image_model": "google/gemini-3-pro-image",
+                "aspect_ratio": "square",
+                "image_size": "2K",
+            },
+        )
         response = self.service.create_image(
             self.caller,
+            plan_id=plan["plan_id"],
             prompt="A clean blue potion icon",
+            image_model="google/gemini-3-pro-image",
             aspect_ratio="square",
             image_size="2K",
+            image_quality=None,
             idempotency_key="potion-intent-001",
             cost_confirmed=False,
         )
 
         self.assertEqual(response["status"], "queued")
+        self.assertIsNone(response["estimated_cost_usd"])
+        self.assertFalse(response["cost_estimate_available"])
         job = self.manager.get(response["job_id"])
         self.assertEqual(job.payload["capability"], "create_image")
         self.assertEqual(job.payload["workflow_id"], "NanoBanana")
@@ -141,13 +176,116 @@ class McpServerTests(unittest.TestCase):
         self.assertEqual(job.payload["client_ip"], "10.20.30.40")
         self.assertEqual(job.payload["idempotency_key"], "potion-intent-001")
 
+    def test_generation_plan_requires_clarification_and_prevents_argument_drift(self):
+        ambiguous = self.service.plan_generation(
+            self.caller,
+            capability="create_managed_image_asset",
+            prompt="A fantasy character",
+            options={},
+            selection_mode="clarify",
+        )
+        self.assertFalse(ambiguous["ready_to_generate"])
+        self.assertIsNone(ambiguous["plan_id"])
+        self.assertIn("image_model", ambiguous["missing_decisions"])
+
+        ready = self._plan(
+            "create_managed_image_asset",
+            prompt="A fantasy character",
+            options={
+                "image_model": "google/gemini-3.1-flash-image",
+                "aspect_ratio": "portrait",
+                "image_size": "1K",
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "arguments changed"):
+            self.service.create_image(
+                self.caller,
+                plan_id=ready["plan_id"],
+                prompt="A fantasy character",
+                image_model="google/gemini-3.1-flash-image",
+                aspect_ratio="portrait",
+                image_size="2K",
+                image_quality=None,
+                idempotency_key=ready["suggested_idempotency_key"],
+                cost_confirmed=False,
+            )
+
+    def test_character_plan_requires_one_owned_reference(self):
+        result = self.service.plan_generation(
+            self.caller,
+            capability="create_character_sheet",
+            prompt="",
+            options={
+                "sheet_type": "turnaround",
+                "count": 3,
+                "image_size": "1K",
+                "image_quality": "low",
+            },
+            selection_mode="clarify",
+        )
+        self.assertFalse(result["ready_to_generate"])
+        self.assertEqual(result["missing_decisions"], ["reference_image_id"])
+        self.assertIsNone(result["plan_id"])
+
+    def test_remove_background_requires_owned_image_and_queues_fixed_local_workflow(self):
+        missing = self.service.plan_generation(
+            self.caller,
+            capability="remove_background",
+            prompt="",
+            options={},
+            selection_mode="clarify",
+        )
+        self.assertFalse(missing["ready_to_generate"])
+        self.assertEqual(missing["missing_decisions"], ["reference_image_id"])
+
+        self._register_asset(self.caller.principal_id, "rmbg-input", kind="input")
+        plan = self._plan(
+            "remove_background",
+            prompt="",
+            options={"mask_blur": 2, "mask_offset": -1},
+            reference_image_ids=["rmbg-input"],
+        )
+        self.assertEqual(plan["estimated_cost_usd"], 0.0)
+        self.assertFalse(plan["provider_cost"])
+        response = self.service.remove_background(
+            self.caller,
+            plan_id=plan["plan_id"],
+            image_id="rmbg-input",
+            mask_blur=2,
+            mask_offset=-1,
+            idempotency_key=plan["suggested_idempotency_key"],
+        )
+        self.assertEqual(response["estimated_cost_usd"], 0.0)
+        job = self.manager.get(response["job_id"])
+        self.assertEqual(job.payload["capability"], "remove_background")
+        self.assertEqual(job.payload["workflow_id"], "RMBG2")
+        self.assertEqual(job.payload["resolved_provider"], "comfyui")
+        self.assertEqual(job.payload["resolved_model"], "RMBG-2.0")
+        self.assertEqual(job.payload["image_model"], "RMBG-2.0")
+        self.assertEqual(job.payload["input_image_id"], "rmbg-input")
+        self.assertEqual(job.payload["rmbg_mask_blur"], 2)
+        self.assertEqual(job.payload["rmbg_mask_offset"], -1)
+
     def test_create_image_with_owned_reference_uses_edit_capability(self):
         self._register_asset(self.caller.principal_id, "reference123", kind="input")
+        plan = self._plan(
+            "create_managed_image_asset",
+            prompt="Turn it into a blue potion icon",
+            options={
+                "image_model": "google/gemini-3-pro-image",
+                "aspect_ratio": "auto",
+                "image_size": "2K",
+            },
+            reference_image_ids=["reference123"],
+        )
         response = self.service.create_image(
             self.caller,
+            plan_id=plan["plan_id"],
             prompt="Turn it into a blue potion icon",
-            aspect_ratio="square",
+            image_model="google/gemini-3-pro-image",
+            aspect_ratio="auto",
             image_size="2K",
+            image_quality=None,
             idempotency_key="potion-edit-001",
             cost_confirmed=False,
             reference_image_ids=["reference123"],
@@ -157,14 +295,18 @@ class McpServerTests(unittest.TestCase):
         self.assertEqual(job.payload["capability_variant"], "edit")
         self.assertEqual(job.payload["workflow_id"], "NanoBanana_Img2Img")
         self.assertEqual(job.payload["input_image_ids"], ["reference123"])
+        self.assertEqual(job.payload["aspect_ratio"], "auto")
 
         self._register_asset("mcp-ip-other", "other-reference", kind="image")
         with self.assertRaisesRegex(ValueError, "Reference image not found"):
             self.service.create_image(
                 self.caller,
+                plan_id="plan_" + ("x" * 32),
                 prompt="Use someone else's image",
+                image_model="google/gemini-3-pro-image",
                 aspect_ratio="square",
                 image_size="2K",
+                image_quality=None,
                 idempotency_key="other-edit-001",
                 cost_confirmed=False,
                 reference_image_ids=["other-reference"],
@@ -172,8 +314,15 @@ class McpServerTests(unittest.TestCase):
 
     def test_create_game_ui_assets_uses_stable_capability_contract(self):
         self._register_asset(self.caller.principal_id, "ui-reference", kind="input")
+        plan = self._plan(
+            "create_game_ui_assets",
+            prompt="Four matching fire spell icons",
+            options={"background_mode": "transparent", "image_quality": "medium"},
+            reference_image_ids=["ui-reference"],
+        )
         response = self.service.create_game_ui_assets(
             self.caller,
+            plan_id=plan["plan_id"],
             prompt="Four matching fire spell icons",
             background_mode="transparent",
             image_quality="medium",
@@ -190,6 +339,118 @@ class McpServerTests(unittest.TestCase):
         self.assertEqual(job.payload["game_ui_background_mode"], "transparent")
         self.assertEqual(job.payload["game_ui_grid"], "2x2")
         self.assertEqual(response["output_contract"]["asset_count"], 4)
+        self.assertIsNone(response["estimated_cost_usd"])
+        self.assertFalse(response["cost_estimate_available"])
+
+    def test_create_character_sheet_maps_variants_counts_and_reference(self):
+        self._register_asset(self.caller.principal_id, "character-reference", kind="input")
+        turnaround_plan = self._plan(
+            "create_character_sheet",
+            prompt="clean cel shading",
+            options={
+                "sheet_type": "turnaround",
+                "count": 3,
+                "image_size": "1K",
+                "image_quality": "low",
+            },
+            reference_image_ids=["character-reference"],
+        )
+        turnaround = self.service.create_character_sheet(
+            self.caller,
+            plan_id=turnaround_plan["plan_id"],
+            reference_image_id="character-reference",
+            sheet_type="turnaround",
+            count=3,
+            prompt="clean cel shading",
+            image_size="1K",
+            image_quality="low",
+            idempotency_key="character-turnaround-001",
+            cost_confirmed=False,
+        )
+        turnaround_job = self.manager.get(turnaround["job_id"])
+        self.assertEqual(turnaround_job.payload["capability"], "create_character_sheet")
+        self.assertEqual(turnaround_job.payload["capability_variant"], "turnaround")
+        self.assertEqual(turnaround_job.payload["workflow_id"], "NanoBanana_TurnaroundSheet")
+        self.assertEqual(turnaround_job.payload["input_image_ids"], ["character-reference"])
+        self.assertEqual(turnaround_job.payload["aspect_ratio"], "landscape")
+        self.assertEqual(turnaround_job.payload["image_model"], "openai/gpt-image-2")
+        self.assertIn("Exact ordered views (3 total)", turnaround_job.payload["user_prompt"])
+        self.assertEqual(turnaround["output_contract"]["count"], 3)
+
+        expression_plan = self._plan(
+            "create_character_sheet",
+            prompt="watercolor",
+            options={
+                "sheet_type": "expressions",
+                "count": 4,
+                "image_size": "2K",
+                "image_quality": "medium",
+            },
+            reference_image_ids=["character-reference"],
+        )
+        expressions = self.service.create_character_sheet(
+            self.caller,
+            plan_id=expression_plan["plan_id"],
+            reference_image_id="character-reference",
+            sheet_type="expressions",
+            count=4,
+            prompt="watercolor",
+            image_size="2K",
+            image_quality="medium",
+            idempotency_key="character-expressions-001",
+            cost_confirmed=False,
+        )
+        expression_job = self.manager.get(expressions["job_id"])
+        self.assertEqual(expression_job.payload["workflow_id"], "NanoBanana_ExpressionPortraitSheet")
+        self.assertEqual(expression_job.payload["aspect_ratio"], "square")
+        self.assertIn("Exact grid: 2 columns x 2 rows", expression_job.payload["user_prompt"])
+        self.assertIn("STYLE OVERRIDE (user)", expression_job.payload["user_prompt"])
+
+    def test_character_sheet_rejects_count_for_other_variant(self):
+        self._register_asset(self.caller.principal_id, "character-reference", kind="input")
+        with self.assertRaisesRegex(ValueError, "count for expressions"):
+            self.service.create_character_sheet(
+                self.caller,
+                plan_id="plan_" + ("x" * 32),
+                reference_image_id="character-reference",
+                sheet_type="expressions",
+                count=5,
+                prompt="",
+                image_size="1K",
+                image_quality="low",
+                idempotency_key="character-invalid-001",
+                cost_confirmed=False,
+            )
+
+    def test_create_storyboard_builds_exact_grid_and_continuity_request(self):
+        self._register_asset(self.caller.principal_id, "story-reference", kind="image")
+        plan = self._plan(
+            "create_storyboard",
+            prompt="The hero enters the ruins, finds the crystal, and escapes a collapse.",
+            options={"cuts": 6, "image_size": "1K", "image_quality": "low"},
+            reference_image_ids=["story-reference"],
+        )
+        response = self.service.create_storyboard(
+            self.caller,
+            plan_id=plan["plan_id"],
+            reference_image_id="story-reference",
+            prompt="The hero enters the ruins, finds the crystal, and escapes a collapse.",
+            cuts=6,
+            image_size="1K",
+            image_quality="low",
+            idempotency_key="storyboard-six-001",
+            cost_confirmed=False,
+        )
+        job = self.manager.get(response["job_id"])
+        self.assertEqual(job.payload["capability"], "create_storyboard")
+        self.assertEqual(job.payload["capability_variant"], "default")
+        self.assertEqual(job.payload["workflow_id"], "NanoBanana_StoryboardCutboard")
+        self.assertEqual(job.payload["input_image_id"], "story-reference")
+        self.assertEqual(job.payload["aspect_ratio"], "landscape")
+        self.assertEqual(job.payload["image_model"], "openai/gpt-image-2")
+        self.assertIn("CUTS: 6", job.payload["user_prompt"])
+        self.assertIn("GRID: 2x3", job.payload["user_prompt"])
+        self.assertEqual(response["output_contract"]["grid"], "2x3")
 
     def test_client_attachment_registration_is_deduplicated(self):
         encoded = self._png_base64()
@@ -297,6 +558,7 @@ class McpServerTests(unittest.TestCase):
         self.assertEqual(set(by_name), {
             "list_generation_capabilities",
             "get_generation_capability",
+            "plan_generation",
             "get_generation_job",
             "get_generation_result",
             "create_managed_image_asset",
@@ -304,18 +566,34 @@ class McpServerTests(unittest.TestCase):
             "get_image_asset",
             "create_input_image_asset",
             "create_game_ui_assets",
+            "create_character_sheet",
+            "create_storyboard",
+            "remove_background",
         })
         self.assertNotIn("create_image", by_name)
         self.assertFalse(by_name["create_managed_image_asset"].annotations.read_only_hint)
         self.assertTrue(by_name["create_managed_image_asset"].annotations.open_world_hint)
         self.assertTrue(by_name["get_generation_job"].annotations.read_only_hint)
+        self.assertTrue(by_name["plan_generation"].annotations.read_only_hint)
+        self.assertFalse(by_name["plan_generation"].annotations.idempotent_hint)
         self.assertTrue(by_name["list_image_assets"].annotations.read_only_hint)
         self.assertTrue(by_name["get_image_asset"].annotations.read_only_hint)
         self.assertFalse(by_name["create_input_image_asset"].annotations.read_only_hint)
         self.assertFalse(by_name["create_input_image_asset"].annotations.open_world_hint)
         self.assertFalse(by_name["create_game_ui_assets"].annotations.read_only_hint)
+        self.assertFalse(by_name["create_character_sheet"].annotations.read_only_hint)
+        self.assertFalse(by_name["create_storyboard"].annotations.read_only_hint)
+        self.assertFalse(by_name["remove_background"].annotations.read_only_hint)
+        self.assertFalse(by_name["remove_background"].annotations.open_world_hint)
+        self.assertIn("image_id", by_name["remove_background"].input_schema["required"])
+        self.assertIn("reference_image_id", by_name["create_character_sheet"].input_schema["required"])
+        self.assertIn("reference_image_id", by_name["create_storyboard"].input_schema["required"])
         create_schema = by_name["create_managed_image_asset"].input_schema
         self.assertIn("idempotency_key", create_schema["required"])
+        self.assertIn("plan_id", create_schema["required"])
+        self.assertIn("image_model", create_schema["required"])
+        self.assertIn("aspect_ratio", create_schema["required"])
+        self.assertIn("image_size", create_schema["required"])
         self.assertIn("company-managed", by_name["create_managed_image_asset"].description)
 
     def test_streamable_http_protocol_lists_and_invokes_tools(self):
@@ -340,7 +618,7 @@ class McpServerTests(unittest.TestCase):
             self.assertEqual(initialized.status_code, 200, initialized.text)
             self.assertEqual(
                 initialized.json()["result"]["serverInfo"]["version"],
-                "0.4.0",
+                "0.7.0",
             )
 
             protocol_headers = {**headers, "MCP-Protocol-Version": "2025-06-18"}
@@ -356,6 +634,10 @@ class McpServerTests(unittest.TestCase):
             self.assertIn("get_image_asset", names)
             self.assertIn("create_input_image_asset", names)
             self.assertIn("create_game_ui_assets", names)
+            self.assertIn("create_character_sheet", names)
+            self.assertIn("create_storyboard", names)
+            self.assertIn("remove_background", names)
+            self.assertIn("plan_generation", names)
             self.assertNotIn("create_image", names)
 
             capabilities = client.post(
@@ -371,10 +653,37 @@ class McpServerTests(unittest.TestCase):
             public_capabilities = capabilities.json()["result"]["structuredContent"]["capabilities"]
             self.assertEqual(
                 {item["name"] for item in public_capabilities},
-                {"create_managed_image_asset", "create_game_ui_assets"},
+                {
+                    "create_managed_image_asset",
+                    "create_game_ui_assets",
+                    "create_character_sheet",
+                    "create_storyboard",
+                    "remove_background",
+                },
             )
 
-            called = client.post(
+            unplanned = client.post(
+                "/",
+                headers=protocol_headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 31,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "create_managed_image_asset",
+                        "arguments": {
+                            "prompt": "A minimal red gem icon",
+                            "image_model": "google/gemini-3.1-flash-lite-image",
+                            "aspect_ratio": "square",
+                            "image_size": "1K",
+                            "idempotency_key": "unplanned-protocol-gem",
+                        },
+                    },
+                },
+            )
+            self.assertTrue(unplanned.json()["result"]["isError"])
+
+            planned = client.post(
                 "/",
                 headers=protocol_headers,
                 json={
@@ -382,10 +691,34 @@ class McpServerTests(unittest.TestCase):
                     "id": 4,
                     "method": "tools/call",
                     "params": {
+                        "name": "plan_generation",
+                        "arguments": {
+                            "capability": "create_managed_image_asset",
+                            "prompt": "A minimal red gem icon",
+                            "options": {
+                                "image_model": "google/gemini-3.1-flash-lite-image",
+                                "aspect_ratio": "square",
+                                "image_size": "1K",
+                            },
+                        },
+                    },
+                },
+            )
+            planned_result = planned.json()["result"]["structuredContent"]
+            self.assertTrue(planned_result["ready_to_generate"])
+            called = client.post(
+                "/",
+                headers=protocol_headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 5,
+                    "method": "tools/call",
+                    "params": {
                         "name": "create_managed_image_asset",
                         "arguments": {
-                            "prompt": "A minimal red gem icon",
-                            "idempotency_key": "protocol-gem-001",
+                            **planned_result["tool_arguments"],
+                            "plan_id": planned_result["plan_id"],
+                            "idempotency_key": planned_result["suggested_idempotency_key"],
                         },
                     },
                 },
@@ -460,6 +793,92 @@ class McpServerTests(unittest.TestCase):
             retry_result = attachment_retry.json()["result"]["structuredContent"]
             self.assertTrue(retry_result["duplicate"])
             self.assertEqual(retry_result["asset_id"], attachment_result["asset_id"])
+
+            character_plan_response = client.post(
+                "/",
+                headers=protocol_headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 9,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "plan_generation",
+                        "arguments": {
+                            "capability": "create_character_sheet",
+                            "reference_image_ids": ["protocol-owned"],
+                            "options": {
+                                "sheet_type": "turnaround",
+                                "count": 3,
+                                "image_size": "1K",
+                                "image_quality": "low",
+                            },
+                        },
+                    },
+                },
+            )
+            character_plan = character_plan_response.json()["result"]["structuredContent"]
+            character_sheet = client.post(
+                "/",
+                headers=protocol_headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 10,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "create_character_sheet",
+                        "arguments": {
+                            **character_plan["tool_arguments"],
+                            "plan_id": character_plan["plan_id"],
+                            "idempotency_key": character_plan["suggested_idempotency_key"],
+                        },
+                    },
+                },
+            )
+            character_structured = character_sheet.json()["result"]["structuredContent"]
+            self.assertEqual(character_structured["output_contract"]["count"], 3)
+
+            storyboard_plan_response = client.post(
+                "/",
+                headers=protocol_headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 11,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "plan_generation",
+                        "arguments": {
+                            "capability": "create_storyboard",
+                            "reference_image_ids": ["protocol-owned"],
+                            "prompt": "A hero discovers a glowing gate and steps through it.",
+                            "options": {
+                                "cuts": 6,
+                                "image_size": "1K",
+                                "image_quality": "low",
+                            },
+                        },
+                    },
+                },
+            )
+            storyboard_plan = storyboard_plan_response.json()["result"]["structuredContent"]
+            storyboard = client.post(
+                "/",
+                headers=protocol_headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 12,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "create_storyboard",
+                        "arguments": {
+                            **storyboard_plan["tool_arguments"],
+                            "plan_id": storyboard_plan["plan_id"],
+                            "idempotency_key": storyboard_plan["suggested_idempotency_key"],
+                        },
+                    },
+                },
+            )
+            storyboard_structured = storyboard.json()["result"]["structuredContent"]
+            self.assertEqual(storyboard_structured["output_contract"]["grid"], "2x3")
 
     def test_mcp_cidr_allowlist_denies_other_clients_and_invalid_policy_fails_closed(self):
         integration = create_mcp_integration(self.manager, self.store, self.controls, self.asset_service)

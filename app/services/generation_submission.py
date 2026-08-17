@@ -13,7 +13,7 @@ class GenerationSubmission:
     job_id: str
     status: str
     position: int
-    estimated_cost_usd: float
+    estimated_cost_usd: float | None
     duplicate: bool = False
 
 
@@ -36,7 +36,7 @@ class GenerationSubmissionService:
                 job_id=str(admission.duplicate_job_id),
                 status="duplicate",
                 position=self.job_manager.get_position(admission.duplicate_job_id) or 0,
-                estimated_cost_usd=float(admission.estimated_cost_usd or 0),
+                estimated_cost_usd=admission.estimated_cost_usd,
                 duplicate=True,
             )
 
@@ -58,5 +58,5 @@ class GenerationSubmissionService:
             job_id=job.id,
             status="queued",
             position=self.job_manager.get_position(job.id) or 0,
-            estimated_cost_usd=float(admission.estimated_cost_usd or 0),
+            estimated_cost_usd=admission.estimated_cost_usd,
         )

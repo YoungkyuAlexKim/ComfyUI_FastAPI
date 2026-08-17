@@ -41,6 +41,7 @@ from .auth.user_management import (
     ANON_COOKIE_NAME,
     ANON_COOKIE_PREFIX,
 )
+from .auth.mcp_identity import principal_for_mcp_ip
 from .services.media_store import (
     _user_base_dir,
     _date_partition_path,
@@ -62,6 +63,7 @@ from .routers.admin_feed import router as admin_feed_router
 from .routers.characters import router as characters_router
 from .routers.global_characters import router as global_characters_router
 from .routers.assets import router as assets_router
+from .routers.principal_links import router as principal_links_router
 from .ws.manager import manager
 from .ws.routes import router as ws_router
 from .schemas.api_models import EnqueueResponse, JobStatusResponse, CancelActiveResponse, TranslateResponse
@@ -75,7 +77,9 @@ from .services.generation_controls import GenerationControlService, GenerationPo
 from .services.generation_submission import GenerationSubmissionService
 from .services.asset_service import AssetService
 from .services.asset_runtime import configure_asset_service
+from .services.principal_links import mcp_web_link_enabled
 from .mcp_server import create_mcp_integration
+from .principal_link_store import PrincipalLinkStore
 from .services.openrouter_client import (
     OpenRouterUpstreamError,
     generate_text,
@@ -89,7 +93,7 @@ from .rate_limiter import SlidingWindowRateLimiter
 logger = setup_logging()
 
 templates = Jinja2Templates(directory="templates")
-app = FastAPI(title="ComfyUI FastAPI Server", version="0.4.0 (Jobs & Queues)")
+app = FastAPI(title="ComfyUI FastAPI Server", version="0.7.0 (Planned Hosted and Local Generation)")
 app.include_router(admin_router)
 app.include_router(ws_router)
 app.include_router(workflows_router)
@@ -103,6 +107,7 @@ app.include_router(admin_feed_router)
 app.include_router(characters_router)
 app.include_router(global_characters_router)
 app.include_router(assets_router)
+app.include_router(principal_links_router)
 
 
 @app.middleware("http")
@@ -110,9 +115,15 @@ async def principal_session_middleware(request: Request, call_next):
     """Upgrade legacy browser identities to a signed server session."""
 
     path = request.url.path or ""
-    if path == "/healthz" or path == "/mcp" or path.startswith("/mcp/"):
+    if (
+        path == "/healthz"
+        or path == "/mcp"
+        or path.startswith("/mcp/")
+        or getattr(request.state, "mcp_output_authorized", False)
+    ):
         # Health checks have no browser identity, and MCP derives its principal
-        # from the verified client IP in McpRequestContextMiddleware.
+        # from the verified client IP. MCP output authorization is established
+        # by private_sidecar_middleware before this middleware runs.
         return await call_next(request)
     principal_id, needs_upgrade = prepare_request_principal(request)
     response = await call_next(request)
@@ -141,8 +152,14 @@ async def beta_access_middleware(request: Request, call_next):
 
     path = request.url.path or ""
     # MCP has its own internal-network/IP boundary and cannot use browser cookies.
-    # Allow it through the legacy beta password gate.
-    if path.startswith("/beta-login") or path == "/healthz" or path.startswith("/mcp"):
+    # MCP-owned output is allowed only after private_sidecar_middleware verifies
+    # that the request IP matches the owner encoded in the output path.
+    if (
+        path.startswith("/beta-login")
+        or path == "/healthz"
+        or path.startswith("/mcp")
+        or getattr(request.state, "mcp_output_authorized", False)
+    ):
         return await call_next(request)
 
     if is_request_authed(request.cookies):
@@ -282,6 +299,7 @@ from .feed_store import FeedStore
 feed_store = FeedStore(JOB_DB_PATH)
 asset_store = AssetStore(JOB_DB_PATH)
 asset_service = AssetService(asset_store, SERVER_CONFIG["output_dir"])
+principal_link_store = PrincipalLinkStore(JOB_DB_PATH)
 configure_asset_service(asset_service)
 try:
     app.state.connection_manager = manager
@@ -290,6 +308,7 @@ try:
     app.state.generation_controls = generation_controls
     app.state.feed_store = feed_store
     app.state.asset_service = asset_service
+    app.state.principal_link_store = principal_link_store
 except Exception as e:
     logger.debug({"event": "app_state_init_failed", "error": str(e)})
 
@@ -388,17 +407,30 @@ async def private_sidecar_middleware(request: Request, call_next):
         return await call_next(request)
 
     expected_owner = _get_anon_id_from_request(request)
-    if owner_id.startswith("mcp-ip-"):
+    is_mcp_owner = owner_id.startswith("mcp-ip-")
+    if is_mcp_owner:
         peer_ip = getattr(getattr(request, "client", None), "host", None)
         client_ip, _ = resolve_client_ip(
             peer_ip,
             request.headers.get("x-forwarded-for"),
             os.getenv("TRUSTED_PROXY_CIDRS"),
         )
-        digest = hashlib.sha256(f"mcp-ip:{client_ip}".encode("utf-8")).hexdigest()[:24]
-        expected_owner = f"mcp-ip-{digest}"
-    if not secrets.compare_digest(owner_id, expected_owner):
+        expected_owner = principal_for_mcp_ip(client_ip)
+    authorized_by_current_ip = secrets.compare_digest(owner_id, expected_owner)
+    authorized_by_link = False
+    if is_mcp_owner and not authorized_by_current_ip and mcp_web_link_enabled():
+        browser_owner = _get_anon_id_from_request(request)
+        link_store = getattr(request.app.state, "principal_link_store", None)
+        try:
+            authorized_by_link = bool(link_store and link_store.is_linked(browser_owner, owner_id))
+        except (TypeError, ValueError):
+            authorized_by_link = False
+    if not authorized_by_current_ip and not authorized_by_link:
         return Response(status_code=404)
+    if is_mcp_owner and authorized_by_current_ip:
+        # Later middleware may bypass browser-only gates only after this owner
+        # check succeeds. Request state cannot be supplied by the HTTP caller.
+        request.state.mcp_output_authorized = True
     return await call_next(request)
 
 # --- Helpers ---
@@ -670,7 +702,13 @@ async def generate_image(request: GenerateRequest, http_request: Request):
                 "job_id": submission.job_id,
             }
         )
-        return {"job_id": submission.job_id, "status": "duplicate", "position": submission.position}
+        return {
+            "job_id": submission.job_id,
+            "status": "duplicate",
+            "position": submission.position,
+            "estimated_cost_usd": submission.estimated_cost_usd,
+            "cost_estimate_available": submission.estimated_cost_usd is not None,
+        }
 
     logger.info(
         {
@@ -689,7 +727,13 @@ async def generate_image(request: GenerateRequest, http_request: Request):
             "estimated_cost_usd": submission.estimated_cost_usd,
         }
     )
-    return {"job_id": submission.job_id, "status": "queued", "position": submission.position}
+    return {
+        "job_id": submission.job_id,
+        "status": "queued",
+        "position": submission.position,
+        "estimated_cost_usd": submission.estimated_cost_usd,
+        "cost_estimate_available": submission.estimated_cost_usd is not None,
+    }
 
 
 # Images routes moved to app/routers/images.py

@@ -253,7 +253,15 @@ class AssetService:
             "status": row.get("status") or "active",
             "mtime": float(row.get("created_at") or 0),
             "path": storage_path,
+            "owner_id": row.get("owner_id"),
         }
+
+    @staticmethod
+    def _owner_ids(owner_ids: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(dict.fromkeys(require_principal_id(owner_id) for owner_id in owner_ids))
+        if len(normalized) > 64:
+            raise ValueError("Too many linked principals")
+        return normalized
 
     def list_media(
         self,
@@ -297,8 +305,87 @@ class AssetService:
         )
         return [self._to_media_item(row) for row in rows], pagination
 
+    def list_media_for_owners(
+        self,
+        owner_ids: list[str] | tuple[str, ...],
+        kind: str,
+        *,
+        include_trash: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        principals = self._owner_ids(owner_ids)
+        if kind not in {"image", "input", "audio"}:
+            raise ValueError("Invalid asset kind")
+        return [
+            self._to_media_item(row)
+            for row in self.store.list_for_owners(
+                principals,
+                kinds=(kind,),
+                include_trash=include_trash,
+                limit=limit,
+                offset=offset,
+            )
+        ]
+
+    def list_media_group_preserving_page_for_owners(
+        self,
+        owner_ids: list[str] | tuple[str, ...],
+        kind: str,
+        *,
+        page: int,
+        size: int,
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        principals = self._owner_ids(owner_ids)
+        if kind not in {"image", "input", "audio"}:
+            raise ValueError("Invalid asset kind")
+        rows, pagination = self.store.list_group_preserving_page_for_owners(
+            principals,
+            kind=kind,
+            page=page,
+            size=size,
+        )
+        return [self._to_media_item(row) for row in rows], pagination
+
     def count_media(self, owner_id: str, kind: str, *, include_trash: bool = False) -> int:
         return self.store.count(require_principal_id(owner_id), kinds=(kind,), include_trash=include_trash)
+
+    def count_media_for_owners(
+        self,
+        owner_ids: list[str] | tuple[str, ...],
+        kind: str,
+        *,
+        include_trash: bool = False,
+    ) -> int:
+        principals = self._owner_ids(owner_ids)
+        if kind not in {"image", "input", "audio"}:
+            raise ValueError("Invalid asset kind")
+        return self.store.count_for_owners(
+            principals,
+            kinds=(kind,),
+            include_trash=include_trash,
+        )
+
+    def get_for_owners(
+        self,
+        owner_ids: list[str] | tuple[str, ...],
+        asset_id: str,
+        *,
+        kind: str | None = None,
+        active_only: bool = False,
+    ) -> Optional[dict[str, Any]]:
+        principals = set(self._owner_ids(owner_ids))
+        safe_asset_id = _valid_asset_id(asset_id)
+        if not safe_asset_id:
+            return None
+        row = self.store.get(safe_asset_id)
+        if not row or row.get("owner_id") not in principals:
+            return None
+        if kind is not None and row.get("kind") != kind:
+            return None
+        if active_only and row.get("status") != "active":
+            return None
+        return row
 
     def list_assets(
         self,

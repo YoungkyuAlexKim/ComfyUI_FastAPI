@@ -8,6 +8,7 @@ class ImageItem(BaseModel):
     thumb_url: Optional[str] = None
     created_at: str
     meta: Optional[Dict[str, Any]] = None
+    linked_from_mcp: bool = False
 
 
 class PaginatedImages(BaseModel):
