@@ -18,7 +18,7 @@
             title="쇼케이스"
         >
             <i class="fas fa-images"></i>
-            <span class="sidebar-tab-label">쇼케이스</span>
+            <span class="sidebar-tab-label">피드</span>
         </a>
         <a
             href="/create"
@@ -27,11 +27,20 @@
             title="이미지 생성"
         >
             <i class="fas fa-wand-magic-sparkles"></i>
-            <span class="sidebar-tab-label">이미지 생성</span>
+            <span class="sidebar-tab-label">생성</span>
+        </a>
+        <a
+            href="/mcp-connect"
+            class="sidebar-tab{% if current_page == 'mcp_connect' %} active{% endif %}"
+            aria-current="{% if current_page == 'mcp_connect' %}page{% else %}false{% endif %}"
+            title="AI 도구 연결"
+        >
+            <i class="fas fa-plug"></i>
+            <span class="sidebar-tab-label">연결</span>
         </a>
     </nav>
 
-    {% if current_page != 'feed' %}
+    {% if current_page == 'create' %}
     <div class="workflow-section">
         <div class="workflow-list" id="workflow-list"></div>
     </div>

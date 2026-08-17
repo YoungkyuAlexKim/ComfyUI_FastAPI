@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}AI 도구 연결 | LC AI Canvas{% endblock %}
+
+{% block head_extra %}
+    <link href="/static/css/mcp_connect.css?v=20260817_02" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="app-container mcp-connect-app" data-anon-id="{{ anon_id }}">
+    <div class="app-layout mcp-connect-layout">
+        {% include "partials/sidebar.html" %}
+
+        <main class="mcp-connect-main">
+            <section class="mcp-connect-hero" aria-labelledby="mcp-connect-title">
+                <div class="mcp-connect-heading">
+                    <span class="mcp-connect-kicker">설정 / AI 도구 연결</span>
+                    <h1 id="mcp-connect-title">LC AI Canvas 연결</h1>
+                    <p class="mcp-connect-lead">
+                        Codex 또는 Claude Code에서 사내 이미지 제작 기능을 사용하기 위한 설정 안내입니다.
+                    </p>
+                </div>
+                <div class="mcp-connect-status" id="mcp-health-badge" data-state="checking" aria-label="서버 상태">
+                        <span class="mcp-health-dot" aria-hidden="true"></span>
+                        <span id="mcp-health-label">서버 확인 중</span>
+                </div>
+            </section>
+
+            <section class="mcp-connect-card" aria-labelledby="client-choice-title">
+                <div class="mcp-connect-card-heading">
+                    <div>
+                        <h2 id="client-choice-title">연결 방법</h2>
+                        <p>사용 중인 프로그램을 선택하고 순서대로 설정하세요.</p>
+                    </div>
+                </div>
+
+                <div class="mcp-client-tabs" role="tablist" aria-label="AI 클라이언트 선택">
+                    <button
+                        class="mcp-client-tab is-active"
+                        id="tab-codex"
+                        type="button"
+                        role="tab"
+                        aria-selected="true"
+                        aria-controls="panel-codex"
+                        data-client-tab="codex"
+                    >
+                        Codex 앱 · VS Code
+                        <span class="mcp-verified-label">확인 완료</span>
+                    </button>
+                    <button
+                        class="mcp-client-tab"
+                        id="tab-claude-code"
+                        type="button"
+                        role="tab"
+                        aria-selected="false"
+                        aria-controls="panel-claude-code"
+                        tabindex="-1"
+                        data-client-tab="claude-code"
+                    >
+                        Claude Code
+                        <span class="mcp-beta-label">확인 예정</span>
+                    </button>
+                </div>
+
+                <div
+                    class="mcp-client-panel is-active"
+                    id="panel-codex"
+                    role="tabpanel"
+                    aria-labelledby="tab-codex"
+                    data-client-panel="codex"
+                >
+                    <div class="mcp-step-grid">
+                        <article class="mcp-step-card">
+                            <span class="mcp-step-number">1</span>
+                            <div class="mcp-step-copy">
+                                <span class="mcp-step-label">연결 주소</span>
+                                <h3>MCP 주소 복사</h3>
+                                <p>LC AI Canvas의 사내 MCP 주소입니다.</p>
+                            </div>
+                            <div class="mcp-copy-field">
+                                <code id="mcp-url-codex">{{ mcp_url }}</code>
+                                <button type="button" class="mcp-copy-button" data-copy-target="#mcp-url-codex">
+                                    <i class="far fa-copy"></i><span>복사</span>
+                                </button>
+                            </div>
+                        </article>
+
+                        <article class="mcp-step-card">
+                            <span class="mcp-step-number">2</span>
+                            <div class="mcp-step-copy">
+                                <span class="mcp-step-label">Codex 설정</span>
+                                <h3>서버 등록</h3>
+                                <ol class="mcp-simple-steps">
+                                    <li>Codex에서 <strong>설정(톱니바퀴)</strong>을 엽니다.</li>
+                                    <li><strong>MCP servers → Add server</strong>를 누릅니다.</li>
+                                    <li>이름은 <code>lc_ai_canvas</code>, 주소는 방금 복사한 값을 넣고 저장합니다.</li>
+                                    <li>Codex를 다시 시작합니다.</li>
+                                </ol>
+                            </div>
+                            <details class="mcp-command-details">
+                                <summary>명령어로 연결하기</summary>
+                                <p>Codex 터미널에 아래 한 줄을 붙여 넣으세요.</p>
+                                <div class="mcp-copy-field mcp-copy-field--command">
+                                    <code id="codex-command">{{ codex_add_command }}</code>
+                                    <button type="button" class="mcp-copy-button" data-copy-target="#codex-command">
+                                        <i class="far fa-copy"></i><span>복사</span>
+                                    </button>
+                                </div>
+                            </details>
+                        </article>
+
+                        <article class="mcp-step-card mcp-step-card--finish">
+                            <span class="mcp-step-number">3</span>
+                            <div class="mcp-step-copy">
+                                <span class="mcp-step-label">무료 확인</span>
+                                <h3>연결 확인</h3>
+                                <p>새 채팅에서 아래 문장을 보내 제공 기능을 확인합니다.</p>
+                            </div>
+                            <div class="mcp-prompt-box">
+                                <p id="codex-test-prompt">LC AI Canvas에서 사용할 수 있는 이미지 생성 기능과 옵션을 알려줘. 아직 이미지는 생성하지 마.</p>
+                                <button type="button" class="mcp-copy-button mcp-copy-button--light" data-copy-target="#codex-test-prompt">
+                                    <i class="far fa-copy"></i><span>문장 복사</span>
+                                </button>
+                            </div>
+                            <p class="mcp-success-note">기능 목록이 나오면 연결된 상태입니다.</p>
+                        </article>
+                    </div>
+                </div>
+
+                <div
+                    class="mcp-client-panel"
+                    id="panel-claude-code"
+                    role="tabpanel"
+                    aria-labelledby="tab-claude-code"
+                    data-client-panel="claude-code"
+                    hidden
+                >
+                    <div class="mcp-validation-notice">
+                        <div>
+                            <strong>Claude Code 실기기 확인 전 안내</strong>
+                            <span>공식 HTTP 연결 형식을 사용했으며, 사내 계정으로 최종 확인할 예정입니다.</span>
+                        </div>
+                    </div>
+                    <div class="mcp-step-grid">
+                        <article class="mcp-step-card">
+                            <span class="mcp-step-number">1</span>
+                            <div class="mcp-step-copy">
+                                <span class="mcp-step-label">연결 명령</span>
+                                <h3>명령 복사</h3>
+                                <p>사용자 범위로 저장되어 같은 컴퓨터의 다른 프로젝트에서도 사용할 수 있습니다.</p>
+                            </div>
+                            <div class="mcp-copy-field mcp-copy-field--command">
+                                <code id="claude-command">{{ claude_add_command }}</code>
+                                <button type="button" class="mcp-copy-button" data-copy-target="#claude-command">
+                                    <i class="far fa-copy"></i><span>복사</span>
+                                </button>
+                            </div>
+                        </article>
+
+                        <article class="mcp-step-card">
+                            <span class="mcp-step-number">2</span>
+                            <div class="mcp-step-copy">
+                                <span class="mcp-step-label">Claude Code</span>
+                                <h3>서버 등록</h3>
+                                <ol class="mcp-simple-steps">
+                                    <li>Claude Code가 실행된 터미널을 엽니다.</li>
+                                    <li>복사한 명령을 붙여 넣고 <strong>Enter</strong>를 누릅니다.</li>
+                                    <li><code>/mcp</code>를 입력해 <code>lc_ai_canvas</code>가 보이는지 확인합니다.</li>
+                                </ol>
+                            </div>
+                        </article>
+
+                        <article class="mcp-step-card mcp-step-card--finish">
+                            <span class="mcp-step-number">3</span>
+                            <div class="mcp-step-copy">
+                                <span class="mcp-step-label">무료 확인</span>
+                                <h3>연결 확인</h3>
+                                <p>아래 문장은 이미지를 생성하지 않아 외부 이미지 API 비용이 들지 않습니다.</p>
+                            </div>
+                            <div class="mcp-prompt-box">
+                                <p id="claude-test-prompt">LC AI Canvas에서 사용할 수 있는 이미지 생성 기능과 옵션을 알려줘. 아직 이미지는 생성하지 마.</p>
+                                <button type="button" class="mcp-copy-button mcp-copy-button--light" data-copy-target="#claude-test-prompt">
+                                    <i class="far fa-copy"></i><span>문장 복사</span>
+                                </button>
+                            </div>
+                            <p class="mcp-success-note">기능 목록이 나오면 연결된 상태입니다.</p>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <section class="mcp-connect-support" aria-label="사용 전 안내">
+                <article class="mcp-info-card">
+                    <div>
+                        <h2>사용 방법</h2>
+                        <p>“게임 UI용 보석 버튼을 만들어줘”처럼 요청할 수 있습니다. 모델·크기·비율이 빠졌거나 비용이 생기는 작업은 실행 전에 필요한 내용을 확인합니다.</p>
+                    </div>
+                </article>
+                <article class="mcp-info-card">
+                    <div>
+                        <h2>비용</h2>
+                        <p>외부 이미지 생성·편집 API는 실제 비용이 발생합니다. 기능 조회와 자산 목록 조회는 무료이며, 로컬 배경 제거(RMBG)는 외부 API 비용이 없습니다.</p>
+                    </div>
+                </article>
+                <article class="mcp-info-card">
+                    <div>
+                        <h2>결과 확인</h2>
+                        <p>MCP로 만든 이미지가 보이지 않으면 MCP 설정과 같은 사내 주소로 갤러리를 열고 표시되는 “연결하기”를 한 번 눌러 주세요.</p>
+                        <a class="mcp-text-link" href="{{ canvas_url }}">LC AI Canvas 열기</a>
+                    </div>
+                </article>
+            </section>
+
+            <section class="mcp-connect-help">
+                <div>
+                    <h2>연결 문제</h2>
+                    <p>기능 목록이 나오지 않으면 사내망 연결을 확인하고, 오류 문구를 복사해 운영 담당자에게 전달해 주세요.</p>
+                </div>
+                <div class="mcp-help-actions">
+                    <button type="button" class="mcp-secondary-button" data-copy-target="#mcp-url-support">
+                        <i class="far fa-copy"></i> 연결 주소 복사
+                    </button>
+                    <a class="mcp-primary-button" href="{{ canvas_url }}"><i class="fas fa-palette"></i> Canvas로 이동</a>
+                    <span id="mcp-url-support" class="visually-hidden">{{ mcp_url }}</span>
+                </div>
+            </section>
+        </main>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="/static/js/mcp_connect.js?v=20260817_01"></script>
+{% endblock %}

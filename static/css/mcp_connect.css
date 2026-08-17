@@ -1,0 +1,574 @@
+.mcp-connect-app {
+    padding: 0;
+    background: #090a0c;
+}
+
+.mcp-connect-layout {
+    min-height: 100vh;
+}
+
+.mcp-connect-main {
+    width: 100%;
+    min-width: 0;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 54px 54px 72px;
+}
+
+.mcp-connect-hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 32px;
+    margin-bottom: 36px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid #292d34;
+}
+
+.mcp-connect-kicker {
+    display: block;
+    margin-bottom: 9px;
+    color: #7f8792;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.mcp-connect-hero h1 {
+    margin: 0;
+    color: #f0f2f5;
+    font-size: clamp(30px, 4vw, 40px);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.2;
+}
+
+.mcp-connect-lead {
+    margin: 11px 0 0;
+    color: #9aa1ab;
+    font-size: 15px;
+    line-height: 1.65;
+    word-break: keep-all;
+}
+
+.mcp-connect-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    padding-bottom: 4px;
+    color: #9299a3;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.mcp-health-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #b28b47;
+}
+
+#mcp-health-badge[data-state="ready"] .mcp-health-dot {
+    background: #64b88c;
+}
+
+#mcp-health-badge[data-state="error"] .mcp-health-dot {
+    background: #d67878;
+}
+
+.mcp-connect-card {
+    overflow: hidden;
+    border: 1px solid #292d34;
+    border-radius: 8px;
+    background: #0d0f12;
+}
+
+.mcp-connect-card-heading {
+    padding: 24px 26px 16px;
+}
+
+.mcp-connect-card-heading h2,
+.mcp-info-card h2,
+.mcp-connect-help h2 {
+    margin: 0;
+    color: #e8ebef;
+    font-weight: 680;
+    letter-spacing: -0.02em;
+}
+
+.mcp-connect-card-heading h2 {
+    font-size: 19px;
+}
+
+.mcp-connect-card-heading p {
+    margin: 7px 0 0;
+    color: #858c96;
+    font-size: 13px;
+}
+
+.mcp-client-tabs {
+    display: flex;
+    gap: 24px;
+    padding: 0 26px;
+    border-bottom: 1px solid #292d34;
+}
+
+.mcp-client-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 0 1px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: #858c96;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.mcp-client-tab:hover {
+    color: #d7dbe1;
+}
+
+.mcp-client-tab.is-active {
+    border-bottom-color: #83a7ee;
+    color: #eef1f5;
+}
+
+.mcp-client-tab:focus-visible,
+.mcp-copy-button:focus-visible,
+.mcp-primary-button:focus-visible,
+.mcp-secondary-button:focus-visible,
+.mcp-text-link:focus-visible {
+    outline: 2px solid #83a7ee;
+    outline-offset: 3px;
+}
+
+.mcp-verified-label,
+.mcp-beta-label {
+    color: #737b86;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.mcp-client-panel {
+    padding: 0 26px;
+}
+
+.mcp-client-panel[hidden] {
+    display: none;
+}
+
+.mcp-step-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+}
+
+.mcp-step-card {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    column-gap: 16px;
+    align-items: start;
+    min-width: 0;
+    padding: 25px 0;
+    border-bottom: 1px solid #252930;
+}
+
+.mcp-step-card:last-child {
+    border-bottom: 0;
+}
+
+.mcp-step-number {
+    grid-column: 1;
+    grid-row: 1 / span 6;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid #3a4049;
+    border-radius: 4px;
+    color: #bdc3cc;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.mcp-step-card > :not(.mcp-step-number) {
+    grid-column: 2;
+}
+
+.mcp-step-label {
+    display: block;
+    margin-bottom: 5px;
+    color: #747d89;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.mcp-step-card h3 {
+    margin: 0 0 7px;
+    color: #e6e9ed;
+    font-size: 16px;
+    font-weight: 670;
+    letter-spacing: -0.015em;
+}
+
+.mcp-step-card p,
+.mcp-simple-steps {
+    color: #8f97a2;
+    font-size: 13px;
+    line-height: 1.65;
+    word-break: keep-all;
+}
+
+.mcp-step-card p {
+    margin: 0;
+}
+
+.mcp-simple-steps {
+    margin: 2px 0 0;
+    padding-left: 19px;
+}
+
+.mcp-simple-steps li + li {
+    margin-top: 5px;
+}
+
+.mcp-simple-steps strong,
+.mcp-simple-steps code {
+    color: #cfd5dd;
+}
+
+.mcp-copy-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: min(100%, 720px);
+    margin-top: 15px;
+    padding: 7px 7px 7px 11px;
+    border: 1px solid #30353d;
+    border-radius: 5px;
+    background: #08090b;
+}
+
+.mcp-copy-field code {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    color: #cdd2da;
+    font-family: Consolas, "SFMono-Regular", monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: nowrap;
+    scrollbar-width: thin;
+}
+
+.mcp-copy-field--command code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.mcp-copy-button,
+.mcp-secondary-button,
+.mcp-primary-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    min-height: 32px;
+    padding: 7px 10px;
+    border: 1px solid #3a4049;
+    border-radius: 4px;
+    background: #191c21;
+    color: #d9dde3;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.mcp-copy-button:hover,
+.mcp-secondary-button:hover {
+    border-color: #545c68;
+    background: #20242a;
+}
+
+.mcp-copy-button.is-copied {
+    border-color: #417a5d;
+    color: #84c6a1;
+}
+
+.mcp-command-details {
+    width: min(100%, 720px);
+    margin-top: 14px;
+}
+
+.mcp-command-details summary {
+    color: #a5acb6;
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.mcp-command-details > p {
+    margin-top: 8px;
+}
+
+.mcp-prompt-box {
+    width: min(100%, 720px);
+    margin-top: 14px;
+    padding: 12px;
+    border-left: 2px solid #5e7fbf;
+    background: #11151b;
+}
+
+.mcp-prompt-box p {
+    color: #cbd3df;
+}
+
+.mcp-copy-button--light {
+    margin-top: 10px;
+}
+
+.mcp-success-note {
+    margin-top: 10px !important;
+    color: #79bd98 !important;
+    font-size: 12px !important;
+}
+
+.mcp-validation-notice {
+    margin-top: 20px;
+    padding: 12px 14px;
+    border-left: 2px solid #a26f58;
+    background: #151210;
+}
+
+.mcp-validation-notice div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.mcp-validation-notice strong {
+    color: #d0a08a;
+    font-size: 12px;
+}
+
+.mcp-validation-notice span {
+    color: #9a8981;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.mcp-connect-support {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 28px;
+    border-top: 1px solid #292d34;
+    border-bottom: 1px solid #292d34;
+}
+
+.mcp-info-card {
+    min-width: 0;
+    padding: 22px 22px 23px;
+    border-right: 1px solid #292d34;
+}
+
+.mcp-info-card:first-child {
+    padding-left: 0;
+}
+
+.mcp-info-card:last-child {
+    padding-right: 0;
+    border-right: 0;
+}
+
+.mcp-info-card h2 {
+    font-size: 14px;
+}
+
+.mcp-info-card p,
+.mcp-connect-help p {
+    margin: 8px 0 0;
+    color: #858d98;
+    font-size: 12px;
+    line-height: 1.65;
+    word-break: keep-all;
+}
+
+.mcp-text-link {
+    display: inline-block;
+    margin-top: 10px;
+    color: #94b2ed;
+    font-size: 12px;
+    font-weight: 650;
+    text-decoration: none;
+}
+
+.mcp-text-link:hover {
+    text-decoration: underline;
+}
+
+.mcp-connect-help {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+    margin-top: 24px;
+}
+
+.mcp-connect-help h2 {
+    font-size: 14px;
+}
+
+.mcp-help-actions {
+    display: flex;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.mcp-primary-button,
+.mcp-secondary-button {
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 11px;
+}
+
+.mcp-primary-button {
+    border-color: #789ce3;
+    background: #789ce3;
+    color: #0b0d11;
+}
+
+.mcp-primary-button:hover {
+    background: #8ca9e5;
+}
+
+.visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+@media (max-width: 960px) {
+    .mcp-connect-main {
+        padding: 42px 34px 64px;
+    }
+
+    .mcp-connect-support {
+        grid-template-columns: 1fr;
+    }
+
+    .mcp-info-card,
+    .mcp-info-card:first-child,
+    .mcp-info-card:last-child {
+        padding: 18px 0;
+        border-right: 0;
+        border-bottom: 1px solid #292d34;
+    }
+
+    .mcp-info-card:last-child {
+        border-bottom: 0;
+    }
+}
+
+@media (max-width: 767px) {
+    .mcp-connect-app {
+        padding: 0;
+    }
+
+    .mcp-connect-layout {
+        gap: 0;
+    }
+
+    .mcp-connect-main {
+        padding: 32px 18px 54px;
+    }
+
+    .mcp-connect-hero,
+    .mcp-connect-help {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .mcp-connect-hero {
+        gap: 16px;
+        margin-bottom: 26px;
+        padding-bottom: 22px;
+    }
+
+    .mcp-connect-card-heading {
+        padding: 20px 18px 14px;
+    }
+
+    .mcp-client-tabs {
+        gap: 20px;
+        padding: 0 18px;
+        overflow-x: auto;
+    }
+
+    .mcp-client-tab {
+        white-space: nowrap;
+    }
+
+    .mcp-client-panel {
+        padding: 0 18px;
+    }
+
+    .mcp-step-card {
+        grid-template-columns: 28px minmax(0, 1fr);
+        column-gap: 12px;
+        padding: 22px 0;
+    }
+
+    .mcp-help-actions {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .mcp-help-actions > * {
+        flex: 1 1 160px;
+    }
+}
+
+@media (max-width: 480px) {
+    .mcp-connect-hero h1 {
+        font-size: 30px;
+    }
+
+    .mcp-verified-label,
+    .mcp-beta-label {
+        display: none;
+    }
+
+    .mcp-copy-field {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .mcp-copy-button {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mcp-client-tab,
+    .mcp-copy-button,
+    .mcp-primary-button,
+    .mcp-secondary-button {
+        transition: none;
+    }
+}

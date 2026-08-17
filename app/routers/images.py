@@ -4,7 +4,7 @@ from ..logging_utils import setup_logging
 from ..auth.user_management import _get_anon_id_from_request
 from ..services.media_store import _gather_user_images, _update_image_status
 from ..schemas.api_models import PaginatedImages
-from ..services.principal_links import linked_mcp_owner_ids
+from ..services.principal_links import browser_asset_owner_ids, linked_mcp_owner_ids
 
 
 logger = setup_logging()
@@ -122,9 +122,16 @@ async def list_images(
 
 @router.post("/api/v1/images/{image_id}/delete")
 async def user_soft_delete_image(image_id: str, request: Request):
-    anon_id = _get_anon_id_from_request(request)
-    logger.info({"event": "user_soft_delete", "owner_id": anon_id, "image_id": image_id})
-    ok = _update_image_status(anon_id, image_id, "trash")
+    actor_owner_id = _get_anon_id_from_request(request)
+    ok, asset_owner_id = _update_browser_manageable_image_status(request, image_id, "trash")
+    logger.info({
+        "event": "user_soft_delete",
+        "owner_id": actor_owner_id,
+        "asset_owner_id": asset_owner_id,
+        "linked_from_mcp": bool(asset_owner_id and asset_owner_id != actor_owner_id),
+        "image_id": image_id,
+        "ok": ok,
+    })
     if not ok:
         raise HTTPException(status_code=404, detail="Image not found")
     return {"ok": True}
@@ -132,36 +139,85 @@ async def user_soft_delete_image(image_id: str, request: Request):
 
 @router.post("/api/v1/images/{image_id}/restore")
 async def user_restore_image(image_id: str, request: Request):
-    anon_id = _get_anon_id_from_request(request)
-    logger.info({"event": "user_restore_image", "owner_id": anon_id, "image_id": image_id})
-    ok = _update_image_status(anon_id, image_id, "active")
+    actor_owner_id = _get_anon_id_from_request(request)
+    ok, asset_owner_id = _update_browser_manageable_image_status(request, image_id, "active")
+    logger.info({
+        "event": "user_restore_image",
+        "owner_id": actor_owner_id,
+        "asset_owner_id": asset_owner_id,
+        "linked_from_mcp": bool(asset_owner_id and asset_owner_id != actor_owner_id),
+        "image_id": image_id,
+        "ok": ok,
+    })
     if not ok:
         raise HTTPException(status_code=404, detail="Image not found")
     return {"ok": True}
 
 
-def _update_game_ui_group_status(request: Request, group_id: str, status: str) -> bool:
+def _update_browser_manageable_image_status(
+    request: Request,
+    image_id: str,
+    status: str,
+) -> tuple[bool, str | None]:
+    """Update a browser-owned or explicitly linked MCP image without transferring ownership."""
+
+    actor_owner_id = _get_anon_id_from_request(request)
+    asset_service = getattr(request.app.state, "asset_service", None)
+    if asset_service is None:
+        return _update_image_status(actor_owner_id, image_id, status), actor_owner_id
+
+    row = asset_service.get_for_owners(
+        browser_asset_owner_ids(request, actor_owner_id),
+        image_id,
+        kind="image",
+    )
+    if not row:
+        return False, None
+    asset_owner_id = str(row["owner_id"])
+    return asset_service.update_status(asset_owner_id, image_id, status, kind="image"), asset_owner_id
+
+
+def _update_game_ui_group_status(request: Request, group_id: str, status: str) -> tuple[bool, str | None]:
     asset_service = getattr(request.app.state, "asset_service", None)
     if asset_service is None:
         raise HTTPException(status_code=503, detail="Asset catalog is not initialized")
-    owner_id = _get_anon_id_from_request(request)
-    return asset_service.update_group_status(owner_id, group_id, status)
+    actor_owner_id = _get_anon_id_from_request(request)
+    for asset_owner_id in browser_asset_owner_ids(request, actor_owner_id):
+        if asset_service.get_group(asset_owner_id, group_id):
+            return asset_service.update_group_status(asset_owner_id, group_id, status), asset_owner_id
+    return False, None
 
 
 @router.post("/api/v1/game-ui-groups/{group_id}/delete")
 async def user_soft_delete_game_ui_group(group_id: str, request: Request):
-    owner_id = _get_anon_id_from_request(request)
-    logger.info({"event": "user_soft_delete_game_ui_group", "owner_id": owner_id, "group_id": group_id})
-    if not _update_game_ui_group_status(request, group_id, "trash"):
+    actor_owner_id = _get_anon_id_from_request(request)
+    ok, asset_owner_id = _update_game_ui_group_status(request, group_id, "trash")
+    logger.info({
+        "event": "user_soft_delete_game_ui_group",
+        "owner_id": actor_owner_id,
+        "asset_owner_id": asset_owner_id,
+        "linked_from_mcp": bool(asset_owner_id and asset_owner_id != actor_owner_id),
+        "group_id": group_id,
+        "ok": ok,
+    })
+    if not ok:
         raise HTTPException(status_code=404, detail="Game UI group not found")
     return {"ok": True, "scope": "group", "group_id": group_id}
 
 
 @router.post("/api/v1/game-ui-groups/{group_id}/restore")
 async def user_restore_game_ui_group(group_id: str, request: Request):
-    owner_id = _get_anon_id_from_request(request)
-    logger.info({"event": "user_restore_game_ui_group", "owner_id": owner_id, "group_id": group_id})
-    if not _update_game_ui_group_status(request, group_id, "active"):
+    actor_owner_id = _get_anon_id_from_request(request)
+    ok, asset_owner_id = _update_game_ui_group_status(request, group_id, "active")
+    logger.info({
+        "event": "user_restore_game_ui_group",
+        "owner_id": actor_owner_id,
+        "asset_owner_id": asset_owner_id,
+        "linked_from_mcp": bool(asset_owner_id and asset_owner_id != actor_owner_id),
+        "group_id": group_id,
+        "ok": ok,
+    })
+    if not ok:
         raise HTTPException(status_code=404, detail="Game UI group not found")
     return {"ok": True, "scope": "group", "group_id": group_id}
 

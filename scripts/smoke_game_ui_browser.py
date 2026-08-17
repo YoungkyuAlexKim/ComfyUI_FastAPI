@@ -386,7 +386,6 @@ def run_smoke(*, keep_temp: bool = False) -> dict:
             "OPENROUTER_BASE_URL": f"http://127.0.0.1:{fake_port}",
             "COMFYUI_SERVER": f"127.0.0.1:{fake_port}",
             "ASSET_CATALOG_FALLBACK_ENABLED": "false",
-            "BETA_PASSWORD": "",
             "ADMIN_USER": "",
             "ADMIN_PASSWORD": "",
             "ADMIN_ALLOW_UNAUTHENTICATED": "true",

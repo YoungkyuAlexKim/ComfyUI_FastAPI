@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 from contextvars import ContextVar
 from dataclasses import dataclass
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -12,7 +14,8 @@ import uuid
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.utilities.types import Image as McpImage
-from mcp.types import CallToolResult, TextContent, ToolAnnotations
+from mcp.types import Annotations, CallToolResult, ImageContent, TextContent, ToolAnnotations
+from PIL import Image, ImageOps
 from pydantic import Field
 
 from .auth.mcp_identity import (
@@ -264,7 +267,7 @@ def _absolute_result(result: Any, base_url: str) -> Any:
     return result
 
 
-def _result_image_content(structured_result: dict[str, Any]):
+def _result_image_path(structured_result: dict[str, Any]) -> Path | None:
     result = structured_result.get("result")
     web_path = result.get("image_path") if isinstance(result, dict) else None
     if not isinstance(web_path, str) or not web_path.startswith("/outputs/"):
@@ -275,7 +278,120 @@ def _result_image_content(structured_result: dict[str, Any]):
         return None
     if not candidate.is_file():
         return None
+    return candidate
+
+
+def _result_image_content(structured_result: dict[str, Any]):
+    candidate = _result_image_path(structured_result)
+    if candidate is None:
+        return None
     return McpImage(path=candidate).to_image_content()
+
+
+def _result_preview_content(
+    structured_result: dict[str, Any],
+    *,
+    max_dimension: int = 768,
+) -> tuple[ImageContent | None, dict[str, Any] | None]:
+    """Return a compact, user-directed preview with an original-image fallback."""
+
+    candidate = _result_image_path(structured_result)
+    if candidate is None:
+        return None, None
+
+    annotations = Annotations(audience=["user"], priority=1.0)
+    try:
+        with Image.open(candidate) as source:
+            transposed = ImageOps.exif_transpose(source)
+            has_alpha = transposed.mode in {"RGBA", "LA"} or (
+                transposed.mode == "P" and "transparency" in (transposed.info or {})
+            )
+            preview = transposed.convert("RGBA" if has_alpha else "RGB")
+            resampling = getattr(Image, "Resampling", Image).LANCZOS
+            preview.thumbnail((max_dimension, max_dimension), resampling)
+            width, height = preview.size
+            output = BytesIO()
+            preview.save(output, format="WEBP", quality=82, method=4)
+            preview_bytes = output.getvalue()
+        return (
+            ImageContent(
+                type="image",
+                data=base64.b64encode(preview_bytes).decode("ascii"),
+                mimeType="image/webp",
+                annotations=annotations,
+            ),
+            {
+                "content_role": "user_preview",
+                "variant": "thumbnail",
+                "mime_type": "image/webp",
+                "width": width,
+                "height": height,
+                "bytes": len(preview_bytes),
+                "max_dimension": max_dimension,
+            },
+        )
+    except Exception:
+        original = McpImage(path=candidate).to_image_content().model_copy(
+            update={"annotations": annotations}
+        )
+        return (
+            original,
+            {
+                "content_role": "user_preview",
+                "variant": "original_fallback",
+                "mime_type": original.mime_type,
+                "bytes": candidate.stat().st_size,
+                "max_dimension": None,
+            },
+        )
+
+
+def _generation_result_tool_result(structured: dict[str, Any]) -> CallToolResult:
+    """Return portable image content plus client presentation fallbacks."""
+
+    result = structured.get("result")
+    image_url = result.get("image_url") if isinstance(result, dict) else None
+    response = dict(structured)
+    preview_content, preview_metadata = _result_preview_content(structured)
+    if isinstance(image_url, str) and image_url.startswith(("http://", "https://")):
+        job_id = str(structured.get("job_id") or "result")
+        response["presentation"] = {
+            "required": True,
+            "preferred": "download_then_native_image_viewer",
+            "source_url": image_url,
+            "suggested_filename": f"lc-ai-canvas-{job_id}.png",
+            "storage_scope": "client_temporary_or_session_workspace",
+            "tool_result_visibility_is_user_visibility": False,
+            "local_agent_action_required_when_available": True,
+            "regenerate_for_preview": False,
+            "keep_original_link": True,
+            "fallback": "clickable_link",
+            "preview": preview_metadata,
+            "completion_criteria": [
+                "A local agent with download and image-view tools opened the image before its final response.",
+                "A host without local tools received the user-preview ImageContent or a compatible UI.",
+                "If neither can be ensured, explicitly report preview unavailable and provide the source link.",
+            ],
+        }
+
+    text = json.dumps(response, ensure_ascii=False)
+    if isinstance(image_url, str) and image_url.startswith(("http://", "https://")):
+        text += (
+            "\n\nUSER-VISIBLE IMAGE PRESENTATION IS REQUIRED. Tool-result visibility alone is not "
+            "evidence that the user saw the image. In a local agent such as Codex or Claude Code with "
+            "download and image-view tools, you MUST download source_url to the suggested temporary/session "
+            "PNG and open that local file before the final response. Do not regenerate for preview and do "
+            "not use source_url as the sole inline preview. In a host without local tools, use the returned "
+            "user-preview ImageContent or compatible UI. If neither presentation path can be ensured, "
+            "explicitly say that the preview may be unavailable. Always include this original link:\n"
+            f"[Open image in LC AI Canvas]({image_url})"
+        )
+
+    content = []
+    if preview_content is not None:
+        content.append(preview_content)
+    content.append(TextContent(type="text", text=text))
+    return CallToolResult(content=content, structuredContent=response)
 
 
 def _asset_web_path(row: dict[str, Any], key: str) -> str | None:
@@ -970,9 +1086,15 @@ def create_mcp_integration(job_manager, job_store, controls, asset_service: Asse
     server = MCPServer(
         name="lc-ai-canvas",
         title="LC AI Canvas",
-        version="0.7.0",
+        version="0.7.1",
         instructions=(
-            "LC AI Canvas is the company's managed image-asset pipeline. Use "
+            "LC AI Canvas is the company's managed image-asset pipeline. USER-VISIBLE IMAGE PRESENTATION "
+            "IS REQUIRED after every ready result; tool-result visibility alone is not proof. In local "
+            "Codex or Claude Code clients with download and image-view tools, MUST download result.image_url "
+            "to a temporary/session PNG and open it before the final response. In hosts without local tools, "
+            "use the returned user-preview ImageContent or compatible UI. If neither path can be ensured, "
+            "explicitly report that preview may be unavailable and provide the source link. Never regenerate "
+            "for preview or use the source URL as the sole inline preview. Use "
             "create_managed_image_asset only when the user asks for the company generator or LC AI "
             "Canvas, needs centrally billed/audited/stored output, or the current client has no native "
             "image generator. For ad-hoc images in clients with a native generator and no managed-workflow "
@@ -1175,20 +1297,22 @@ def create_mcp_integration(job_manager, job_store, controls, asset_service: Asse
 
     @server.tool(
         title="Get generation result",
-        description="Read output metadata and receive the image content when a generation job is complete.",
+        description=(
+            "Read output metadata and receive a compact user-preview image when a generation job is complete. "
+            "User-visible presentation is a required completion step; tool-result visibility alone is not "
+            "proof. A local Codex or Claude Code agent with download/image-view tools MUST download source_url "
+            "to the suggested temporary/session PNG and open it before its final response. Hosts without "
+            "local tools should use the returned user-preview ImageContent or compatible UI. Never regenerate "
+            "for preview. If presentation cannot be ensured, say so explicitly and always include the LC AI "
+            "Canvas fallback Markdown link."
+        ),
         annotations=read_annotations,
     )
     async def get_generation_result(
         job_id: Annotated[str, Field(min_length=16, max_length=64, description="Completed generation job ID")],
     ) -> CallToolResult:
         structured = service.get_result(_current_caller(), job_id)
-        content = [
-            TextContent(type="text", text=json.dumps(structured, ensure_ascii=False))
-        ]
-        image_content = _result_image_content(structured)
-        if image_content is not None:
-            content.append(image_content)
-        return CallToolResult(content=content, structuredContent=structured)
+        return _generation_result_tool_result(structured)
 
     @server.tool(
         title="Create managed image asset",

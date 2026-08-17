@@ -37,7 +37,6 @@ try {
         "JOB_DB_PATH",
         "OUTPUT_DIR",
         "PRINCIPAL_COOKIE_SECRET",
-        "BETA_PASSWORD",
         "LOG_TO_FILE",
         "ASSET_CATALOG_FALLBACK_ENABLED"
     )
@@ -49,7 +48,6 @@ try {
         $env:JOB_DB_PATH = $probeDb
         $env:OUTPUT_DIR = $probeOutput
         $env:PRINCIPAL_COOKIE_SECRET = "launcher-probe-" + ("x" * 48)
-        $env:BETA_PASSWORD = ""
         $env:LOG_TO_FILE = "true"
         $env:ASSET_CATALOG_FALLBACK_ENABLED = "false"
         $launcher = Start-Process `

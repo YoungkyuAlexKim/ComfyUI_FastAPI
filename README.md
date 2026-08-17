@@ -1,30 +1,26 @@
 # LC AI Canvas
 
-사내에서 이미지·게임 UI 자산·캐릭터 시트·스토리보드와 일부 로컬 도구를
-한곳에서 실행하고 관리하는 FastAPI 서비스입니다. 웹 UI와 MCP는 같은 생성
-명령, 작업 큐, 비용 통제, 감사 로그, 자산 저장 계층을 사용합니다.
+LC AI Canvas는 사내 이미지·게임 UI 자산·캐릭터 시트·스토리보드와 일부 로컬
+ComfyUI 도구를 웹과 MCP에서 함께 사용하는 FastAPI 서비스입니다. 두 진입점은 같은
+생성 명령, 작업 큐, 비용 통제, 감사 로그와 자산 저장 계층을 사용합니다.
 
-## 현재 구성
+## 현재 제공 범위
 
-- 호스티드 이미지 생성: OpenRouter를 통한 Gemini 및 GPT Image 2
-- 로컬 ComfyUI 웹: RMBG 배경 제거, See-Through 레이어 분리, ACE-Step 음악 생성
-- MCP 로컬 공개: 빠른 RMBG-2.0 배경 제거만 공개; See-Through·ACE-Step은 비공개
-- 저장: 파일시스템 원본 + SQLite 자산 카탈로그
-- 사용자 경계: 웹은 서명 쿠키, MCP는 사내망에서 확인된 클라이언트 IP. 기본 소유권은
-  분리하되 같은 IP의 사용자가 웹 갤러리에서 한 번 명시적으로 연결할 수 있음
-- 운영 통제: 일일 요청·비용 한도, 동시성, 멱등성, 확인 정책, 감사 이벤트
-- 비용 관찰: 공급자 actual cost 기록, IP·기능·모델별 관리자 통계와 미수집 비용 구분
-- Game UI 웹: 2×2·3×3·4×4 후보 시트 생성, 개별 PNG와 그룹 ZIP, 묶음 단위 관리
-- MCP: 소유자 이미지 조회, 클라이언트 첨부 등록, 기본 생성·기존 자산 편집,
-  검증된 Game UI 2×2 그룹·캐릭터 턴어라운드·표정 시트·6/9컷 스토리보드 생성,
-  로컬 RMBG-2.0 배경 제거, 비용 없는 옵션 계획과 모호성 확인, 작업 결과 조회
+| 영역 | 웹 | MCP |
+|---|---|---|
+| 일반 이미지 | OpenRouter 기반 생성·참고 이미지 편집 | 생성·소유 자산 참고 편집 |
+| Game UI | 2×2·3×3·4×4 후보, 개별 PNG·ZIP·묶음 관리 | 검증된 2×2 그룹 생성 |
+| 캐릭터 시트 | 턴어라운드·표정 시트 | 턴어라운드·표정 시트 |
+| 스토리보드 | 6·9컷 | 6·9컷 |
+| 배경 제거 | 로컬 RMBG-2.0 | 로컬 RMBG-2.0 |
+| 레이어·음악 | See-Through, ACE-Step | 장시간 로컬 작업이라 비공개 |
 
-내부 워크플로우 이름에 남아 있는 `NanoBanana`는 호환용 ID입니다. 현재
-호스티드 모델 호출은 Google API에 직접 연결하지 않고 OpenRouter를 사용합니다.
+호스티드 이미지 모델은 OpenRouter를 통해 호출합니다. 내부 workflow ID에 남아 있는
+`NanoBanana`는 기존 요청과 결과의 호환용 이름이며 Google API 직접 연결을 뜻하지 않습니다.
 
 ## 빠른 시작
 
-Windows 가상환경을 만든 뒤 의존성과 환경 파일을 준비합니다.
+Windows 가상환경과 환경 파일을 준비합니다.
 
 ```powershell
 python -m venv venv
@@ -32,70 +28,80 @@ python -m venv venv
 Copy-Item .env.example .env
 ```
 
-`.env`에 최소한 `OPENROUTER_API_KEY`, `BETA_PASSWORD`, `ADMIN_USER`,
-`ADMIN_PASSWORD`를 설정합니다. 로컬 ComfyUI 기능을 사용할 경우 관련 경로와
-서버 주소도 설정합니다.
+`.env`에는 최소한 `OPENROUTER_API_KEY`, `ADMIN_USER`, `ADMIN_PASSWORD`를 설정합니다.
+일반 사내 웹 화면에는 공용 비밀번호가 없고 관리자 화면만 별도 인증합니다. 로컬 기능을
+사용하려면 ComfyUI 경로와 주소도 설정합니다.
+
+개발 실행:
 
 ```powershell
 .\run_server.bat
 ```
 
-`run_server.bat`은 개발용으로 reload를 켜고 브라우저를 자동으로 엽니다.
-`run_server_prod.bat`은 운영용 단일 프로세스를 실행하며 브라우저를 자동으로 열지
-않습니다. 공통 실행기는 기존 8000 포트의 health를 먼저 확인해 중복 서버를 막고,
-비정상 포트 점유 PID와 `logs/server-*.log`를 남깁니다. 포트별 launcher lock과 자식
-프로세스 감독으로 동시 시작·종료 후 고아 Uvicorn을 막고, 공식 실행 중에는 중복
-`app.log` 기록을 끄므로 Windows 회전 잠금과 긴 로깅 traceback이 발생하지 않습니다.
-더블클릭 시작 오류는 콘솔을 유지하므로 메시지와 로그를 함께 확인할 수 있습니다.
+사내 운영 실행:
 
-- 생성 화면: `http://127.0.0.1:8000/create`
-- 피드: `http://127.0.0.1:8000/feed`
-- API 문서: `http://127.0.0.1:8000/docs`
-- 상태 확인: `http://127.0.0.1:8000/healthz`
-- 관리자 사용·비용 통계: `http://127.0.0.1:8000/admin`
+```powershell
+.\run_server_prod.bat
+```
 
-사내 서버 실행은 `run_server_prod.bat`을 사용합니다. 두 실행 스크립트 모두
-Uvicorn의 자동 프록시 헤더 신뢰를 끄며, 신뢰 가능한 프록시는
-`TRUSTED_PROXY_CIDRS`에서만 지정합니다.
+공식 실행기는 8000 포트의 기존 health, 포트별 lock, 자식 프로세스와 세션 로그를 관리해
+중복 서버와 고아 Uvicorn을 막습니다. 운영 실행은 브라우저를 자동으로 열지 않습니다.
+
+## 접속 주소
+
+개발 전용 로컬 확인에는 `http://127.0.0.1:8000`을 사용할 수 있습니다. 사내 사용자와
+운영자는 `http://SERVER_IP:8000` 또는 인프라가 정한 공식 hostname을 사용합니다.
+
+- 생성·갤러리: `/create`
+- 피드: `/feed`
+- Codex·Claude Code 연결 안내: `/mcp-connect`
+- API 문서: `/docs`
+- 상태 확인: `/healthz`
+- 관리자 사용·비용 통계: `/admin`
+- MCP endpoint: `/mcp/`
+
+서버 PC에서 MCP를 사내 IP로 등록했다면 웹도 같은 공식 주소로 열어야 합니다.
+`localhost`와 사내 IP는 각각 `127.0.0.1`과 LAN IP로 관찰되고 브라우저 쿠키의 host도
+달라 별도 작업공간으로 보입니다. 일반 사내 사용자에게는 `localhost`를 안내하지 않습니다.
+운영에서는 `MCP_PUBLIC_BASE_URL`을 공식 origin으로 설정하는 것을 권장합니다.
 
 ## 검증
+
+비용 없는 기본 회귀 검사는 다음과 같습니다.
 
 ```powershell
 .\venv\Scripts\python.exe -m unittest discover -s tests -v
 .\venv\Scripts\python.exe -m app.asset_admin audit
 .\venv\Scripts\python.exe -m scripts.smoke_game_ui_browser
+.\venv\Scripts\python.exe -m scripts.smoke_mcp_connect_browser
+.\venv\Scripts\python.exe -m scripts.smoke_linked_mcp_gallery_browser
 .\scripts\smoke_server_launcher.ps1
+```
+
+실제 로컬 GPU를 사용하는 RMBG 큐 검사는 ComfyUI가 유휴 상태일 때 실행합니다.
+
+```powershell
 .\venv\Scripts\python.exe -m scripts.smoke_rmbg_queue
 ```
 
-현재 기능 체크포인트는 `793f36d` 이후 작업 트리이며 전체 테스트 138개와 격리 Edge 스모크가
-통과했습니다. 실제 운영 자산 수는 변할 수 있으므로 `asset_admin audit`의 누락 0과
-DB·파일 정합성을 성공 기준으로 사용합니다.
+2026-08-17 현재 전체 테스트 141개가 통과하며 운영 audit는 catalog row 1,281개,
+active Game UI 그룹 5개, 누락 파일·메타데이터·그룹 파일 0입니다. 자산 수는 계속 변하므로
+고정 개수보다 audit 누락 0과 DB·파일 정합성을 성공 기준으로 사용합니다.
 
-MCP 0.7.0은 13개 도구와 hosted 4개·로컬 RMBG 1개의 공개 생성 capability를 제공합니다.
-실제 RMBG 반복 생성, 투명 PNG 저장, MCP image content, 멱등성 재시도와
-`comfyui/RMBG-2.0/$0 provider API cost` 감사 기록까지 확인했습니다.
-같은 PC의 실제 웹 갤러리에서도 연결 안내를 통해 MCP 작업 공간을 한 번 연결한 뒤
-기존 MCP 생성 이미지 2개가 `MCP` 표시와 함께 나타나는 것을 확인했습니다.
+MCP 0.7.1은 13개 도구와 공개 생성 capability 5개를 제공합니다. Codex 실클라이언트에서
+기능 조회, 첨부 등록, 생성·편집, Game UI, 캐릭터 시트, 스토리보드, RMBG, 작업 polling과
+결과 조회를 확인했습니다. Claude Code는 실제 사내 구독 계정 검증 전입니다. ChatGPT의
+일반 Chat 모드는 현재 Codex MCP 경로와 별개이며 지원 범위가 아닙니다.
 
-launcher 스모크는 임시 DB·출력과 별도 포트에서 시작·health·로그·종료 정리를 검사합니다.
-RMBG 큐 스모크는 임시 자산으로 실제 로컬 GPU 작업 두 건을 연속 제출해 단일 실행 lane과
-`0.0` provider API actual cost 기록을 검사합니다. 외부 이미지 API 비용은 없지만 로컬 GPU를
-사용하므로 ComfyUI가 유휴 상태일 때 실행합니다.
+## 백업
 
-`smoke_game_ui_browser` 명령은 설치된 Microsoft Edge, 임시 DB·outputs, 로컬 가짜
-provider를 사용해
-Game UI 4×4의 생성·분할·ZIP·갤러리·그룹 삭제/복구·새로고침과 전용 배너 표시를
-검증합니다. 운영 데이터와 OpenRouter API를 사용하지 않으므로 비용이 발생하지 않습니다.
-
-운영 DB 백업은 다음 명령으로 생성하고 무결성까지 검사할 수 있습니다.
+DB만 백업하려면 다음 명령을 사용합니다.
 
 ```powershell
 .\venv\Scripts\python.exe -m app.asset_admin backup-db
 ```
 
-이 명령은 SQLite만 백업합니다. 실제 복구 가능성을 확보하려면 `outputs`와
-`db/principal_cookie.secret`을 함께 묶는 다음 명령을 정기 작업에 사용합니다.
+실제 복구 가능한 세트는 DB, 전체 `outputs`, principal cookie secret을 함께 보관해야 합니다.
 
 ```powershell
 .\scripts\backup_app_data.ps1 -DestinationRoot E:\LC-AI-Canvas-Backups
@@ -103,32 +109,29 @@ Game UI 4×4의 생성·분할·ZIP·갤러리·그룹 삭제/복구·새로고�
 .\scripts\test_restore_backup.ps1 -BackupPath E:\LC-AI-Canvas-Backups\lc-ai-canvas-...
 ```
 
-완전 백업은 파일별 checksum manifest와 DB·카탈로그 정합성 검증을 통과해야만
-완료됩니다. 정기 작업 등록, 보존 정책과 복구 절차는 `docs/OPERATIONS.md`를 따릅니다.
-
 ## 문서
 
-- [프로젝트 구조와 데이터 흐름](docs/PROJECT_OVERVIEW.md)
+- [문서 인덱스와 현재 체크포인트](docs/HANDOFF_INDEX.md)
+- [프로젝트 구조와 설계 기준](docs/PROJECT_OVERVIEW.md)
 - [운영 런북](docs/OPERATIONS.md)
-- [자산 인프라](docs/asset-infrastructure.md)
-- [MCP 설치와 보안](docs/mcp.md)
+- [MCP 도구·설정·신원](docs/mcp.md)
 - [MCP capability 계약](docs/MCP_CAPABILITY_CONTRACT.md)
+- [자산 인프라](docs/asset-infrastructure.md)
 - [게임 UI 엘리먼트 메이커](docs/game-ui-elements-mvp.md)
-- [문서 인덱스](docs/HANDOFF_INDEX.md)
 
-## 중요한 운영 원칙
+## 운영 원칙
 
-- `db/app_data.db`, 런타임 `outputs/users`·`outputs/feed`, 백업 파일, 쿠키 서명 키를
-  기능 커밋에 넣지 않습니다. 검토된 번들 자산 `outputs/global/characters`만 예외입니다.
-- MCP `/mcp`는 사내망에서 확인한 클라이언트 IP를 principal과 감사 기준으로 사용하며
+- `db/app_data.db`, 런타임 `outputs/users`·`outputs/feed`, 백업과 secret을 기능 커밋에
+  넣지 않습니다. 검토된 `outputs/global/characters` 번들만 예외입니다.
+- MCP는 서버가 관찰한 사내 클라이언트 IP를 principal과 비용 감사 기준으로 사용합니다.
   인터넷에 직접 공개하지 않습니다.
-- IP의 고유성·재할당 이력, 프록시/VPN의 원본 IP 보존, 8000 포트의 사내망 제한은
-  인프라 운영 전제입니다. 이 전제가 충족되면 별도 OAuth는 현재 1차 범위에 필요하지
-  않습니다. 허용 대역이 확정되면 `MCP_ALLOWED_CLIENT_CIDRS`를 2차 방어로 사용할 수 있습니다.
-- `MCP_WEB_LINK_ENABLED=true`이면 현재 요청 IP의 MCP 생성 이미지가 있을 때 웹 갤러리에
-  한 번 클릭 연결 안내가 표시됩니다. 연결은 소유권을 이전하지 않고 SQLite에 영구 저장되며,
-  다른 웹 principal에 이미 연결된 작업 공간은 자동으로 가져오지 않습니다.
-- `PRINCIPAL_IDENTITY_MODE=compat`은 기존 쿠키 전환 기간에만 사용하고,
-  전환 확인 후 `enforced`로 변경합니다.
-- 신규 기능은 내부 `workflow_id`가 아니라 capability 계약과 `AssetService`를
-  통해 연결합니다.
+- 사용자 PC별 원본 IP 고유성, 재할당 이력, 프록시·VPN의 원본 IP 보존과 8000 포트의
+  사내망 제한은 인프라 운영 전제입니다.
+- 같은 IP의 웹 사용자는 MCP 작업공간을 한 번 명시적으로 연결할 수 있습니다. 연결은
+  자산 owner를 옮기지 않으며 다른 웹 principal의 자동 인수를 차단합니다. 연결된 MCP
+  이미지는 웹 갤러리에서 선택·휴지통 이동할 수 있지만 쇼케이스 공유는 계속 차단합니다.
+- 퇴사·PC 교체 뒤 IP가 다른 사용자에게 재할당되면 현재의 결정적 IP owner가 재사용될
+  수 있습니다. 인프라 정책 확인 전에는 이를 해결된 문제로 간주하지 않습니다. 필요하면
+  이전 작업공간을 폐기하고 같은 IP에 새 owner 세대를 발급하는 운영 기능을 추가합니다.
+- 신규 생성 기능은 내부 `workflow_id`가 아니라 capability 계약과 `AssetService`를 통해
+  연결합니다.

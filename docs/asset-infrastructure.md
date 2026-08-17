@@ -44,10 +44,10 @@
 .\venv\Scripts\python.exe -m app.asset_admin audit
 ```
 
-가장 최근인 2026-08-17 read-only 재감사 스냅샷은 자산 1,278개, active Game UI 그룹 5개이며
-`missing_files`, `missing_metadata`, `missing_group_files`가 모두 0입니다. 이전 스냅샷과의
-개수 차이는 운영 중 생성·삭제·복구에 따라 달라질 수 있으므로 고정 개수보다 누락 0과
-카탈로그 무결성을 성공 기준으로 사용합니다.
+가장 최근인 2026-08-17 read-only 재감사 스냅샷은 catalog row 1,281개, active Game UI
+그룹 5개이며 `missing_files`, `missing_metadata`, `missing_group_files`가 모두 0입니다.
+개수는 운영 중 생성·삭제·복구에 따라 달라지므로 누락 0과 카탈로그 무결성을 성공 기준으로
+사용합니다.
 
 ## 백필과 재조정
 
@@ -104,13 +104,34 @@
 
 연결 후 웹의 생성 이미지 갤러리는 웹 owner와 연결된 MCP owner를 시간순으로 함께 조회하되
 각 catalog row와 파일의 원래 owner는 바꾸지 않습니다. MCP 이미지는 `MCP`로 표시되고 웹에서
-직접 삭제하거나 쇼케이스에 공유하지 않습니다. 편집에 사용하면 웹 input으로 복사해 이후
-작업을 분리합니다. 연결을 해제하면 목록에서만 빠지고 MCP 원본은 삭제되지 않습니다. 한 MCP
-workspace는 한 웹 principal에만 연결할 수 있어 쿠키가 다른 사용자의 자동 takeover를 막습니다.
+선택·휴지통 이동·복구할 수 있습니다. 상태 변경 때마다 현재 연결 관계를 다시 검증하고 실제
+MCP owner의 catalog와 sidecar를 갱신하므로 소유권 이전은 일어나지 않습니다. 관계없는 웹
+principal에는 404를 반환합니다. 쇼케이스 공유는 허용하지 않고 편집에 사용하면 웹 input으로
+복사해 이후 작업을 분리합니다. 연결을 해제하면 목록에서만 빠지고 MCP 원본은 삭제되지
+않습니다. 한 MCP workspace는 한 웹 principal에만 연결할 수 있어 쿠키가 다른 사용자의 자동
+takeover를 막습니다.
 
-2026-08-17 실제 동일 PC 웹 갤러리에서 연결 안내를 누른 뒤 MCP 생성 이미지 2개와 `MCP`
-표시가 나타나는 것을 확인했습니다. 자동 회귀는 DB 재개방 후 지속성, 멱등 연결, 충돌 차단,
-웹 input 복사와 연결 해제 후 원본 보존을 검사합니다.
+2026-08-17 실제 동일 PC에서 `localhost`와 사내 IP의 owner가 분리되는 것을 확인했습니다.
+웹을 MCP 설정과 같은 canonical 사내 주소로 다시 열어 연결하자 해당 IP의 과거·신규 MCP
+자산이 `MCP` 표시와 함께 나타났습니다. 자동 회귀는 DB 재개방 후 지속성, 멱등 연결,
+충돌 차단, 웹 input 복사, 연결 자산·Game UI 묶음의 휴지통 이동·복구와 연결 해제 후 원본
+보존을 검사합니다. 격리된 Edge E2E는 연결 전 미노출, 연결 후 선택 체크 표시, 일괄 삭제,
+복구와 MCP owner 보존을 확인합니다.
+
+서버 PC의 `localhost`는 `127.0.0.1`, 사내 주소는 LAN IP로 관찰되고 브라우저 쿠키도
+host별로 나뉩니다. 일반 사내 사용자와 운영자는 웹·온보딩·MCP에 같은 canonical 사내
+origin을 사용합니다. 이 분리는 데이터 손실이나 중복이 아니라 서로 다른 owner 범위입니다.
+
+### MCP owner 수명주기
+
+현재 MCP owner는 source IP의 결정적 해시입니다. 사용자 PC별 원본 IP가 고유하고 재할당
+이력을 관리한다는 인프라 전제에서는 owner가 분리됩니다. 반대로 퇴사·PC 교체 뒤 같은 IP를
+다른 사람에게 재할당하면 이전 owner의 자산·작업 공간이 다시 선택될 수 있습니다.
+
+전용 재할당 기능은 아직 없습니다. 필요하면 기존 workspace를 retired 처리하고 비용·감사
+이력을 보존한 채 같은 IP에 새 allocation generation과 새 owner를 발급해야 합니다. DB와
+파일을 일부만 삭제하면 링크·비용·백업과 불일치할 수 있으므로 운영 절차로 사용하지 않습니다.
+상세 확인 항목은 `OPERATIONS.md`의 `IP 재할당 운영`을 따릅니다.
 
 ## 브라우저 principal 전환
 
@@ -150,6 +171,8 @@ manifest를 하나의 검증된 세트로 만듭니다.
 
 ## 남은 전환 작업
 
+- 인프라팀의 DHCP·퇴사·PC 교체 뒤 IP 재할당 정책 확인. 실제 재사용이 있으면 MCP owner
+  generation과 workspace retirement 기능 설계
 - `principal_admin readiness`로 활성 사용자 승격의 quiet window와 검증 백업을 확인한 뒤
   `enforced` 전환
 - `manage_backup_task.ps1`로 외부 저장소를 지정하고 `restore-drill`까지 성공시킴

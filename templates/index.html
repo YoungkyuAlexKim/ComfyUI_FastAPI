@@ -4948,9 +4948,9 @@
 
         selectToggleBtn?.addEventListener('click', () => setSelectionMode(!selectionMode));
         selectAllBtn?.addEventListener('click', () => {
-            galleryItems.filter(it => !it.linked_from_mcp).forEach(it => selectedKeys.add(gallerySelectionKey(it)));
+            galleryItems.forEach(it => selectedKeys.add(gallerySelectionKey(it)));
             // 썸네일 클래스를 즉시 반영
-            document.querySelectorAll('.gallery-item:not(.gallery-item--linked-mcp)').forEach(el => el.classList.add('selected'));
+            document.querySelectorAll('.gallery-item').forEach(el => el.classList.add('selected'));
             updateSelectedCount();
         });
         clearSelectionBtn?.addEventListener('click', () => {
@@ -5264,7 +5264,6 @@
                     if (!selectionMode) return; // 기본 라이트박스 동작은 위에서 처리
                     ev.preventDefault();
                     ev.stopPropagation();
-                    if (it.linked_from_mcp) return;
                     if (selectedKeys.has(selectionKey)) {
                         selectedKeys.delete(selectionKey);
                         applySelectionClass(selectionKey, false);
@@ -5317,7 +5316,7 @@
                             event.stopPropagation();
                             openBatchDeleteConfirm([`group:${gameUiGroupId}`]);
                         });
-                        if (!it.linked_from_mcp) actions.appendChild(deleteGroupButton);
+                        actions.appendChild(deleteGroupButton);
                         header.appendChild(actions);
                         const cells = document.createElement('div');
                         cells.className = 'game-ui-gallery-group__cells';

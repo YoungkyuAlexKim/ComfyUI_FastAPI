@@ -2458,7 +2458,7 @@
     letter-spacing: .04em;
     pointer-events: none;
 }
-.selection-mode .gallery-item--linked-mcp .gallery-select { display: none; }
+.selection-mode .gallery-item--linked-mcp::before { left: auto; right: 7px; }
 #gallery-panel .gallery-grid {
     flex: 1;
     padding: var(--space-md);

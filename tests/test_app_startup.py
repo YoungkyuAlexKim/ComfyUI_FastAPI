@@ -50,6 +50,9 @@ class ApplicationStartupTests(unittest.TestCase):
             with TestClient(app) as client:
                 health = client.get("/healthz")
                 create_page = client.get("/create")
+                mcp_connect_page = client.get("/mcp-connect")
+                mcp_connect_css = client.get("/static/css/mcp_connect.css")
+                mcp_connect_js = client.get("/static/js/mcp_connect.js")
                 banner_config = client.get("/static/js/app_config.js")
                 game_ui_banner = client.get(
                     "/static/img/banner/img_banner_GameUI_Elements.png"
@@ -69,6 +72,21 @@ class ApplicationStartupTests(unittest.TestCase):
                 )
                 assert health.status_code == 200, health.text
                 assert create_page.status_code == 200, create_page.text
+                assert mcp_connect_page.status_code == 200, mcp_connect_page.text
+                assert mcp_connect_css.status_code == 200, mcp_connect_css.text
+                assert mcp_connect_js.status_code == 200, mcp_connect_js.text
+                assert 'id="panel-codex"' in mcp_connect_page.text
+                assert 'id="panel-claude-code"' in mcp_connect_page.text
+                assert 'data-copy-target="#mcp-url-codex"' in mcp_connect_page.text
+                assert (
+                    "codex mcp add lc_ai_canvas --url "
+                    "https://canvas.internal.test/mcp/"
+                ) in mcp_connect_page.text
+                assert (
+                    "claude mcp add --transport http --scope user "
+                    "lc_ai_canvas https://canvas.internal.test/mcp/"
+                ) in mcp_connect_page.text
+                assert 'href="https://canvas.internal.test/create"' in mcp_connect_page.text
                 assert 'id="mcp-link-card"' in create_page.text
                 assert banner_config.status_code == 200, banner_config.text
                 assert "img_banner_GameUI_Elements.png" in banner_config.text
@@ -89,7 +107,7 @@ class ApplicationStartupTests(unittest.TestCase):
                     "2x2", "3x3", "4x4"
                 ]
                 assert "lc_principal" not in health.headers.get("set-cookie", "")
-                assert initialized.json()["result"]["serverInfo"]["version"] == "0.7.0"
+                assert initialized.json()["result"]["serverInfo"]["version"] == "0.7.1"
                 assert "lc_principal" not in initialized.headers.get("set-cookie", "")
                 names = {item["name"] for item in listed.json()["result"]["tools"]}
                 assert {
@@ -145,8 +163,8 @@ class ApplicationStartupTests(unittest.TestCase):
                     "OUTPUT_DIR": str(output_dir),
                     "PRINCIPAL_COOKIE_SECRET": "startup-test-secret-" + ("x" * 40),
                     "LOG_TO_FILE": "false",
-                    "BETA_PASSWORD": "",
                     "MCP_ALLOWED_CLIENT_CIDRS": "",
+                    "MCP_PUBLIC_BASE_URL": "https://canvas.internal.test",
                     "ASSET_CATALOG_FALLBACK_ENABLED": "false",
                     "ADMIN_USER": "startup-admin",
                     "ADMIN_PASSWORD": "startup-pass",
@@ -171,7 +189,7 @@ class ApplicationStartupTests(unittest.TestCase):
             f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
         )
 
-    def test_beta_gate_allows_only_ip_owned_mcp_output(self):
+    def test_internal_web_is_open_and_mcp_outputs_remain_owner_scoped(self):
         script = textwrap.dedent(
             """
             import hashlib
@@ -210,7 +228,9 @@ class ApplicationStartupTests(unittest.TestCase):
             sidecar_url = owned_url.rsplit("/", 1)[0] + "/manifest.json"
 
             with TestClient(app) as client:
-                beta_page = client.get("/create", follow_redirects=False)
+                create_page = client.get("/create", follow_redirects=False)
+                mcp_connect_page = client.get("/mcp-connect", follow_redirects=False)
+                removed_login_page = client.get("/beta-login", follow_redirects=False)
                 owned = client.get(owned_url, follow_redirects=False)
                 spoofed = client.get(
                     owned_url,
@@ -220,8 +240,9 @@ class ApplicationStartupTests(unittest.TestCase):
                 foreign = client.get(foreign_url, follow_redirects=False)
                 sidecar = client.get(sidecar_url, follow_redirects=False)
 
-                assert beta_page.status_code == 303, beta_page.text
-                assert beta_page.headers["location"] == "/beta-login"
+                assert create_page.status_code == 200, create_page.text
+                assert mcp_connect_page.status_code == 200, mcp_connect_page.text
+                assert removed_login_page.status_code == 404, removed_login_page.text
                 assert owned.status_code == 200, owned.text
                 assert owned.headers["content-type"] in {
                     "application/zip",
@@ -245,7 +266,6 @@ class ApplicationStartupTests(unittest.TestCase):
                     "OUTPUT_DIR": str(output_dir),
                     "PRINCIPAL_COOKIE_SECRET": "startup-test-secret-" + ("x" * 40),
                     "LOG_TO_FILE": "false",
-                    "BETA_PASSWORD": "beta-test-password",
                     "MCP_ALLOWED_CLIENT_CIDRS": "",
                     "TRUSTED_PROXY_CIDRS": "",
                     "ASSET_CATALOG_FALLBACK_ENABLED": "false",

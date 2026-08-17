@@ -18,6 +18,7 @@ from app.config import SERVER_CONFIG
 from app.mcp_server import (
     McpCaller,
     McpGenerationService,
+    _generation_result_tool_result,
     _principal_for_ip,
     _result_image_content,
     create_mcp_integration,
@@ -551,6 +552,81 @@ class McpServerTests(unittest.TestCase):
         self.assertEqual(content.type, "image")
         self.assertEqual(content.mime_type, "image/png")
 
+    def test_generation_result_includes_image_native_presentation_and_link_fallback(self):
+        output_dir = os.path.join(self.directory.name, "outputs")
+        os.makedirs(output_dir, exist_ok=True)
+        original = Image.new("RGB", (1200, 900), (32, 96, 160))
+        original.save(Path(output_dir, "result.png"), format="PNG")
+        structured = {
+            "job_id": "a" * 32,
+            "status": "complete",
+            "ready": True,
+            "result": {
+                "image_path": "/outputs/result.png",
+                "image_url": "http://10.100.90.242:8000/outputs/result.png",
+            },
+        }
+        with mock.patch.dict(SERVER_CONFIG, {"output_dir": output_dir}):
+            result = _generation_result_tool_result(structured)
+
+        self.assertEqual(result.content[0].type, "image")
+        self.assertEqual(result.content[0].mime_type, "image/webp")
+        self.assertEqual(result.content[0].annotations.audience, ["user"])
+        self.assertEqual(result.content[0].annotations.priority, 1.0)
+        with Image.open(BytesIO(base64.b64decode(result.content[0].data))) as preview:
+            self.assertEqual(preview.format, "WEBP")
+            self.assertEqual(preview.size, (768, 576))
+
+        self.assertEqual(result.content[1].type, "text")
+        self.assertIn(
+            "[Open image in LC AI Canvas](http://10.100.90.242:8000/outputs/result.png)",
+            result.content[1].text,
+        )
+        self.assertIn("USER-VISIBLE IMAGE PRESENTATION IS REQUIRED", result.content[1].text)
+        self.assertIn("Tool-result visibility alone is not evidence", result.content[1].text)
+        self.assertIn("Codex or Claude Code", result.content[1].text)
+        response = result.model_dump(by_alias=True)["structuredContent"]
+        presentation = response["presentation"]
+        self.assertTrue(presentation["required"])
+        self.assertEqual(presentation["preferred"], "download_then_native_image_viewer")
+        self.assertEqual(
+            presentation["source_url"],
+            "http://10.100.90.242:8000/outputs/result.png",
+        )
+        self.assertEqual(presentation["suggested_filename"], f"lc-ai-canvas-{'a' * 32}.png")
+        self.assertEqual(presentation["storage_scope"], "client_temporary_or_session_workspace")
+        self.assertFalse(presentation["tool_result_visibility_is_user_visibility"])
+        self.assertTrue(presentation["local_agent_action_required_when_available"])
+        self.assertFalse(presentation["regenerate_for_preview"])
+        self.assertTrue(presentation["keep_original_link"])
+        self.assertEqual(presentation["fallback"], "clickable_link")
+        self.assertEqual(presentation["preview"]["variant"], "thumbnail")
+        self.assertEqual(presentation["preview"]["mime_type"], "image/webp")
+        self.assertEqual(presentation["preview"]["width"], 768)
+        self.assertEqual(presentation["preview"]["height"], 576)
+        self.assertEqual(len(presentation["completion_criteria"]), 3)
+
+    def test_generation_result_preview_falls_back_to_original_for_invalid_image(self):
+        output_dir = os.path.join(self.directory.name, "outputs")
+        os.makedirs(output_dir, exist_ok=True)
+        Path(output_dir, "result.png").write_bytes(b"test-image-bytes")
+        structured = {
+            "job_id": "b" * 32,
+            "status": "complete",
+            "ready": True,
+            "result": {
+                "image_path": "/outputs/result.png",
+                "image_url": "http://10.100.90.242:8000/outputs/result.png",
+            },
+        }
+        with mock.patch.dict(SERVER_CONFIG, {"output_dir": output_dir}):
+            result = _generation_result_tool_result(structured)
+
+        self.assertEqual(result.content[0].type, "image")
+        self.assertEqual(result.content[0].mime_type, "image/png")
+        response = result.model_dump(by_alias=True)["structuredContent"]
+        self.assertEqual(response["presentation"]["preview"]["variant"], "original_fallback")
+
     def test_tool_contract_marks_read_write_and_open_world_boundaries(self):
         integration = create_mcp_integration(self.manager, self.store, self.controls, self.asset_service)
         tools = asyncio.run(integration.server.list_tools())
@@ -574,6 +650,8 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(by_name["create_managed_image_asset"].annotations.read_only_hint)
         self.assertTrue(by_name["create_managed_image_asset"].annotations.open_world_hint)
         self.assertTrue(by_name["get_generation_job"].annotations.read_only_hint)
+        self.assertIn("required completion step", by_name["get_generation_result"].description)
+        self.assertIn("Claude Code", by_name["get_generation_result"].description)
         self.assertTrue(by_name["plan_generation"].annotations.read_only_hint)
         self.assertFalse(by_name["plan_generation"].annotations.idempotent_hint)
         self.assertTrue(by_name["list_image_assets"].annotations.read_only_hint)
@@ -618,7 +696,7 @@ class McpServerTests(unittest.TestCase):
             self.assertEqual(initialized.status_code, 200, initialized.text)
             self.assertEqual(
                 initialized.json()["result"]["serverInfo"]["version"],
-                "0.7.0",
+                "0.7.1",
             )
 
             protocol_headers = {**headers, "MCP-Protocol-Version": "2025-06-18"}

@@ -86,14 +86,13 @@ from .services.openrouter_client import (
     gpt_image_timeout_seconds,
     is_configured as openrouter_is_configured,
 )
-from .beta_access import beta_enabled, is_request_authed, beta_cookie_name, expected_cookie_value
 from .auth.user_management import _parse_bool as _parse_bool_cookie_secure
 from .rate_limiter import SlidingWindowRateLimiter
 
 logger = setup_logging()
 
 templates = Jinja2Templates(directory="templates")
-app = FastAPI(title="ComfyUI FastAPI Server", version="0.7.0 (Planned Hosted and Local Generation)")
+app = FastAPI(title="ComfyUI FastAPI Server", version="0.7.1 (Portable MCP Image Presentation)")
 app.include_router(admin_router)
 app.include_router(ws_router)
 app.include_router(workflows_router)
@@ -137,39 +136,6 @@ async def principal_session_middleware(request: Request, call_next):
             }
         )
     return response
-
-# --- Beta access gate (shared password) ---
-@app.middleware("http")
-async def beta_access_middleware(request: Request, call_next):
-    """
-    Simple beta gate:
-      - Enabled when BETA_PASSWORD is set.
-      - If not authed, web pages redirect to /beta-login
-      - API requests return 401 JSON to avoid frontend JSON parse issues.
-    """
-    if not beta_enabled():
-        return await call_next(request)
-
-    path = request.url.path or ""
-    # MCP has its own internal-network/IP boundary and cannot use browser cookies.
-    # MCP-owned output is allowed only after private_sidecar_middleware verifies
-    # that the request IP matches the owner encoded in the output path.
-    if (
-        path.startswith("/beta-login")
-        or path == "/healthz"
-        or path.startswith("/mcp")
-        or getattr(request.state, "mcp_output_authorized", False)
-    ):
-        return await call_next(request)
-
-    if is_request_authed(request.cookies):
-        return await call_next(request)
-
-    # APIs should return JSON 401 (not redirect), otherwise fetch().json() breaks.
-    if path.startswith("/api/"):
-        return JSONResponse(status_code=401, content={"detail": "beta_auth_required"})
-
-    return RedirectResponse(url="/beta-login", status_code=303)
 
 # --- HTTP request logging middleware ---
 @app.middleware("http")
@@ -507,6 +473,32 @@ async def create_page(request: Request):
     return response
 
 
+@app.get("/mcp-connect", response_class=HTMLResponse, tags=["Page"])
+async def mcp_connect_page(request: Request):
+    """Render the internal onboarding page for desktop and IDE MCP clients."""
+    configured_base = str(os.getenv("MCP_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    public_base_url = configured_base or str(request.base_url).rstrip("/")
+    mcp_url = f"{public_base_url}/mcp/"
+    anon_id = _get_anon_id_from_request(request)
+    response = templates.TemplateResponse(
+        "mcp_connect.html",
+        {
+            "request": request,
+            "anon_id": anon_id,
+            "current_page": "mcp_connect",
+            "mcp_url": mcp_url,
+            "canvas_url": f"{public_base_url}/create",
+            "codex_add_command": f"codex mcp add lc_ai_canvas --url {mcp_url}",
+            "claude_add_command": (
+                "claude mcp add --transport http --scope user "
+                f"lc_ai_canvas {mcp_url}"
+            ),
+        },
+    )
+    _ensure_anon_id_cookie(request, response, anon_id)
+    return response
+
+
 @app.get("/feed", response_class=HTMLResponse, tags=["Page"])
 async def feed_page(request: Request):
     anon_id = _get_anon_id_from_request(request)
@@ -521,109 +513,6 @@ async def feed_page(request: Request):
     _ensure_anon_id_cookie(request, response, anon_id)
     return response
 
-
-@app.get("/beta-login", response_class=HTMLResponse, tags=["Page"])
-async def beta_login_page(request: Request):
-    # Minimal inline HTML to avoid loading /static before auth
-    html = """
-<!doctype html>
-<html lang="ko">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>베타 접속</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #0b1220; color: #e5e7eb; margin: 0; }
-      .wrap { max-width: 520px; margin: 10vh auto; padding: 24px; }
-      .card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 20px; }
-      h1 { font-size: 20px; margin: 0 0 10px; }
-      p { margin: 0 0 16px; color: rgba(229,231,235,0.9); line-height: 1.5; }
-      label { display: block; margin-bottom: 8px; font-weight: 600; }
-      input { width: 100%; box-sizing: border-box; padding: 12px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #fff; }
-      button { margin-top: 12px; width: 100%; padding: 12px 14px; border-radius: 10px; border: 0; background: #2563eb; color: #fff; font-weight: 700; cursor: pointer; }
-      .hint { margin-top: 10px; font-size: 12px; color: rgba(229,231,235,0.7); }
-      .tips { margin-top: 12px; font-size: 12px; color: rgba(229,231,235,0.78); line-height: 1.55; }
-      .tips strong { color: #ffffff; }
-      .err { margin-top: 10px; color: #fecaca; }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <div class="card">
-        <h1>베타 접속 비밀번호</h1>
-        <p>이 서비스는 베타 기간 동안 비밀번호가 필요합니다.</p>
-        <form method="post" action="/beta-login">
-          <label for="pw">비밀번호</label>
-          <input id="pw" name="password" type="password" autocomplete="current-password" required />
-          <button type="submit">접속하기</button>
-        </form>
-        <div class="hint">비밀번호는 공지받은 값을 입력해 주세요.</div>
-        <div class="tips">
-          <strong>접속이 반복해서 로그인 화면으로 돌아오나요?</strong><br/>
-          - 이 베타 잠금은 <strong>쿠키(로그인 정보 저장)</strong>가 필요합니다. 브라우저에서 쿠키가 차단되어 있으면 접속이 안 될 수 있어요.<br/>
-          - 카카오톡/인스타그램 등 <strong>앱 안의 브라우저</strong>에서 열면 쿠키가 제대로 저장되지 않는 경우가 있습니다. 가능한 <strong>Chrome/Safari(기본 브라우저)</strong>로 열어 주세요.<br/>
-          - 그래도 안 되면 시크릿/인프라이빗 창에서 다시 시도하거나, 해당 사이트의 쿠키/사이트 데이터를 삭제 후 재시도해 주세요.
-        </div>
-      </div>
-    </div>
-  </body>
-</html>
-""".strip()
-    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
-
-
-@app.post("/beta-login", response_class=HTMLResponse, tags=["Page"])
-async def beta_login_submit(request: Request):
-    if not beta_enabled():
-        return RedirectResponse(url="/", status_code=303)
-
-    try:
-        form = await request.form()
-        pw = str(form.get("password") or "")
-    except Exception:
-        pw = ""
-
-    expected = expected_cookie_value()
-    if not expected or not pw:
-        return RedirectResponse(url="/beta-login", status_code=303)
-
-    # Compare against expected token derived from BETA_PASSWORD
-    from .beta_access import _token_for_password  # local import
-
-    if _token_for_password(pw.strip()) != expected:
-        # Keep it simple: redirect back (no error detail to avoid leaking behavior)
-        return RedirectResponse(url="/beta-login", status_code=303)
-
-    resp = RedirectResponse(url="/", status_code=303)
-    # Cookie options: align with anon_id cookie secure setting for HTTPS deployments.
-    secure_cookie_env = _parse_bool_cookie_secure(os.getenv("COOKIE_SECURE"), False)
-    try:
-        xf_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
-    except Exception:
-        xf_proto = ""
-    is_https = (request.url.scheme == "https") or (xf_proto == "https")
-    # If the request is HTTP, browsers will not send Secure cookies.
-    # Prevent a confusing "login loop" on mobile when COOKIE_SECURE=true but served over HTTP.
-    secure_cookie = bool(secure_cookie_env and is_https)
-    if secure_cookie_env and not is_https:
-        logger.warning(
-            {
-                "event": "cookie_secure_mismatch",
-                "message": "COOKIE_SECURE=true but request is not HTTPS; issuing non-secure beta cookie to avoid login loop",
-                "path": request.url.path,
-                "scheme": request.url.scheme,
-                "x_forwarded_proto": xf_proto,
-            }
-        )
-    resp.set_cookie(
-        key=beta_cookie_name(),
-        value=expected,
-        httponly=True,
-        samesite="lax",
-        secure=secure_cookie,
-        max_age=60 * 60 * 24 * 14,  # 14 days
-    )
-    return resp
 
 # Workflows routes moved to app/routers/workflows.py
 

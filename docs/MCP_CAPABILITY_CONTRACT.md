@@ -23,16 +23,14 @@
 `app/schemas/capability_requests.py`의 모델 존재가 MCP 공개를 뜻하지 않습니다. MCP에는
 도구 구현, 소유권 검증, 결과 변환, 클라이언트 호환 테스트가 완료된 항목만 노출합니다.
 
-현재 공개 계약은 자동 프로토콜·소유권·결과 변환 테스트를 통과했고 2026-08-17 Codex
-설정과 endpoint 초기화, 현재 13개 도구와 5개 공개 생성 capability의 실클라이언트 호출,
-이미지 content와 소유 Game UI ZIP 다운로드까지 확인했습니다. RMBG는 실제 로컬 반복
-생성, 투명 PNG, 멱등성 재호출과 `comfyui/RMBG-2.0` 감사 기록을 확인했습니다. 격리된
-두 작업 즉시 제출에서도 단일 큐의 비중첩 실행과 provider API actual cost `0.0` 두 건을
-확인했습니다. 동일-IP 웹 연결은 자동 계약 테스트와 실제 브라우저의 MCP 이미지 2개 표시를
-모두 통과했습니다.
-장시간 부하와 클라이언트별 승인 UI 차이는 별도 운영 검증 범위입니다.
+현재 공개 계약은 자동 프로토콜·소유권·결과 변환 테스트와 Codex 실클라이언트 검증을
+통과했습니다. 기능 조회, 첨부·생성·편집, Game UI ZIP, 캐릭터 시트, 스토리보드와 RMBG를
+실제 호출했습니다. RMBG는 반복 생성, 투명 PNG, 멱등성, 로컬 단일 큐와
+`comfyui/RMBG-2.0/0.0` 감사 기록을 확인했습니다. 웹 연결도 지속성·takeover 차단 자동
+테스트와 실제 사내 주소 브라우저에서 과거·신규 MCP 자산이 함께 보이는 것까지 확인했습니다.
+Claude Code 화면 표시와 장시간·다사용자 부하는 별도 운영 검증 범위입니다.
 
-MCP 0.7.0의 모든 공개 생성 쓰기는 공통 `plan_generation`을 먼저 요구합니다.
+MCP 0.7.1의 모든 공개 생성 쓰기는 공통 `plan_generation`을 먼저 요구합니다.
 계획 계약은 capability별 결정 필드와 고정 필드를 분리하고 다음을 보장합니다.
 
 - `clarify`: 누락된 결정과 선택지를 반환하며 plan ID를 발급하지 않음
@@ -93,6 +91,16 @@ MCP principal의 신뢰 경계는 사람 계정이 아니라 서버가 관찰한
 workspace당 한 웹 principal만 허용합니다. 연결은 owner 이전이 아닌 가역적 조회 권한이며,
 웹 편집은 input 복사본으로 분리합니다. `MCP_WEB_LINK_ENABLED=false`이면 이 연결 계층을
 fail-closed로 제외합니다.
+
+서버 PC에서 `localhost`와 사내 IP는 서로 다른 source IP와 브라우저 host이므로 별도 웹·MCP
+principal이 됩니다. 운영에서는 웹과 MCP 모두 `MCP_PUBLIC_BASE_URL`에 대응하는 canonical
+사내 origin을 사용합니다. 일반 원격 PC는 두 경로가 직접 연결되는 한 같은 원본 IP로
+관찰됩니다.
+
+현재 MCP principal은 IP만의 결정적 해시입니다. 퇴사·PC 교체 뒤 같은 IP가 다른 사용자에게
+재할당되면 이전 owner가 다시 선택될 수 있습니다. 인프라팀의 재할당 정책상 필요하면
+`IP + allocation generation`으로 기존 workspace를 retired 처리하고 같은 IP에 새 owner를
+발급하는 운영 계층을 추가해야 합니다. 이는 현재 계약에 아직 구현되지 않은 운영 항목입니다.
 
 ## capability별 핵심 제약
 

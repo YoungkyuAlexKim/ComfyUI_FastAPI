@@ -35,7 +35,6 @@ def main() -> None:
                 "OUTPUT_DIR": str(output_root),
                 "PRINCIPAL_COOKIE_SECRET": "rmbg-queue-smoke-" + ("x" * 48),
                 "LOG_TO_FILE": "false",
-                "BETA_PASSWORD": "",
                 "MCP_ALLOWED_CLIENT_CIDRS": "",
                 "ASSET_CATALOG_FALLBACK_ENABLED": "false",
             }
@@ -153,6 +152,23 @@ def main() -> None:
                 blocks = [block for block in raw.get("content", []) if block.get("type") == "image"]
                 if not blocks:
                     raise RuntimeError("Completed RMBG result did not include MCP image content")
+                preview = blocks[0]
+                if preview.get("mimeType") != "image/webp":
+                    raise RuntimeError("Completed RMBG result did not include the compact WEBP preview")
+                if "user" not in ((preview.get("annotations") or {}).get("audience") or []):
+                    raise RuntimeError("Completed RMBG preview was not annotated for the user")
+                text_blocks = [block for block in raw.get("content", []) if block.get("type") == "text"]
+                if not any("[Open image in LC AI Canvas](" in str(block.get("text") or "") for block in text_blocks):
+                    raise RuntimeError("Completed RMBG result did not include the clickable image fallback")
+                presentation = structured.get("presentation") or {}
+                if presentation.get("required") is not True:
+                    raise RuntimeError("Completed RMBG result did not require user-visible presentation")
+                if presentation.get("preferred") != "download_then_native_image_viewer":
+                    raise RuntimeError("Completed RMBG result did not include the native image presentation contract")
+                if presentation.get("tool_result_visibility_is_user_visibility") is not False:
+                    raise RuntimeError("Completed RMBG result incorrectly treated tool visibility as user visibility")
+                if presentation.get("regenerate_for_preview") is not False:
+                    raise RuntimeError("Completed RMBG result did not forbid regeneration for preview")
                 image_blocks += len(blocks)
 
             first, second = completed

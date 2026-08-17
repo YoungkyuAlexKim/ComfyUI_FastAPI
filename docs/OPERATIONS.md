@@ -21,6 +21,10 @@ git status --short
 - 인프라팀이 MCP 사용자 PC별 원본 IP 고유성·재할당 이력, 프록시/VPN의 원본 IP 보존,
   8000 포트의 사내망 제한을 보장함. 허용 대역이 확정되면 선택적으로
   `MCP_ALLOWED_CLIENT_CIDRS`를 함께 설정
+- `MCP_PUBLIC_BASE_URL`이 사내 사용자가 실제로 여는 canonical origin과 일치하고,
+  온보딩·웹 갤러리·MCP 설정에 `localhost`가 섞이지 않음
+- 퇴사·PC 교체 뒤 IP 재할당 정책과 LC AI Canvas 운영자 통보 절차가 확인됨. 재할당이
+  현실적이면 owner generation 기능 전까지 신규 사용 허용 절차를 별도로 둠
 - `INPUTS_MAX_BYTES`, `INPUTS_MAX_PIXELS`가 프록시 body limit과 일관됨
 
 런타임 설정의 기준은 `.env` 또는 배포 환경의 secret 주입입니다. 루트의
@@ -43,6 +47,11 @@ API 키를 별도 평문 파일에 보관하는 방식도 운영 설정이나 �
 
 운영 실행기는 `0.0.0.0:8000`에서 수신합니다. 외부 노출 여부는 애플리케이션이
 아니라 인프라 방화벽과 리버스 프록시가 결정해야 합니다.
+
+`127.0.0.1`은 서버 자체 health 진단과 개발에만 사용합니다. 사내 게시판, 온보딩과
+MCP 클라이언트에는 `http://SERVER_IP:8000` 또는 인프라가 정한 공식 hostname만 배포합니다.
+서버 PC에서도 MCP를 사내 주소로 등록했다면 웹 갤러리를 같은 origin으로 열어야 합니다.
+`localhost`와 사내 IP를 섞으면 서로 다른 source IP와 브라우저 cookie host로 인식됩니다.
 
 `run_server.bat`은 개발용 reload와 health 확인 후 브라우저 열기를 사용합니다.
 `run_server_prod.bat`은 브라우저를 열지 않으며 실행 중인 콘솔이 서버 프로세스입니다.
@@ -135,13 +144,17 @@ listener의 PID만 종료합니다. 포트에 연결된 프로세스를 확인�
 9. MCP 13개 도구와 5개 공개 생성 capability 목록, 고정 2×2 Game UI 생성,
    job polling, 결과 조회
 10. 소유 input 한 장으로 RMBG 배경 제거, 투명 PNG와 `comfyui/RMBG-2.0/0.0` 감사 기록
-11. 같은 PC의 웹 갤러리에서 MCP 작업 공간을 연결하고 `MCP` 표시 이미지 조회
+11. 같은 PC에서 웹과 MCP를 동일한 canonical 사내 origin으로 열고 MCP 작업공간을 연결한
+    뒤 과거·신규 이미지가 `MCP` 표시로 함께 조회되는지 확인
+12. 연결된 MCP 이미지와 Game UI 묶음을 선택해 휴지통으로 이동·복구하고, 관계없는 웹
+    principal의 같은 요청은 404인지 확인
 
 Game UI의 코드·브라우저 경로는 운영 서버와 운영 데이터를 사용하지 않고 먼저 검사할 수
 있습니다. Microsoft Edge가 설치된 Windows 호스트에서 다음 명령을 실행합니다.
 
 ```powershell
 .\venv\Scripts\python.exe -m scripts.smoke_game_ui_browser
+.\venv\Scripts\python.exe -m scripts.smoke_linked_mcp_gallery_browser
 ```
 
 이 스모크는 임시 DB·outputs와 로컬 가짜 OpenRouter 응답을 사용해 4×4 요청, 16셀 분리,
@@ -360,6 +373,8 @@ PNG/JPEG/WEBP만 실제 디코딩하고 EXIF 방향을 반영한 뒤 PNG로 정�
 - 필요하면 `MCP_ALLOWED_CLIENT_CIDRS`로 애플리케이션 2차 허용 목록을 설정합니다.
 - `MCP_WEB_LINK_ENABLED=true`는 같은 원본 IP에서만 웹↔MCP 갤러리 연결을 허용합니다.
   네트워크 신원 구조가 바뀌면 우선 `false`로 내려 연결 생성을 중지합니다.
+- `MCP_PUBLIC_BASE_URL`에는 사내 사용자가 실제로 여는 공식 origin을 설정하고 운영
+  안내에는 `localhost`를 사용하지 않습니다.
 - 잘못된 CIDR 정책은 MCP 요청을 503으로 차단합니다.
 - 인프라 협의에 따라 OAuth 전환 없이 확인된 IP의 해시를 principal과 감사 기준으로
   사용합니다. NAT·DHCP 제약을 수용하는 사내망 전용 운영이며 인터넷에 직접 공개하지 않습니다.
@@ -371,7 +386,8 @@ IP 기반 운영의 책임 경계는 다음과 같습니다.
 - 애플리케이션: 신뢰 프록시만 `X-Forwarded-For`에 사용, 서버가 확정한 IP의 해시를 MCP
   principal로 사용, IP·기능·모델별 비용 감사, 다른 MCP IP 자산 접근 차단
 - 운영자: 네트워크 변경 후 여러 PC 요청이 관리자 비용 화면에서 서로 다른 IP로 기록되는지
-  확인하고, 하나의 IP로 합쳐지면 MCP 확대 전에 프록시/NAT 구성을 수정
+  확인하고, 하나의 IP로 합쳐지면 MCP 확대 전에 프록시/NAT 구성을 수정. 서버 PC에서도
+  웹과 MCP에 같은 canonical 사내 origin을 사용
 
 이 조건을 인프라가 보장하는 동안 별도 OAuth나 인증용 계정 pairing은 현재 1차 범위에 필요하지
 않습니다. `MCP_ALLOWED_CLIENT_CIDRS`는 방화벽을 대체하지 않는 선택적 2차 방어입니다.
@@ -381,6 +397,41 @@ IP 기반 운영의 책임 경계는 다음과 같습니다.
 로컬 MCP와 다른 PC의 웹 요청이 DB에서 서로 다른 원본 IP로 관찰됐습니다. 검증 호스트의
 `TRUSTED_PROXY_CIDRS`와 `MCP_ALLOWED_CLIENT_CIDRS`는 비어 있으므로 네트워크 구조가 바뀌면
 이 스냅샷과 신뢰 경계를 다시 확인합니다.
+
+서버 PC에서 `localhost`로 연 웹은 `127.0.0.1` owner에, 사내 주소로 연결한 Codex MCP는
+LAN IP owner에 저장되는 것을 확인했습니다. 웹을 사내 주소로 다시 열어 연결하자 해당
+LAN IP의 과거·신규 MCP 이미지가 정상 표시됐습니다. 이는 데이터 손실이 아니라 의도한
+source-IP·cookie-host 분리입니다. 일반 사내 사용자는 원격 PC에서 공식 주소로 직접
+접속하므로 웹과 MCP가 같은 사용자 PC의 원본 IP로 보이는 것이 정상입니다.
+
+### IP 재할당 운영
+
+현재 MCP owner는 source IP의 결정적 해시이므로 퇴사·PC 교체 뒤 같은 IP를 다른 사람에게
+재할당하면 이전 workspace가 다시 선택될 수 있습니다. 브라우저 연결 takeover 차단만으로는
+MCP 자체의 과거 자산 조회를 막을 수 없습니다.
+
+인프라팀에는 다음을 확인합니다.
+
+- 사용자 PC별 IP가 고정 또는 DHCP 예약인지
+- 퇴사·PC 교체 뒤 IP를 재사용하는지와 재사용 대기 기간
+- 이전 사용자, IP와 할당 시작·종료 시각의 이력을 얼마나 보존하는지
+- 재할당 전에 LC AI Canvas 운영자에게 통보하거나 해당 IP의 MCP 접근을 잠글 수 있는지
+- VPN·프록시·VDI가 여러 사용자를 하나의 source IP로 합치지 않는지
+
+전용 운영 기능이 구현되기 전에는 재할당 사실을 확인한 IP를 새 사용자가 즉시 MCP에
+사용하게 두지 않습니다. 서버를 정지하거나 DB·파일을 수동으로 일부 삭제하지 말고 먼저
+완전 백업과 영향 범위를 확인합니다. 단순 정리는 같은 결정적 owner ID를 다시 만들고
+비용·감사·링크·백업 이력을 불일치시킬 수 있습니다.
+
+재할당이 실제 운영에서 발생하면 다음 기능을 별도 변경으로 구현합니다.
+
+1. 기존 IP workspace를 retired·접근 차단
+2. 웹 연결 해제와 사용자 자산의 보관·삭제 정책 적용
+3. 비용·감사 이력은 이전 owner에 유지
+4. 같은 IP에 새 allocation generation과 새 owner 발급
+5. dry-run 대상 수, 완전 백업, 실행 결과와 감사 이벤트 제공
+
+현재 관리자 화면에는 이 전체 절차를 한 번에 수행하는 기능이 없습니다.
 
 초기에는 생성량을 제한하지 않으므로 `GENERATION_DAILY_REQUEST_LIMIT`,
 `GENERATION_DAILY_COST_LIMIT_USD`, `GENERATION_COST_CONFIRMATION_THRESHOLD_USD`를 모두
@@ -412,6 +463,8 @@ IP에서 여러 웹 쿠키 principal이 사용돼도 IP 비용은 한 행으로 
 
 이 통계는 IP를 사람 단위 신원으로 추정하지 않습니다. NAT에서는 여러 사용자가 합쳐지고,
 DHCP 변경 시 같은 사용자가 나뉠 수 있으므로 내부 비용 관찰과 이상 탐지용으로 사용합니다.
+같은 IP가 다른 사용자에게 재할당됐다면 전체 기간 합계를 한 사람의 비용으로 보지 말고
+인프라의 할당 시작·종료 시각에 맞춰 기간을 나눠 해석합니다.
 완료된 ComfyUI 로컬 작업은 외부 provider API actual cost가 알려진 `0.0`이므로 미수집으로
 분류하지 않습니다. 이는 GPU·전력·인프라 원가가 0이라는 뜻은 아닙니다.
 
@@ -424,18 +477,18 @@ DHCP 변경 시 같은 사용자가 나뉠 수 있으므로 내부 비용 관찰
 ```powershell
 codex mcp get lc_ai_canvas
 codex mcp list
-Invoke-RestMethod http://127.0.0.1:8000/healthz
+Invoke-RestMethod http://SERVER_IP:8000/healthz
 ```
 
 서버를 먼저 실행한 뒤 VS Code 명령 팔레트에서 `Developer: Reload Window`를 실행합니다.
 기존 대화가 MCP 도구를 새로 읽지 못하면 새 Codex 대화를 열고
-`list_generation_capabilities`부터 호출합니다. MCP 0.7.0은 RMBG 배경 제거를 포함해 13개 도구와
+`list_generation_capabilities`부터 호출합니다. MCP 0.7.1은 RMBG 배경 제거를 포함해 13개 도구와
 5개 공개 생성 capability를 제공합니다. 2026-08-17에는 읽기, 첨부 등록, 멱등성 재시도,
 기본 생성·참고 편집, Game UI 2×2, 캐릭터 턴어라운드 3뷰, 표정 4개, 스토리보드 6컷,
 RMBG 반복 생성, job/result polling, MCP image content와 소유 그룹 ZIP 다운로드를
 실클라이언트로 확인했습니다.
 
-MCP 0.7.0의 모든 공개 생성 쓰기는 먼저 `plan_generation`을 호출합니다. hosted 모호 요청은
+MCP 0.7.1의 모든 공개 생성 쓰기는 먼저 `plan_generation`을 호출합니다. hosted 모호 요청은
 `missing_decisions`를 사용자에게 한 번에 질문하고, 사용자가 선택을 위임한 경우에만
 `selection_mode=recommend`를 사용합니다. 준비된 plan ID는 30분 동안 메모리에 유지되므로
 서버 재시작이나 만료 후에는 다시 계획해야 합니다. plan ID·프롬프트·참고 자산·옵션이
@@ -461,15 +514,21 @@ MCP는 IP principal, 웹은 서명 쿠키 principal을 사용하며 원본 소�
 
 ### 웹 갤러리에서 MCP 작업 공간 연결
 
-1. MCP로 이미지 한 장 이상을 만든 동일 PC에서 `/create`를 엽니다.
+1. MCP로 이미지 한 장 이상을 만든 동일 PC에서 MCP 설정과 같은 canonical 사내 origin의
+   `/create`를 엽니다. 서버 PC에서도 `localhost`를 사용하지 않습니다.
 2. 갤러리의 “이 PC에서 만든 AI 이미지” 안내에서 `연결하기`를 누릅니다.
 3. 생성 이미지에 `MCP` 배지가 표시되고 재시작 후에도 남는지 확인합니다.
-4. MCP 이미지를 편집에 쓰면 웹 input 복사본이 생기는지 확인합니다.
-5. `연결 해제` 후 웹 목록에서만 빠지고 MCP 원본과 audit 누락이 없는지 확인합니다.
+4. 선택 모드에서 MCP 이미지가 체크되고 선택 삭제하면 active 목록에서 빠지는지 확인합니다.
+   Game UI는 한 child 선택이나 `묶음 삭제` 모두 전체 묶음을 휴지통으로 이동해야 합니다.
+5. 복구 API 또는 관리자 휴지통에서 복원한 뒤 같은 MCP owner로 다시 나타나는지 확인합니다.
+6. MCP 이미지를 편집에 쓰면 웹 input 복사본이 생기는지 확인합니다.
+7. 쇼케이스 공유 버튼은 MCP 이미지에 나타나지 않는지 확인합니다.
+8. `연결 해제` 후 웹 목록에서만 빠지고 MCP 원본과 audit 누락이 없는지 확인합니다.
 
-2026-08-17 실제 동일 PC 브라우저에서는 1~3단계를 수행해 연결 안내와 기존 MCP 이미지
-2개 표시를 확인했습니다. 4~5단계와 연결 지속성·멱등성·충돌 차단은 격리 자동 회귀
-테스트로 확인했습니다.
+2026-08-17 실제 동일 PC에서 `localhost`와 사내 IP의 owner 분리를 먼저 확인한 뒤,
+canonical 사내 주소에서 1~3단계를 수행해 해당 IP의 과거·신규 MCP 이미지가 함께
+표시되는 것을 확인했습니다. 연결 자산의 선택·휴지통 이동·복구와 MCP owner 보존은 격리
+Edge E2E로, 나머지 단계와 연결 지속성·멱등성·충돌 차단은 자동 회귀 테스트로 확인했습니다.
 
 API는 `GET|POST|DELETE /api/v1/principal-links/mcp`입니다. 대상 principal은 입력값을 받지
 않고 현재 요청의 검증된 IP에서 계산합니다. `409 mcp_workspace_already_linked`는 같은 IP가
@@ -482,9 +541,27 @@ API는 `GET|POST|DELETE /api/v1/principal-links/mcp`입니다. 대상 principal�
 ### 갤러리에 결과가 없음
 
 1. `get_generation_job` 또는 작업 API의 완료 상태 확인
-2. `asset_admin audit` 실행
-3. `assets.storage_path`와 실제 파일 존재 확인
-4. principal이 웹 서명 쿠키 또는 MCP IP와 일치하는지 확인
+2. 웹 주소와 MCP 등록 주소가 같은 canonical 사내 origin인지 확인. 서버 PC의
+   `localhost`와 사내 IP는 다른 owner이므로 주소를 섞지 않음
+3. `GET /api/v1/principal-links/mcp`에서 현재 웹 cookie와 MCP workspace 연결 상태 확인
+4. `asset_admin audit` 실행
+5. `assets.storage_path`와 실제 파일 존재 확인
+6. `generation_control_requests.client_ip`, `assets.owner_id`, `principal_links`를 대조해
+   웹 서명 cookie와 MCP IP principal의 범위가 일치하는지 확인
+
+### MCP 생성은 완료됐지만 채팅에 썸네일이 없음
+
+1. `get_generation_result`가 `image,text`, `presentation.required=true`와 원본 링크를
+   반환했는지 확인합니다.
+2. 도구 출력에 이미지가 보였다는 사실을 최종 사용자 표시로 간주하지 않습니다.
+3. 로컬 Codex·Claude Code가 다운로드·이미지 보기 도구를 제공하면 원본을 세션용 PNG로
+   내려받아 실제로 열고, 새 이미지를 생성하지 않습니다.
+4. 네이티브 표시가 불가능하면 이를 명시하고 LC AI Canvas 원본 링크를 제공합니다.
+5. 내부 HTTP URL의 Markdown inline image가 차단돼도 직접 링크 접근이 된다면 생성·저장
+   실패가 아니라 클라이언트 렌더링 제한일 수 있습니다.
+
+서버는 경량 user-preview와 지침을 제공하지만 클라이언트의 최종 렌더링을 강제할 수 없습니다.
+HTTPS 전환이나 owner 검사를 약화하는 방식으로 우회하지 않습니다.
 
 ### DB 잠금
 

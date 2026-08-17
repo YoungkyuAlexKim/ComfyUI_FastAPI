@@ -175,6 +175,30 @@ class PrincipalLinkApiTests(unittest.TestCase):
                 self.assertEqual(gallery["total"], 1)
                 self.assertTrue(gallery["items"][0]["linked_from_mcp"])
 
+                denied_delete = client.post(
+                    f"/api/v1/images/{asset_id}/delete",
+                    headers={"x-test-web": "anon-web-b"},
+                )
+                self.assertEqual(denied_delete.status_code, 404)
+                self.assertEqual(asset_service.get(mcp_owner, asset_id)["status"], "active")
+
+                deleted = client.post(f"/api/v1/images/{asset_id}/delete")
+                self.assertEqual(deleted.status_code, 200, deleted.text)
+                self.assertEqual(client.get("/api/v1/images").json()["total"], 0)
+                self.assertEqual(asset_service.get(mcp_owner, asset_id)["status"], "trash")
+                self.assertEqual(json.loads(meta_path.read_text(encoding="utf-8"))["status"], "trash")
+
+                denied_restore = client.post(
+                    f"/api/v1/images/{asset_id}/restore",
+                    headers={"x-test-web": "anon-web-b"},
+                )
+                self.assertEqual(denied_restore.status_code, 404)
+                restored = client.post(f"/api/v1/images/{asset_id}/restore")
+                self.assertEqual(restored.status_code, 200, restored.text)
+                self.assertEqual(client.get("/api/v1/images").json()["total"], 1)
+                self.assertEqual(asset_service.get(mcp_owner, asset_id)["status"], "active")
+                self.assertEqual(json.loads(meta_path.read_text(encoding="utf-8"))["status"], "active")
+
                 copied = client.post(
                     "/api/v1/inputs/copy",
                     json={"source": "generated", "id": asset_id},
@@ -198,7 +222,82 @@ class PrincipalLinkApiTests(unittest.TestCase):
                 unlinked = client.delete("/api/v1/principal-links/mcp")
                 self.assertEqual(unlinked.status_code, 200)
                 self.assertEqual(client.get("/api/v1/images").json()["total"], 0)
+                self.assertEqual(client.post(f"/api/v1/images/{asset_id}/delete").status_code, 404)
                 self.assertIsNotNone(asset_service.get(mcp_owner, asset_id))
+
+    def test_linked_mcp_game_ui_group_can_be_trashed_and_restored_as_one_unit(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(
+            "os.environ",
+            {"MCP_WEB_LINK_ENABLED": "true", "MCP_ALLOWED_CLIENT_CIDRS": ""},
+            clear=False,
+        ):
+            root = Path(directory)
+            output_root = root / "outputs"
+            output_root.mkdir()
+            db_path = str(root / "app.db")
+            store = AssetStore(db_path)
+            asset_service = AssetService(store, str(output_root))
+            link_store = PrincipalLinkStore(db_path)
+            app = FastAPI()
+
+            @app.middleware("http")
+            async def test_browser_principal(request: Request, call_next):
+                request.state.principal_id = request.headers.get("x-test-web", "anon-web-a")
+                return await call_next(request)
+
+            app.include_router(images_router)
+            app.include_router(principal_links_router)
+            app.state.asset_service = asset_service
+            app.state.principal_link_store = link_store
+
+            mcp_owner = principal_for_mcp_ip("testclient")
+            group_id = "linked-mcp-game-ui"
+            child_ids = ["linked-mcp-cell-1", "linked-mcp-cell-2"]
+            store.upsert_group({
+                "group_id": group_id,
+                "owner_id": mcp_owner,
+                "kind": "game_ui_group",
+                "status": "active",
+                "manifest_path": None,
+                "created_at": 2,
+                "metadata": {"id": group_id, "kind": "game_ui_group", "status": "active"},
+            })
+            for index, child_id in enumerate(child_ids):
+                store.upsert({
+                    "asset_id": child_id,
+                    "owner_id": mcp_owner,
+                    "kind": "image",
+                    "status": "active",
+                    "storage_path": f"users/{mcp_owner}/{child_id}.png",
+                    "group_id": group_id,
+                    "created_at": 2 - index,
+                    "metadata": {
+                        "id": child_id,
+                        "status": "active",
+                        "game_ui_group_id": group_id,
+                    },
+                })
+
+            with TestClient(app, headers={"x-test-web": "anon-web-a"}) as client:
+                self.assertEqual(client.post("/api/v1/principal-links/mcp", json={}).status_code, 200)
+                self.assertEqual(client.get("/api/v1/images?preserve_groups=true").json()["total"], 2)
+
+                denied = client.post(
+                    f"/api/v1/game-ui-groups/{group_id}/delete",
+                    headers={"x-test-web": "anon-web-b"},
+                )
+                self.assertEqual(denied.status_code, 404)
+                deleted = client.post(f"/api/v1/game-ui-groups/{group_id}/delete")
+                self.assertEqual(deleted.status_code, 200, deleted.text)
+                self.assertEqual(client.get("/api/v1/images").json()["total"], 0)
+                self.assertEqual({store.get(child_id)["status"] for child_id in child_ids}, {"trash"})
+                self.assertEqual(store.get_group(group_id)["status"], "trash")
+
+                restored = client.post(f"/api/v1/game-ui-groups/{group_id}/restore")
+                self.assertEqual(restored.status_code, 200, restored.text)
+                self.assertEqual(client.get("/api/v1/images?preserve_groups=true").json()["total"], 2)
+                self.assertEqual({store.get(child_id)["status"] for child_id in child_ids}, {"active"})
+                self.assertEqual(store.get_group(group_id)["status"], "active")
 
 
 if __name__ == "__main__":
