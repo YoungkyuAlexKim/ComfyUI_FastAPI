@@ -69,6 +69,10 @@ def _drive_browser(debug_port: int, screenshot_path: Path | None) -> dict:
               codexUrl:document.getElementById('mcp-url-codex').textContent.trim(),
               codexCommand:document.getElementById('codex-command').textContent.trim(),
               health:document.getElementById('mcp-health-label').textContent.trim(),
+              brandIcons:document.querySelectorAll('.mcp-client-brand-icon').length,
+              brandSvgs:document.querySelectorAll('.mcp-client-brand-icon svg').length,
+              codexIconWidth:getComputedStyle(document.querySelector('.mcp-client-brand-icon--codex')).width,
+              claudeIconWidth:getComputedStyle(document.querySelector('.mcp-client-brand-icon--claude')).width,
               workflowSection:document.querySelectorAll('.workflow-section').length,
               stepColumns:getComputedStyle(document.querySelector('.mcp-step-grid')).gridTemplateColumns.split(' ').length
             }))()
@@ -211,6 +215,10 @@ def run_smoke(*, screenshot_path: Path | None = None) -> dict:
                     "https://canvas.internal.example/mcp/"
                 ),
                 "health": "서버 연결 가능",
+                "brandIcons": 2,
+                "brandSvgs": 2,
+                "codexIconWidth": "22px",
+                "claudeIconWidth": "22px",
                 "workflowSection": 0,
                 "copyFeedback": "복사됨",
             }

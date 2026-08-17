@@ -3,7 +3,7 @@
 {% block title %}AI 도구 연결 | LC AI Canvas{% endblock %}
 
 {% block head_extra %}
-    <link href="/static/css/mcp_connect.css?v=20260817_02" rel="stylesheet">
+    <link href="/static/css/mcp_connect.css?v=20260817_03" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
@@ -44,7 +44,15 @@
                         aria-controls="panel-codex"
                         data-client-tab="codex"
                     >
-                        Codex 앱 · VS Code
+                        <span class="mcp-client-tab-name">
+                            <span class="mcp-client-brand-icon mcp-client-brand-icon--codex" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false">
+                                    <path d="M12 3.25 19.6 7.63v8.74L12 20.75l-7.6-4.38V7.63Z"></path>
+                                    <path d="M8.2 5.44v8.76l7.6 4.36M15.8 5.44 8.2 9.82v8.74M4.4 12l7.6 4.38L19.6 12"></path>
+                                </svg>
+                            </span>
+                            <span>Codex 앱 · VS Code</span>
+                        </span>
                         <span class="mcp-verified-label">확인 완료</span>
                     </button>
                     <button
@@ -57,7 +65,15 @@
                         tabindex="-1"
                         data-client-tab="claude-code"
                     >
-                        Claude Code
+                        <span class="mcp-client-tab-name">
+                            <span class="mcp-client-brand-icon mcp-client-brand-icon--claude" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false">
+                                    <path d="M12 3.3v5.1M12 15.6v5.1M3.3 12h5.1M15.6 12h5.1M5.85 5.85l3.6 3.6M14.55 14.55l3.6 3.6M18.15 5.85l-3.6 3.6M9.45 14.55l-3.6 3.6"></path>
+                                    <circle cx="12" cy="12" r="1.7"></circle>
+                                </svg>
+                            </span>
+                            <span>Claude Code</span>
+                        </span>
                         <span class="mcp-beta-label">확인 예정</span>
                     </button>
                 </div>

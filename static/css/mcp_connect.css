@@ -129,6 +129,66 @@
     cursor: pointer;
 }
 
+.mcp-client-tab-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mcp-client-brand-icon {
+    display: inline-flex;
+    flex: 0 0 22px;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: transform 160ms ease, filter 160ms ease;
+}
+
+.mcp-client-brand-icon svg {
+    width: 15px;
+    height: 15px;
+    overflow: visible;
+}
+
+.mcp-client-brand-icon--codex {
+    border-radius: 50%;
+    background: #f1f2ed;
+    color: #171a1f;
+}
+
+.mcp-client-brand-icon--codex path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.55;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.mcp-client-brand-icon--claude {
+    border-radius: 6px;
+    background: #d97757;
+    color: #fff8f1;
+}
+
+.mcp-client-brand-icon--claude path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+}
+
+.mcp-client-brand-icon--claude circle {
+    fill: currentColor;
+}
+
+.mcp-client-tab:hover .mcp-client-brand-icon,
+.mcp-client-tab.is-active .mcp-client-brand-icon {
+    filter: saturate(1.05) brightness(1.04);
+    transform: translateY(-1px);
+}
+
 .mcp-client-tab:hover {
     color: #d7dbe1;
 }
@@ -566,6 +626,7 @@
 
 @media (prefers-reduced-motion: reduce) {
     .mcp-client-tab,
+    .mcp-client-brand-icon,
     .mcp-copy-button,
     .mcp-primary-button,
     .mcp-secondary-button {

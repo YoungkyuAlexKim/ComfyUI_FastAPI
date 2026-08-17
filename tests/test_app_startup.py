@@ -77,6 +77,9 @@ class ApplicationStartupTests(unittest.TestCase):
                 assert mcp_connect_js.status_code == 200, mcp_connect_js.text
                 assert 'id="panel-codex"' in mcp_connect_page.text
                 assert 'id="panel-claude-code"' in mcp_connect_page.text
+                assert 'mcp-client-brand-icon--codex' in mcp_connect_page.text
+                assert 'mcp-client-brand-icon--claude' in mcp_connect_page.text
+                assert mcp_connect_page.text.count('class="mcp-client-tab-name"') == 2
                 assert 'data-copy-target="#mcp-url-codex"' in mcp_connect_page.text
                 assert (
                     "codex mcp add lc_ai_canvas --url "
