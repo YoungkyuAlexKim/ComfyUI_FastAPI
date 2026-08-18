@@ -207,8 +207,7 @@
     outline-offset: 3px;
 }
 
-.mcp-verified-label,
-.mcp-beta-label {
+.mcp-verified-label {
     color: #737b86;
     font-size: 10px;
     font-weight: 600;
@@ -403,30 +402,6 @@
     font-size: 12px !important;
 }
 
-.mcp-validation-notice {
-    margin-top: 20px;
-    padding: 12px 14px;
-    border-left: 2px solid #a26f58;
-    background: #151210;
-}
-
-.mcp-validation-notice div {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-
-.mcp-validation-notice strong {
-    color: #d0a08a;
-    font-size: 12px;
-}
-
-.mcp-validation-notice span {
-    color: #9a8981;
-    font-size: 11px;
-    line-height: 1.5;
-}
-
 .mcp-connect-support {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -609,8 +584,7 @@
         font-size: 30px;
     }
 
-    .mcp-verified-label,
-    .mcp-beta-label {
+    .mcp-verified-label {
         display: none;
     }
 

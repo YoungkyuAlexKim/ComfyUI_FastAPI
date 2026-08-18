@@ -1,4 +1,3 @@
-import base64
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
@@ -13,7 +12,6 @@ from app.config import UPLOAD_CONFIG
 from app.services.asset_service import AssetService
 from app.services.input_assets import (
     InputAssetError,
-    decode_base64_image,
     normalize_input_image,
     register_input_image,
 )
@@ -76,15 +74,6 @@ class InputAssetTests(unittest.TestCase):
                 filename="wrong.png",
                 content_type="image/png",
             )
-
-    def test_base64_data_url_is_validated(self):
-        raw = _image_bytes("PNG")
-        encoded = "data:image/png;base64," + base64.b64encode(raw).decode("ascii")
-        decoded, mime_type = decode_base64_image(encoded)
-        self.assertEqual(decoded, raw)
-        self.assertEqual(mime_type, "image/png")
-        with self.assertRaisesRegex(InputAssetError, "valid base64"):
-            decode_base64_image("%%%not-base64%%")
 
     def test_registration_is_owner_scoped_and_deduplicated(self):
         raw = _image_bytes("JPEG")

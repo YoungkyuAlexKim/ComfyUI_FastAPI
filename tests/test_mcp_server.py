@@ -86,7 +86,15 @@ class McpServerTests(unittest.TestCase):
         gc.collect()
         self.directory.cleanup()
 
-    def _register_asset(self, owner_id: str, asset_id: str, *, kind: str = "image") -> Path:
+    def _register_asset(
+        self,
+        owner_id: str,
+        asset_id: str,
+        *,
+        kind: str = "image",
+        source_job_id: str | None = None,
+        prompt: str = "",
+    ) -> Path:
         base = self.output_dir / "users" / owner_id
         if kind == "input":
             base = base / "inputs"
@@ -105,6 +113,8 @@ class McpServerTests(unittest.TestCase):
             "created_at": "2026-08-13T00:00:00+00:00",
             "status": "active",
             "thumb": None,
+            "source_job_id": source_job_id,
+            "prompt": prompt,
         }
         atomic_write_json(metadata_path, metadata)
         self.asset_service.register(
@@ -113,15 +123,9 @@ class McpServerTests(unittest.TestCase):
             media_path=str(media),
             metadata_path=str(metadata_path),
             metadata=metadata,
+            source_job_id=source_job_id,
         )
         return media
-
-    @staticmethod
-    def _png_base64() -> str:
-        image = Image.new("RGBA", (8, 6), (10, 20, 30, 128))
-        out = BytesIO()
-        image.save(out, format="PNG")
-        return base64.b64encode(out.getvalue()).decode("ascii")
 
     def _plan(
         self,
@@ -453,24 +457,17 @@ class McpServerTests(unittest.TestCase):
         self.assertIn("GRID: 2x3", job.payload["user_prompt"])
         self.assertEqual(response["output_contract"]["grid"], "2x3")
 
-    def test_client_attachment_registration_is_deduplicated(self):
-        encoded = self._png_base64()
-        first = self.service.create_input_image_asset(
-            self.caller,
-            image_base64=encoded,
-            mime_type="image/png",
-            filename="attachment.png",
+    def test_direct_input_upload_contract_forbids_base64(self):
+        contract = self.service.prepare_input_image_upload(self.caller)
+        self.assertEqual(
+            contract["upload_url"],
+            "https://canvas.internal/api/v1/mcp/inputs/upload",
         )
-        second = self.service.create_input_image_asset(
-            self.caller,
-            image_base64=encoded,
-            mime_type="image/png",
-            filename="attachment-retry.png",
-        )
-        self.assertFalse(first["duplicate"])
-        self.assertTrue(second["duplicate"])
-        self.assertEqual(first["asset_id"], second["asset_id"])
-        self.assertEqual(first["kind"], "input")
+        self.assertEqual(contract["method"], "POST")
+        self.assertEqual(contract["content_type"], "multipart/form-data")
+        self.assertEqual(contract["file_field"], "file")
+        self.assertFalse(contract["base64_allowed"])
+        self.assertIn("file=@<LOCAL_IMAGE_PATH>", contract["curl_template"])
 
     def test_image_asset_listing_and_lookup_are_owner_scoped(self):
         self._register_asset(self.caller.principal_id, "owned-image", kind="image")
@@ -504,6 +501,12 @@ class McpServerTests(unittest.TestCase):
                 "items": [{"url": "/outputs/mcp-ip-test/item.png"}],
             },
         }
+        self._register_asset(
+            self.caller.principal_id,
+            "generated-asset",
+            source_job_id=job.id,
+            prompt="A clean blue potion icon",
+        )
 
         result = self.service.get_result(self.caller, job.id)
         self.assertTrue(result["ready"])
@@ -518,6 +521,12 @@ class McpServerTests(unittest.TestCase):
         self.assertEqual(
             result["result"]["asset_group"]["items"][0]["url"],
             "https://canvas.internal/outputs/mcp-ip-test/item.png",
+        )
+        self.assertEqual(len(result["result"]["assets"]), 1)
+        self.assertEqual(result["result"]["assets"][0]["asset_id"], "generated-asset")
+        self.assertEqual(
+            result["result"]["assets"][0]["metadata"]["prompt"],
+            "A clean blue potion icon",
         )
 
         other = McpCaller("mcp-ip-other", "10.20.30.41", "socket", "https://canvas.internal")
@@ -640,7 +649,7 @@ class McpServerTests(unittest.TestCase):
             "create_managed_image_asset",
             "list_image_assets",
             "get_image_asset",
-            "create_input_image_asset",
+            "prepare_input_image_upload",
             "create_game_ui_assets",
             "create_character_sheet",
             "create_storyboard",
@@ -656,8 +665,8 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(by_name["plan_generation"].annotations.idempotent_hint)
         self.assertTrue(by_name["list_image_assets"].annotations.read_only_hint)
         self.assertTrue(by_name["get_image_asset"].annotations.read_only_hint)
-        self.assertFalse(by_name["create_input_image_asset"].annotations.read_only_hint)
-        self.assertFalse(by_name["create_input_image_asset"].annotations.open_world_hint)
+        self.assertTrue(by_name["prepare_input_image_upload"].annotations.read_only_hint)
+        self.assertIn("never convert it to base64", by_name["prepare_input_image_upload"].description)
         self.assertFalse(by_name["create_game_ui_assets"].annotations.read_only_hint)
         self.assertFalse(by_name["create_character_sheet"].annotations.read_only_hint)
         self.assertFalse(by_name["create_storyboard"].annotations.read_only_hint)
@@ -696,7 +705,7 @@ class McpServerTests(unittest.TestCase):
             self.assertEqual(initialized.status_code, 200, initialized.text)
             self.assertEqual(
                 initialized.json()["result"]["serverInfo"]["version"],
-                "0.7.1",
+                "0.8.0",
             )
 
             protocol_headers = {**headers, "MCP-Protocol-Version": "2025-06-18"}
@@ -710,7 +719,8 @@ class McpServerTests(unittest.TestCase):
             self.assertIn("create_managed_image_asset", names)
             self.assertIn("list_image_assets", names)
             self.assertIn("get_image_asset", names)
-            self.assertIn("create_input_image_asset", names)
+            self.assertIn("prepare_input_image_upload", names)
+            self.assertNotIn("create_input_image_asset", names)
             self.assertIn("create_game_ui_assets", names)
             self.assertIn("create_character_sheet", names)
             self.assertIn("create_storyboard", names)
@@ -839,38 +849,19 @@ class McpServerTests(unittest.TestCase):
             self.assertEqual(fetched_result["structuredContent"]["asset_id"], "protocol-owned")
             self.assertTrue(any(item["type"] == "image" for item in fetched_result["content"]))
 
-            attachment_arguments = {
-                "image_base64": self._png_base64(),
-                "mime_type": "image/png",
-                "filename": "protocol-attachment.png",
-            }
-            attachment = client.post(
+            upload_contract_response = client.post(
                 "/",
                 headers=protocol_headers,
                 json={
                     "jsonrpc": "2.0",
                     "id": 7,
                     "method": "tools/call",
-                    "params": {"name": "create_input_image_asset", "arguments": attachment_arguments},
+                    "params": {"name": "prepare_input_image_upload", "arguments": {}},
                 },
             )
-            attachment_result = attachment.json()["result"]["structuredContent"]
-            self.assertFalse(attachment_result["duplicate"])
-            self.assertEqual(attachment_result["kind"], "input")
-
-            attachment_retry = client.post(
-                "/",
-                headers=protocol_headers,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": 8,
-                    "method": "tools/call",
-                    "params": {"name": "create_input_image_asset", "arguments": attachment_arguments},
-                },
-            )
-            retry_result = attachment_retry.json()["result"]["structuredContent"]
-            self.assertTrue(retry_result["duplicate"])
-            self.assertEqual(retry_result["asset_id"], attachment_result["asset_id"])
+            upload_contract = upload_contract_response.json()["result"]["structuredContent"]
+            self.assertFalse(upload_contract["base64_allowed"])
+            self.assertTrue(upload_contract["upload_url"].endswith("/api/v1/mcp/inputs/upload"))
 
             character_plan_response = client.post(
                 "/",

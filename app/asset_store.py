@@ -83,6 +83,10 @@ class AssetStore:
             con.execute("CREATE INDEX IF NOT EXISTS idx_assets_group ON assets(group_id)")
             con.execute("CREATE INDEX IF NOT EXISTS idx_assets_sha256 ON assets(sha256)")
             con.execute(
+                "CREATE INDEX IF NOT EXISTS idx_assets_owner_source_job "
+                "ON assets(owner_id, source_job_id)"
+            )
+            con.execute(
                 """
                 CREATE TABLE IF NOT EXISTS asset_groups (
                     group_id TEXT PRIMARY KEY,
@@ -218,6 +222,18 @@ class AssetStore:
         )
         with self._connect() as con:
             return self._decode(con.execute(sql, params).fetchone())
+
+    def list_by_source_job(self, owner_id: str, source_job_id: str) -> list[dict[str, Any]]:
+        """Return active output assets registered for one owner-scoped job."""
+
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT * FROM assets "
+                "WHERE owner_id=? AND source_job_id=? AND status='active' "
+                "ORDER BY created_at, asset_id",
+                (owner_id, source_job_id),
+            ).fetchall()
+        return [self._decode(row) for row in rows]
 
     def list(
         self,

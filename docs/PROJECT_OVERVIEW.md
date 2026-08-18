@@ -1,6 +1,6 @@
 # 프로젝트 구조와 설계 기준
 
-> 최종 업데이트: 2026-08-17
+> 최종 업데이트: 2026-08-18
 
 ## 서비스 정의
 
@@ -47,7 +47,8 @@ MCP 생성 ┘                                                               │
 - `app/services/generation.py`: OpenRouter·ComfyUI 실행
 - `app/job_manager.py`, `app/job_store.py`: 외부 API lane, 로컬 단일 lane과 영속 작업
 - `app/services/asset_service.py`, `app/asset_store.py`: 자산 소유권·수명주기·카탈로그
-- `app/services/input_assets.py`: 웹·MCP 첨부 검증·정규화·등록
+- `app/services/input_assets.py`: 직접 업로드 이미지 검증·정규화·등록
+- `app/routers/inputs.py`: 웹 업로드와 MCP IP 소유 multipart 업로드
 - `app/principal_link_store.py`: 웹 principal과 MCP workspace 연결·감사
 - `app/routers/principal_links.py`: 현재 요청 IP의 연결 상태·연결·해제 API
 - `app/mcp_server.py`: Streamable HTTP MCP 어댑터와 결과 표시 계약
@@ -69,14 +70,17 @@ MCP 생성 ┘                                                               │
 
 1. 사내망·방화벽과 선택적 CIDR 정책이 endpoint 접근을 제한합니다.
 2. 서버가 실제 peer 또는 신뢰 프록시에서 해석한 원본 IP를 해시해 MCP principal을 만듭니다.
-3. `plan_generation`이 비용 없이 capability 선택을 확인합니다. 모호한 결정이 남으면
+3. 로컬 첨부는 `/api/v1/mcp/inputs/upload`로 multipart 직접 전송하고 반환된 `asset_id`만
+   이후 MCP 도구 인자에 사용합니다.
+4. `plan_generation`이 비용 없이 capability 선택을 확인합니다. 모호한 결정이 남으면
    plan ID를 발급하지 않습니다.
-4. 준비된 plan ID는 호출자, 프롬프트, 참고 자산과 전체 옵션에 묶이며 30분 동안 유효합니다.
-5. 쓰기 도구가 plan과 멱등성 키를 검증한 뒤 웹과 같은 dispatcher·통제·큐를 사용합니다.
-6. 완료 결과는 구조화 메타데이터, 경량 user-preview와 원본 링크를 반환합니다.
+5. 준비된 plan ID는 호출자, 프롬프트, 참고 자산과 전체 옵션에 묶이며 30분 동안 유효합니다.
+6. 쓰기 도구가 plan과 멱등성 키를 검증한 뒤 웹과 같은 dispatcher·통제·큐를 사용합니다.
+7. 완료 결과는 구조화 메타데이터, 경량 user-preview와 원본 링크를 반환합니다.
 
 MCP 자산 목록과 조회는 MCP owner의 active image/input만 반환합니다. 웹 자산을 MCP 목록에
-자동으로 합치지 않으며 클라이언트 첨부는 `create_input_image_asset`으로 등록합니다.
+자동으로 합치지 않습니다. Base64 입력 도구는 없으며 직접 업로드 endpoint와 MCP 요청이
+동일한 source IP를 관찰하므로 같은 MCP owner에 저장됩니다.
 
 ## 신원과 접근 제어
 
@@ -181,7 +185,7 @@ provider가 보고한 actual cost를 기록합니다.
 1차 기반에는 생성·편집, Game UI, 캐릭터 시트, 스토리보드, RMBG, 계획·비용·큐·멱등성,
 자산·감사와 웹↔MCP 연결이 포함됩니다. 다음은 배포·운영 또는 선택 기능입니다.
 
-- Claude Code 실제 사내 계정의 연결·승인·결과 표시 검증
+- Claude Desktop은 현재 지원하지 않으며, 인프라가 DNS·HTTPS 프록시 기반 원격 MCP를 제공할 때 재검토
 - 인프라팀의 IP 재할당 정책 확인과 필요 시 owner generation 기능
 - 외부 백업 위치의 예약 작업과 복구 훈련
 - actual cost 표본 기반 사전 비용 가격표

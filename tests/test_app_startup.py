@@ -53,6 +53,12 @@ class ApplicationStartupTests(unittest.TestCase):
                 mcp_connect_page = client.get("/mcp-connect")
                 mcp_connect_css = client.get("/static/css/mcp_connect.css")
                 mcp_connect_js = client.get("/static/js/mcp_connect.js")
+                retired_desktop_package = client.get(
+                    "/static/packages/lc-ai-canvas-claude-desktop.mcpb"
+                )
+                retired_desktop_release = client.get(
+                    "/api/v1/mcp/desktop-extension/release"
+                )
                 banner_config = client.get("/static/js/app_config.js")
                 game_ui_banner = client.get(
                     "/static/img/banner/img_banner_GameUI_Elements.png"
@@ -75,8 +81,12 @@ class ApplicationStartupTests(unittest.TestCase):
                 assert mcp_connect_page.status_code == 200, mcp_connect_page.text
                 assert mcp_connect_css.status_code == 200, mcp_connect_css.text
                 assert mcp_connect_js.status_code == 200, mcp_connect_js.text
+                assert retired_desktop_package.status_code == 404
+                assert retired_desktop_release.status_code == 404
                 assert 'id="panel-codex"' in mcp_connect_page.text
                 assert 'id="panel-claude-code"' in mcp_connect_page.text
+                assert "Claude Desktop" not in mcp_connect_page.text
+                assert '<span class="sidebar-tab-label">MCP</span>' in mcp_connect_page.text
                 assert 'mcp-client-brand-icon--codex' in mcp_connect_page.text
                 assert 'mcp-client-brand-icon--claude' in mcp_connect_page.text
                 assert mcp_connect_page.text.count('class="mcp-client-tab-name"') == 2
@@ -110,13 +120,13 @@ class ApplicationStartupTests(unittest.TestCase):
                     "2x2", "3x3", "4x4"
                 ]
                 assert "lc_principal" not in health.headers.get("set-cookie", "")
-                assert initialized.json()["result"]["serverInfo"]["version"] == "0.7.1"
+                assert initialized.json()["result"]["serverInfo"]["version"] == "0.8.0"
                 assert "lc_principal" not in initialized.headers.get("set-cookie", "")
                 names = {item["name"] for item in listed.json()["result"]["tools"]}
                 assert {
                     "list_image_assets",
                     "get_image_asset",
-                    "create_input_image_asset",
+                    "prepare_input_image_upload",
                     "plan_generation",
                     "create_managed_image_asset",
                     "create_game_ui_assets",
@@ -124,10 +134,44 @@ class ApplicationStartupTests(unittest.TestCase):
                     "create_storyboard",
                     "remove_background",
                 } <= names
+                assert "create_input_image_asset" not in names
 
                 image = Image.new("RGB", (8, 6), (20, 40, 60))
                 encoded = BytesIO()
                 image.save(encoded, format="JPEG")
+                mcp_uploaded = client.post(
+                    "/api/v1/mcp/inputs/upload",
+                    files={"file": ("mcp-reference.jpg", encoded.getvalue(), "image/jpeg")},
+                )
+                assert mcp_uploaded.status_code == 200, mcp_uploaded.text
+                assert mcp_uploaded.json()["kind"] == "input"
+                assert mcp_uploaded.json()["duplicate"] is False
+                assert "lc_principal" not in mcp_uploaded.headers.get("set-cookie", "")
+                mcp_upload_retry = client.post(
+                    "/api/v1/mcp/inputs/upload",
+                    files={"file": ("mcp-reference-retry.jpg", encoded.getvalue(), "image/jpeg")},
+                )
+                assert mcp_upload_retry.status_code == 200, mcp_upload_retry.text
+                assert mcp_upload_retry.json()["duplicate"] is True
+                assert mcp_upload_retry.json()["asset_id"] == mcp_uploaded.json()["asset_id"]
+                listed_inputs = client.post(
+                    "/mcp/",
+                    headers={**headers, "MCP-Protocol-Version": "2025-06-18"},
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": 3,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "list_image_assets",
+                            "arguments": {"asset_kind": "input", "limit": 10, "offset": 0},
+                        },
+                    },
+                )
+                listed_input_ids = {
+                    item["asset_id"]
+                    for item in listed_inputs.json()["result"]["structuredContent"]["items"]
+                }
+                assert mcp_uploaded.json()["asset_id"] in listed_input_ids
                 uploaded = client.post(
                     "/api/v1/inputs/upload",
                     files={"file": ("reference.jpg", encoded.getvalue(), "image/jpeg")},

@@ -1,6 +1,6 @@
 # MCP capability 계약
 
-> 최종 업데이트: 2026-08-17
+> 최종 업데이트: 2026-08-18
 
 사용자 의도를 provider-neutral capability로 표현하고 내부 `workflow_id`는 공개 API에서
 숨깁니다. 웹은 아직 기존 `workflow_id` 요청을 보내지만 서버 입구에서 동일한
@@ -23,14 +23,12 @@
 `app/schemas/capability_requests.py`의 모델 존재가 MCP 공개를 뜻하지 않습니다. MCP에는
 도구 구현, 소유권 검증, 결과 변환, 클라이언트 호환 테스트가 완료된 항목만 노출합니다.
 
-현재 공개 계약은 자동 프로토콜·소유권·결과 변환 테스트와 Codex 실클라이언트 검증을
-통과했습니다. 기능 조회, 첨부·생성·편집, Game UI ZIP, 캐릭터 시트, 스토리보드와 RMBG를
-실제 호출했습니다. RMBG는 반복 생성, 투명 PNG, 멱등성, 로컬 단일 큐와
+현재 공개 계약은 자동 프로토콜·소유권·결과 변환 테스트와 Codex·Claude Code
+실클라이언트 검증을 통과했습니다. 기능 조회, 직접 첨부·생성·편집, Game UI ZIP, 캐릭터
+시트, 스토리보드와 RMBG를 실제 호출했습니다. RMBG는 반복 생성, 투명 PNG, 멱등성, 로컬 단일 큐와
 `comfyui/RMBG-2.0/0.0` 감사 기록을 확인했습니다. 웹 연결도 지속성·takeover 차단 자동
 테스트와 실제 사내 주소 브라우저에서 과거·신규 MCP 자산이 함께 보이는 것까지 확인했습니다.
-Claude Code 화면 표시와 장시간·다사용자 부하는 별도 운영 검증 범위입니다.
-
-MCP 0.7.1의 모든 공개 생성 쓰기는 공통 `plan_generation`을 먼저 요구합니다.
+MCP 0.8.0의 모든 공개 생성 쓰기는 공통 `plan_generation`을 먼저 요구합니다.
 계획 계약은 capability별 결정 필드와 고정 필드를 분리하고 다음을 보장합니다.
 
 - `clarify`: 누락된 결정과 선택지를 반환하며 plan ID를 발급하지 않음
@@ -111,9 +109,10 @@ principal이 됩니다. 운영에서는 웹과 MCP 모두 `MCP_PUBLIC_BASE_URL`�
   provider별 실제 참고 이미지 한도는 실행 시 더 작게 제한될 수 있습니다.
 - MCP 참고 이미지는 호출자의 active `image` 또는 `input` 자산이어야 하며 enqueue 전에
   소유권과 실제 파일 존재를 확인합니다.
-- MCP 첨부 등록은 필수 `mime_type`과 실제 이미지 형식이 일치하는 PNG/JPEG/WEBP만
-  허용하고 공통 입력 제한과 카탈로그 저장을 사용합니다. provider를 호출하지 않으므로
-  `GenerationCommand`나 비용 통제를 거치지 않습니다.
+- MCP 첨부는 `/api/v1/mcp/inputs/upload`의 multipart `file` 필드로만 받습니다. PNG/JPEG/WEBP
+  실제 형식, byte·pixel 제한과 카탈로그 저장을 공통 적용하고 source IP principal에
+  deduplicate합니다. 클라이언트 Base64와 이미지 바이트 도구 인자는 허용하지 않습니다.
+  업로드 자체는 provider를 호출하지 않으므로 `GenerationCommand`나 비용 통제를 거치지 않습니다.
 - Game UI 웹 경로는 `2x2`·`3x3`·`4x4`를 지원하지만 MCP 공개 요청 모델은 안정성을
   위해 현재 `2x2`, 참고 이미지 최대 3장, 2K로 고정합니다.
 - 턴어라운드는 3·5·8뷰, 표정 시트는 4·9개 계약을 사용합니다.
@@ -131,7 +130,7 @@ principal이 됩니다. 운영에서는 웹과 MCP 모두 `MCP_PUBLIC_BASE_URL`�
 ## 운영 통제
 
 웹과 MCP의 생성 요청은 모두 `GenerationControlService`를 통과합니다. 자산 목록·조회와
-첨부 등록은 생성 요청이 아니며 `AssetService`의 소유권·저장 경계를 따릅니다.
+직접 multipart 첨부 등록은 생성 요청이 아니며 `AssetService`의 소유권·저장 경계를 따릅니다.
 
 - 전사 일일 요청 및 예상 비용 한도
 - source + principal + idempotency key 범위의 중복 방지

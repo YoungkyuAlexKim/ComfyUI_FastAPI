@@ -84,14 +84,15 @@ Copy-Item .env.example .env
 .\venv\Scripts\python.exe -m scripts.smoke_rmbg_queue
 ```
 
-2026-08-17 현재 전체 테스트 141개가 통과하며 운영 audit는 catalog row 1,281개,
-active Game UI 그룹 5개, 누락 파일·메타데이터·그룹 파일 0입니다. 자산 수는 계속 변하므로
-고정 개수보다 audit 누락 0과 DB·파일 정합성을 성공 기준으로 사용합니다.
+2026-08-18 기준 자동 회귀와 운영 audit에서 누락 파일·메타데이터·그룹 파일 0을 성공
+기준으로 사용합니다. 운영 자산 수는 계속 바뀌므로 고정 개수보다 DB·파일 정합성을 봅니다.
 
-MCP 0.7.1은 13개 도구와 공개 생성 capability 5개를 제공합니다. Codex 실클라이언트에서
-기능 조회, 첨부 등록, 생성·편집, Game UI, 캐릭터 시트, 스토리보드, RMBG, 작업 polling과
-결과 조회를 확인했습니다. Claude Code는 실제 사내 구독 계정 검증 전입니다. ChatGPT의
-일반 Chat 모드는 현재 Codex MCP 경로와 별개이며 지원 범위가 아닙니다.
+MCP 0.8.0은 13개 도구와 공개 생성 capability 5개를 제공합니다. Codex 실클라이언트에서
+기능 조회, 생성·편집, Game UI, 캐릭터 시트, 스토리보드, RMBG, 작업 polling과 결과 조회를
+확인했고 Claude Code 사내 계정에서도 직접 파일 업로드와 연속 이미지 편집이 완료됐습니다.
+클라이언트 이미지는 Base64 도구 인자로 보내지 않고 IP 소유권 기반 multipart endpoint로
+직접 업로드합니다. 현재 지원 클라이언트는 Codex 앱·IDE와 Claude Code입니다. Claude Desktop
+일반 채팅과 ChatGPT 일반 Chat 모드는 현재 MCP 경로와 별개이며 지원 범위가 아닙니다.
 
 ## 백업
 

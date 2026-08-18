@@ -40,15 +40,9 @@ from .services.generation_planning import (
     generation_capability_contract,
     list_generation_capability_contracts,
 )
-from .services.input_assets import (
-    InputAssetError,
-    decode_base64_image,
-    input_base64_max_characters,
-    register_input_image,
-)
+from .services.input_assets import input_max_bytes
 
 
-MCP_INPUT_BASE64_MAX_CHARACTERS = input_base64_max_characters()
 MCP_SPECIALIZED_IMAGE_MODEL = "openai/gpt-image-2"
 
 
@@ -501,7 +495,7 @@ class McpGenerationService:
                 {
                     "field": "reference_image_id",
                     "question": "Which caller-owned character reference image should be used?",
-                    "next_step": "Use list_image_assets or create_input_image_asset, then plan again.",
+                    "next_step": "Use list_image_assets or direct multipart upload, then plan again.",
                 },
                 *plan["questions"],
             ]
@@ -961,30 +955,26 @@ class McpGenerationService:
             "next_action": "Poll get_generation_job until status is complete or error.",
         }
 
-    def create_input_image_asset(
-        self,
-        caller: McpCaller,
-        *,
-        image_base64: str,
-        mime_type: str,
-        filename: str | None,
-    ) -> dict[str, Any]:
-        raw_bytes, data_url_mime = decode_base64_image(image_base64)
-        declared_mime = str(mime_type or "").strip().lower()
-        if data_url_mime and declared_mime and data_url_mime != declared_mime:
-            raise InputAssetError("mime_type_mismatch", "Data URL and mime_type do not match")
-        row, duplicate = register_input_image(
-            self.asset_service,
-            caller.principal_id,
-            raw_bytes,
-            filename=filename,
-            content_type=data_url_mime or declared_mime,
-            deduplicate=True,
-        )
-        result = _asset_result(row, caller.base_url)
-        result["duplicate"] = duplicate
-        result["next_action"] = "Use asset_id in reference_image_ids for an image or Game UI request."
-        return result
+    def prepare_input_image_upload(self, caller: McpCaller) -> dict[str, Any]:
+        upload_url = f"{caller.base_url.rstrip('/')}/api/v1/mcp/inputs/upload"
+        max_bytes = input_max_bytes()
+        return {
+            "upload_url": upload_url,
+            "method": "POST",
+            "content_type": "multipart/form-data",
+            "file_field": "file",
+            "accepted_mime_types": ["image/png", "image/jpeg", "image/webp"],
+            "max_bytes": max_bytes,
+            "max_megabytes": round(max_bytes / (1024 * 1024), 1),
+            "base64_allowed": False,
+            "curl_template": (
+                f'curl --fail-with-body --form "file=@<LOCAL_IMAGE_PATH>" "{upload_url}"'
+            ),
+            "next_action": (
+                "Upload the local file bytes with multipart/form-data, then use the returned asset_id "
+                "in reference_image_ids for plan_generation."
+            ),
+        }
 
     def list_image_assets(
         self,
@@ -1066,11 +1056,15 @@ class McpGenerationService:
                 "ready": False,
                 "error": item.get("error") if status in {"error", "cancelled"} else None,
             }
+        absolute_result = _absolute_result(item.get("result") or {}, caller.base_url)
+        assets = self.asset_service.list_assets_by_source_job(caller.principal_id, str(item.get("id") or ""))
+        if assets:
+            absolute_result["assets"] = [_asset_result(row, caller.base_url) for row in assets]
         return {
             "job_id": item.get("id"),
             "status": status,
             "ready": True,
-            "result": _absolute_result(item.get("result") or {}, caller.base_url),
+            "result": absolute_result,
         }
 
 
@@ -1086,7 +1080,7 @@ def create_mcp_integration(job_manager, job_store, controls, asset_service: Asse
     server = MCPServer(
         name="lc-ai-canvas",
         title="LC AI Canvas",
-        version="0.7.1",
+        version="0.8.0",
         instructions=(
             "LC AI Canvas is the company's managed image-asset pipeline. USER-VISIBLE IMAGE PRESENTATION "
             "IS REQUIRED after every ready result; tool-result visibility alone is not proof. In local "
@@ -1109,7 +1103,9 @@ def create_mcp_integration(job_manager, job_store, controls, asset_service: Asse
             "same idempotency_key when retrying one intent. If cost confirmation is required, ask the user and "
             "retry with cost_confirmed=true. Poll get_generation_job, then call get_generation_result. "
             "Use list_image_assets and get_image_asset to discover only this caller's managed images. "
-            "Use create_input_image_asset to register a client attachment before referencing it. "
+            "Client image uploads MUST use direct multipart file transfer. Never encode an attachment as "
+            "base64 or place image bytes in tool arguments. In Codex or Claude Code, call "
+            "prepare_input_image_upload and execute the returned upload contract with a local HTTP/file tool. "
             "create_game_ui_assets produces the fixed, supported 2x2 Game UI asset group. "
             "create_character_sheet and create_storyboard require one caller-owned reference image."
         ),
@@ -1243,46 +1239,17 @@ def create_mcp_integration(job_manager, job_store, controls, asset_service: Asse
         return CallToolResult(content=content, structuredContent=structured)
 
     @server.tool(
-        title="Register input image asset",
+        title="Prepare direct input image upload",
         description=(
-            "Register one PNG, JPEG, or WEBP client attachment as an owner-scoped LC AI Canvas input "
-            "asset. The image is decoded, bounded, normalized to PNG, cataloged, and deduplicated by "
-            "content. Use the returned asset_id in reference_image_ids. This does not call an AI provider."
+            "Return the owner-scoped direct multipart upload contract for a local PNG, JPEG, or WEBP file. "
+            "This tool does not upload bytes and does not call an AI provider. Use a local HTTP/file tool to "
+            "POST the file itself; never convert it to base64 or place image bytes in MCP arguments."
         ),
-        annotations=ToolAnnotations(
-            readOnlyHint=False,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=False,
-        ),
+        annotations=read_annotations,
+        structured_output=True,
     )
-    async def create_input_image_asset(
-        image_base64: Annotated[
-            str,
-            Field(
-                min_length=4,
-                max_length=MCP_INPUT_BASE64_MAX_CHARACTERS,
-                description="Plain base64 or a PNG/JPEG/WEBP data URL",
-            ),
-        ],
-        mime_type: Literal["image/png", "image/jpeg", "image/webp"],
-        filename: Annotated[str | None, Field(max_length=255)] = None,
-    ) -> CallToolResult:
-        caller = _current_caller()
-        try:
-            structured = service.create_input_image_asset(
-                caller,
-                image_base64=image_base64,
-                mime_type=mime_type,
-                filename=filename,
-            )
-        except InputAssetError as exc:
-            raise RuntimeError(f"{exc.code}: {exc.message}") from exc
-        content = [TextContent(type="text", text=json.dumps(structured, ensure_ascii=False))]
-        image_content = _asset_image_content(asset_service, caller, str(structured["asset_id"]))
-        if image_content is not None:
-            content.append(image_content)
-        return CallToolResult(content=content, structuredContent=structured)
+    async def prepare_input_image_upload() -> dict[str, Any]:
+        return service.prepare_input_image_upload(_current_caller())
 
     @server.tool(
         title="Get generation job",

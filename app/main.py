@@ -92,7 +92,7 @@ from .rate_limiter import SlidingWindowRateLimiter
 logger = setup_logging()
 
 templates = Jinja2Templates(directory="templates")
-app = FastAPI(title="ComfyUI FastAPI Server", version="0.7.1 (Portable MCP Image Presentation)")
+app = FastAPI(title="ComfyUI FastAPI Server", version="0.8.0 (Direct MCP Image Upload)")
 app.include_router(admin_router)
 app.include_router(ws_router)
 app.include_router(workflows_router)
@@ -118,6 +118,7 @@ async def principal_session_middleware(request: Request, call_next):
         path == "/healthz"
         or path == "/mcp"
         or path.startswith("/mcp/")
+        or path == "/api/v1/mcp/inputs/upload"
         or getattr(request.state, "mcp_output_authorized", False)
     ):
         # Health checks have no browser identity, and MCP derives its principal
@@ -475,7 +476,7 @@ async def create_page(request: Request):
 
 @app.get("/mcp-connect", response_class=HTMLResponse, tags=["Page"])
 async def mcp_connect_page(request: Request):
-    """Render the internal onboarding page for desktop and IDE MCP clients."""
+    """Render the internal onboarding page for supported MCP clients."""
     configured_base = str(os.getenv("MCP_PUBLIC_BASE_URL") or "").strip().rstrip("/")
     public_base_url = configured_base or str(request.base_url).rstrip("/")
     mcp_url = f"{public_base_url}/mcp/"

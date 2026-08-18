@@ -410,6 +410,13 @@ class AssetService:
             offset=offset,
         )
 
+    def list_assets_by_source_job(self, owner_id: str, source_job_id: str) -> list[dict[str, Any]]:
+        principal_id = require_principal_id(owner_id)
+        job_id = str(source_job_id or "").strip()
+        if not job_id:
+            return []
+        return self.store.list_by_source_job(principal_id, job_id)
+
     def count_assets(
         self,
         owner_id: str,

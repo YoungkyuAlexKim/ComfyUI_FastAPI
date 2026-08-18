@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 from io import BytesIO
 import json
 import os
@@ -14,14 +13,14 @@ import uuid
 from PIL import Image, ImageDraw
 
 
-def _source_png_base64() -> str:
+def _source_png_bytes() -> bytes:
     image = Image.new("RGB", (256, 256), "white")
     draw = ImageDraw.Draw(image)
     draw.ellipse((44, 28, 212, 196), fill=(40, 100, 210))
     draw.rectangle((82, 150, 174, 242), fill=(220, 70, 60))
     output = BytesIO()
     image.save(output, format="PNG")
-    return base64.b64encode(output.getvalue()).decode("ascii")
+    return output.getvalue()
 
 
 def main() -> None:
@@ -80,16 +79,18 @@ def main() -> None:
                     "clientInfo": {"name": "rmbg-queue-smoke", "version": "1.0"},
                 },
             )
-            registered, _ = call_tool(
-                client,
-                "create_input_image_asset",
-                {
-                    "image_base64": _source_png_base64(),
-                    "mime_type": "image/png",
-                    "filename": "rmbg-queue-source.png",
+            upload = client.post(
+                "/api/v1/mcp/inputs/upload",
+                files={
+                    "file": (
+                        "rmbg-queue-source.png",
+                        _source_png_bytes(),
+                        "image/png",
+                    )
                 },
             )
-            image_id = registered["asset_id"]
+            upload.raise_for_status()
+            image_id = upload.json()["asset_id"]
 
             plans = []
             for _ in range(2):

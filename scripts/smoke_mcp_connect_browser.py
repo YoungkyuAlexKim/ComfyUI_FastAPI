@@ -65,6 +65,7 @@ def _drive_browser(debug_port: int, screenshot_path: Path | None) -> dict:
               title:document.title,
               heading:document.getElementById('mcp-connect-title').textContent.trim(),
               activeSidebar:document.querySelector('.sidebar-tab.active').getAttribute('href'),
+              activeSidebarLabel:document.querySelector('.sidebar-tab.active .sidebar-tab-label').textContent.trim(),
               activeClient:document.querySelector('.mcp-client-tab.is-active').dataset.clientTab,
               codexUrl:document.getElementById('mcp-url-codex').textContent.trim(),
               codexCommand:document.getElementById('codex-command').textContent.trim(),
@@ -96,8 +97,7 @@ def _drive_browser(debug_port: int, screenshot_path: Path | None) -> dict:
               activeClient:document.querySelector('.mcp-client-tab.is-active').dataset.clientTab,
               codexHidden:document.getElementById('panel-codex').hidden,
               claudeHidden:document.getElementById('panel-claude-code').hidden,
-              command:document.getElementById('claude-command').textContent.trim(),
-              validationNotice:document.querySelector('.mcp-validation-notice strong').textContent.trim()
+              command:document.getElementById('claude-command').textContent.trim()
             }))()
             """
         )
@@ -137,7 +137,11 @@ def _drive_browser(debug_port: int, screenshot_path: Path | None) -> dict:
             }))()
             """
         )
-        return {"desktop": desktop, "claude": claude, "mobile": mobile}
+        return {
+            "desktop": desktop,
+            "claude": claude,
+            "mobile": mobile,
+        }
     finally:
         cdp.close()
 
@@ -205,9 +209,10 @@ def run_smoke(*, screenshot_path: Path | None = None) -> dict:
         try:
             report = _drive_browser(debug_port, screenshot_path)
             expected = {
-                "title": "AI 도구 연결 | LC AI Canvas",
-                "heading": "LC AI Canvas 연결",
+                "title": "MCP | LC AI Canvas",
+                "heading": "LC AI Canvas MCP",
                 "activeSidebar": "/mcp-connect",
+                "activeSidebarLabel": "MCP",
                 "activeClient": "codex",
                 "codexUrl": "https://canvas.internal.example/mcp/",
                 "codexCommand": (

@@ -1,12 +1,10 @@
-"""Shared validation and registration for browser and MCP image attachments."""
+"""Shared validation and registration for directly uploaded image attachments."""
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
 from io import BytesIO
 import os
-import re
 from threading import RLock
 from typing import Any
 
@@ -23,7 +21,6 @@ except Exception:
 _ALLOWED_FORMATS = {"PNG", "JPEG", "WEBP"}
 _ALLOWED_MIME_TYPES = {"image/png", "image/jpeg", "image/webp"}
 _EXTENSION_BY_FORMAT = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}
-_DATA_URL_PATTERN = re.compile(r"^data:(image/(?:png|jpeg|webp));base64,(.*)$", re.IGNORECASE | re.DOTALL)
 _DEDUPLICATED_REGISTRATION_LOCK = RLock()
 
 
@@ -53,10 +50,6 @@ def input_max_pixels() -> int:
     return max(1, int(UPLOAD_CONFIG.get("inputs_max_pixels", 40_000_000)))
 
 
-def input_base64_max_characters() -> int:
-    return ((input_max_bytes() + 2) // 3) * 4 + 128
-
-
 def _safe_filename(filename: str | None, fallback_extension: str) -> str:
     name = str(filename or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
     if not name or name in {".", ".."}:
@@ -70,29 +63,6 @@ def _safe_filename(filename: str | None, fallback_extension: str) -> str:
     if extension.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
         extension = fallback_extension
     return f"{stem[:180]}{extension.lower()}"
-
-
-def decode_base64_image(value: str) -> tuple[bytes, str | None]:
-    encoded = str(value or "").strip()
-    data_url_mime: str | None = None
-    match = _DATA_URL_PATTERN.fullmatch(encoded)
-    if match:
-        data_url_mime = match.group(1).lower()
-        encoded = match.group(2)
-    encoded = "".join(encoded.split())
-    if not encoded:
-        raise InputAssetError("empty_image", "Image attachment is empty")
-    if len(encoded) > input_base64_max_characters():
-        raise InputAssetError(
-            "image_too_large",
-            f"Image attachment exceeds the {input_max_bytes()} byte input limit",
-            status_code=413,
-        )
-    try:
-        raw = base64.b64decode(encoded, validate=True)
-    except Exception as exc:
-        raise InputAssetError("invalid_base64", "Image attachment is not valid base64") from exc
-    return raw, data_url_mime
 
 
 def normalize_input_image(

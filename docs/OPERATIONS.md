@@ -1,6 +1,6 @@
 # 운영 런북
 
-> 최종 업데이트: 2026-08-17
+> 최종 업데이트: 2026-08-18
 
 ## 배포 전 확인
 
@@ -138,7 +138,7 @@ listener의 PID만 종료합니다. 포트에 연결된 프로세스를 확인�
 3. 기존 사용자의 갤러리 목록과 원본 열기
 4. 타 사용자 쿠키로 같은 원본 URL 접근 시 404
 5. 기본 이미지 생성과 결과 저장
-6. 입력 이미지 업로드 및 참고 이미지 편집
+6. 웹 multipart 입력 이미지 업로드와 MCP 직접 multipart 업로드 및 참고 이미지 편집
 7. Game UI 웹 2×2·3×3·4×4 생성, 선택 수와 개별 결과 수 일치, ZIP 다운로드
 8. 기존 2×2 Game UI 그룹이 갤러리에서 그대로 열리고 ZIP을 받을 수 있는지 확인
 9. MCP 13개 도구와 5개 공개 생성 capability 목록, 고정 2×2 Game UI 생성,
@@ -355,7 +355,7 @@ fallback을 사용할 때 최초 operation별 `asset_catalog_filesystem_fallback
 
 ## 입력 이미지 제한
 
-웹 업로드와 MCP 첨부는 같은 입력 계층을 사용합니다.
+웹 업로드와 MCP 직접 multipart 첨부는 같은 입력 계층을 사용합니다.
 
 ```dotenv
 INPUTS_MAX_BYTES=10485760
@@ -363,12 +363,13 @@ INPUTS_MAX_PIXELS=40000000
 ```
 
 PNG/JPEG/WEBP만 실제 디코딩하고 EXIF 방향을 반영한 뒤 PNG로 정규화합니다. 원본과
-정규화 결과 모두 byte 제한을 적용하고, 디코딩 전후 픽셀 수를 제한합니다. 리버스
-프록시의 request body limit도 base64 오버헤드를 고려해 이 값과 맞춥니다.
+정규화 결과 모두 byte 제한을 적용하고, 디코딩 전후 픽셀 수를 제한합니다. MCP 입력은
+`POST /api/v1/mcp/inputs/upload`의 multipart `file` 필드만 허용합니다. 리버스 프록시의
+request body limit은 파일 제한에 multipart header 여유를 더해 설정합니다.
 
 ## MCP 네트워크 경계
 
-- 인프라에서 `/mcp`를 회사 네트워크 요청에만 허용합니다.
+- 인프라에서 `/mcp`와 `/api/v1/mcp/inputs/upload`를 회사 네트워크 요청에만 허용합니다.
 - `TRUSTED_PROXY_CIDRS`에는 실제 신뢰 프록시만 넣습니다.
 - 필요하면 `MCP_ALLOWED_CLIENT_CIDRS`로 애플리케이션 2차 허용 목록을 설정합니다.
 - `MCP_WEB_LINK_ENABLED=true`는 같은 원본 IP에서만 웹↔MCP 갤러리 연결을 허용합니다.
@@ -482,13 +483,14 @@ Invoke-RestMethod http://SERVER_IP:8000/healthz
 
 서버를 먼저 실행한 뒤 VS Code 명령 팔레트에서 `Developer: Reload Window`를 실행합니다.
 기존 대화가 MCP 도구를 새로 읽지 못하면 새 Codex 대화를 열고
-`list_generation_capabilities`부터 호출합니다. MCP 0.7.1은 RMBG 배경 제거를 포함해 13개 도구와
-5개 공개 생성 capability를 제공합니다. 2026-08-17에는 읽기, 첨부 등록, 멱등성 재시도,
+`list_generation_capabilities`부터 호출합니다. MCP 0.8.0은 RMBG 배경 제거를 포함해 13개 도구와
+5개 공개 생성 capability를 제공합니다. Codex에서는 읽기, 직접 첨부, 멱등성 재시도,
 기본 생성·참고 편집, Game UI 2×2, 캐릭터 턴어라운드 3뷰, 표정 4개, 스토리보드 6컷,
 RMBG 반복 생성, job/result polling, MCP image content와 소유 그룹 ZIP 다운로드를
 실클라이언트로 확인했습니다.
 
-MCP 0.7.1의 모든 공개 생성 쓰기는 먼저 `plan_generation`을 호출합니다. hosted 모호 요청은
+Claude Code 사내 계정에서도 multipart 직접 업로드와 GPT Image 2 1K 연속 편집 두 건을
+확인했습니다. MCP 0.8.0의 모든 공개 생성 쓰기는 먼저 `plan_generation`을 호출합니다. hosted 모호 요청은
 `missing_decisions`를 사용자에게 한 번에 질문하고, 사용자가 선택을 위임한 경우에만
 `selection_mode=recommend`를 사용합니다. 준비된 plan ID는 30분 동안 메모리에 유지되므로
 서버 재시작이나 만료 후에는 다시 계획해야 합니다. plan ID·프롬프트·참고 자산·옵션이
@@ -537,6 +539,17 @@ API는 `GET|POST|DELETE /api/v1/principal-links/mcp`입니다. 대상 principal�
 `principal_link_events`에 저장됩니다.
 
 ## 장애 대응
+
+### 참고 이미지 업로드가 오래 멈춤
+
+1. 최신 도구 목록에 `prepare_input_image_upload`이 있고 `create_input_image_asset`은 없는지
+   확인합니다. 이전 도구가 보이면 서버와 클라이언트를 재시작하고 새 대화를 엽니다.
+2. Claude Code·Codex는 `prepare_input_image_upload`의 URL에 로컬 파일을 multipart `file`
+   필드로 직접 전송해야 합니다. Base64 변환이나 이미지 문자열 도구 인자를 사용하지 않습니다.
+3. 서버의 `assets`에 새 `kind=input` 행이 없으면 생성 큐 이전의 전송 문제입니다. 이 상태는
+   provider 호출 전이라 이미지 생성 비용이 발생하지 않습니다.
+4. 업로드는 완료됐지만 Job이 없으면 반환된 `asset_id`로 `plan_generation`부터 다시
+   진행합니다. 이미 등록된 파일을 다시 변환하거나 재업로드하지 않습니다.
 
 ### 갤러리에 결과가 없음
 

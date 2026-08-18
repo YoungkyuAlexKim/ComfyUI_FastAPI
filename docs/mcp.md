@@ -1,20 +1,20 @@
 # 내부 MCP 서버
 
-> 최종 업데이트: 2026-08-17
+> 최종 업데이트: 2026-08-18
 >
 > 서버 이름: `LC AI Canvas`
 >
-> 구현 버전: `0.7.1`
+> 구현 버전: `0.8.0`
 >
 > 전송: Streamable HTTP `/mcp/`
 
 LC AI Canvas MCP는 사내 데스크톱·IDE 에이전트가 회사의 이미지 생성·저장·비용 감사
-파이프라인을 대화로 사용할 수 있게 합니다. 현재 Codex 앱·IDE 경로는 실제 클라이언트로
-검증했고 Claude Code는 사내 구독 계정 실기기 검증 전입니다.
+파이프라인을 대화로 사용할 수 있게 합니다. Codex 앱·IDE와 Claude Code는 실제 사내
+클라이언트로 검증했습니다.
 
-일반 ChatGPT Chat 모드, Claude.ai 웹과 Claude Desktop용 공개 connector/app은 현재 지원
-범위가 아닙니다. 이들은 Codex·Claude Code의 로컬 MCP 연결과 별도 배포·인증·UI 검토가
-필요합니다.
+일반 ChatGPT Chat 모드, Claude Desktop 일반 채팅과 Claude.ai 웹의 원격 커스텀 connector는
+현재 지원 범위가 아닙니다. Claude Desktop 지원은 인프라가 DNS·HTTPS 프록시 기반 원격 MCP
+접속 정책을 확정할 때 다시 검토합니다.
 
 ## 공개 도구
 
@@ -25,7 +25,7 @@ LC AI Canvas MCP는 사내 데스크톱·IDE 에이전트가 회사의 이미지
 | `plan_generation` | 옵션 계획·모호성 판정·단기 plan ID | provider 호출 없음 |
 | `list_image_assets` | 소유한 active image/input 목록 | 읽기 전용 |
 | `get_image_asset` | 소유 자산 메타데이터·이미지 content | 읽기 전용 |
-| `create_input_image_asset` | 클라이언트 첨부를 input 자산으로 등록 | 로컬 쓰기, provider 호출 없음 |
+| `prepare_input_image_upload` | 직접 multipart 업로드 주소·제약 조회 | 읽기 전용, provider 호출 없음 |
 | `create_managed_image_asset` | 기본 생성 또는 소유 자산 참고 편집 | 외부 API 비용 가능 |
 | `create_game_ui_assets` | 고정 2×2 Game UI 그룹 | 외부 API 비용 가능 |
 | `create_character_sheet` | 턴어라운드·표정 시트 | 외부 API 비용 가능 |
@@ -69,9 +69,14 @@ image/input ID가 있으면 이미지 편집입니다.
 - 품질: GPT Image 2의 `low`, `medium`, `high`
 - 참고 이미지: 최대 14장, provider 실행 한도는 더 작을 수 있음
 
-첨부 파일은 `create_input_image_asset`으로 먼저 등록합니다. PNG/JPEG/WEBP만 허용하며
-필수 `mime_type`과 실제 형식이 일치해야 합니다. byte·pixel 제한, EXIF 방향과 PNG
-정규화를 적용하고 같은 owner·정규화 SHA-256 재시도는 기존 active input을 반환합니다.
+첨부 파일은 `/api/v1/mcp/inputs/upload`로 multipart 직접 전송합니다. PNG/JPEG/WEBP만
+허용하며 byte·pixel 제한, 실제 형식 검사, EXIF 방향과 PNG 정규화를 적용합니다. 같은
+owner·정규화 SHA-256 재시도는 기존 active input을 반환합니다. Base64 문자열과 이미지
+바이트를 MCP 도구 인자에 넣는 경로는 공개하지 않습니다.
+
+Codex·Claude Code는 `prepare_input_image_upload`로 주소와 제한을 받은 뒤 로컬 HTTP/file
+도구로 `file` 필드를 전송합니다. 업로드 응답의 `asset_id`만 이후
+`reference_image_ids`에 넣습니다.
 
 ### Game UI
 
@@ -108,16 +113,16 @@ GPT Image 2를 사용합니다.
 ## 표준 호출 흐름
 
 1. `list_generation_capabilities` 또는 `get_generation_capability`
-2. 클라이언트 첨부는 `create_input_image_asset`으로 등록
+2. `prepare_input_image_upload` 확인 뒤 로컬 파일을 multipart로 직접 업로드
 3. 기존 참고 이미지는 `list_image_assets`와 `get_image_asset`으로 확인
 4. 명시된 선택만 넣어 `plan_generation(selection_mode=clarify)` 호출
 5. `missing_decisions`가 있으면 사용자에게 한 번에 질문하고 다시 계획
 6. 사용자가 선택을 위임했을 때만 `selection_mode=recommend` 사용
 7. 준비된 `tool_arguments`, `plan_id`, `suggested_idempotency_key`로 쓰기 호출
-8. `get_generation_job`을 완료 또는 오류까지 polling
-9. `get_generation_result` 호출
-10. 사용자에게 실제 미리보기 또는 표시 불가 안내와 원본 링크 제공
-11. 비용 확인이 요구되면 같은 계획·키에 `cost_confirmed=true`로 재호출
+8. `cost_confirmation_required`가 반환되면 사용자 확인 뒤 같은 계획·키에 `cost_confirmed=true`로 재호출
+9. `get_generation_job`을 완료 또는 오류까지 polling
+10. `get_generation_result` 호출
+11. 사용자에게 실제 미리보기 또는 표시 불가 안내와 원본 링크 제공
 
 ## 결과 표시 계약
 
@@ -125,7 +130,7 @@ MCP 도구 결과에 이미지가 포함됐다는 사실과 최종 사용자 채
 같지 않습니다. 클라이언트가 tool result를 접거나 `ImageContent`를 최종 답변에 승격하지
 않을 수 있기 때문입니다.
 
-0.7.1의 `get_generation_result`는 다음 fallback을 함께 제공합니다.
+0.8.0의 `get_generation_result`는 다음 fallback을 함께 제공합니다.
 
 - 최대 768px WebP user-preview를 첫 `ImageContent`로 반환
 - `annotations.audience=[user]`, 높은 표시 우선순위
@@ -140,10 +145,10 @@ user-preview 또는 호환 UI를 사용합니다. 어느 방식도 보장할 수
 가능성을 밝히고 원본 링크를 제공합니다.
 
 Codex에서 로컬 파일 다운로드와 이미지 보기로 썸네일을 표시한 표본은 통과했습니다.
-다른 새 세션이 이 후처리를 한 차례 생략한 사례를 반영해 0.7.1에서 계약을 강화했지만,
-서버가 원격 클라이언트의 최종 렌더링을 강제할 수는 없습니다. Claude 계열의 실제 화면
-표시는 실기기 검증 전입니다. HTTPS나 소유권 검사를 약화하지 않고 직접 링크 fallback을
-유지합니다.
+다른 새 세션이 이 후처리를 한 차례 생략한 사례를 반영해 계약을 강화했지만, 서버가 원격
+클라이언트의 최종 렌더링을 강제할 수는 없습니다. Claude Code의 생성·연속 편집과 서버
+결과 저장은 실기기에서 통과했습니다. HTTPS나 소유권 검사를 약화하지 않고 직접 링크
+fallback을 유지합니다.
 
 ## 네트워크와 신원
 
@@ -202,8 +207,8 @@ API는 `GET|POST|DELETE /api/v1/principal-links/mcp`입니다. MCP media URL은 
 ## 사내 온보딩
 
 `/mcp-connect`는 사내 게시판에 공유할 데스크톱·IDE용 안내 페이지입니다. Codex 앱·VS Code와
-Claude Code 탭, 실제 MCP 주소 복사, 비용 없는 최초 확인 문장과 갤러리 연결 안내를
-제공합니다. `MCP_PUBLIC_BASE_URL`이 있으면 이를 사용하고 없으면 현재 요청 origin을 사용합니다.
+Claude Code 탭, 실제 MCP 주소, 비용 없는 최초 확인 문장과 갤러리 연결 안내를 제공합니다.
+`MCP_PUBLIC_BASE_URL`이 있으면 이를 사용하고 없으면 현재 요청 origin을 사용합니다.
 
 일반 웹 화면에는 공용 비밀번호가 없습니다. 외부 접근은 사내망·방화벽이 차단하고 관리자
 인증, 웹 서명 쿠키와 MCP IP 경계는 유지합니다. 최초 확인 문장은 생성 도구를 호출하지 않아
@@ -221,7 +226,8 @@ claude mcp get lc_ai_canvas
 
 user scope는 같은 컴퓨터의 다른 프로젝트에서도 유지됩니다. 프로젝트에만 한정하려면 local
 scope를 사용합니다. 형식은 [Claude Code MCP 문서](https://code.claude.com/docs/en/mcp)를
-기준으로 합니다. 현재 화면에는 실기기 검증 전임을 표시합니다.
+기준으로 합니다. 사내 동료 계정에서 기능 조회, 직접 입력 업로드, GPT Image 2 1K 편집
+2회를 확인했습니다.
 
 ## Codex 설정
 
@@ -247,11 +253,10 @@ codex mcp list
 
 ## 운영·선택 항목
 
-1. Claude Code 실제 사내 계정의 연결·승인·결과 표시 검증
-2. 인프라팀의 IP 재할당 정책 확인과 필요 시 owner generation 기능
-3. actual cost 표본 기반 모델·크기·품질별 사전 비용표
-4. 장시간·다사용자 RMBG 큐 표본
-5. 스토리보드 gutter fallback 품질 보강
-6. 필요성이 확인된 작업 취소·휴지통 또는 MCP Apps UI
+1. 인프라팀의 IP 재할당 정책 확인과 필요 시 owner generation 기능
+2. actual cost 표본 기반 모델·크기·품질별 사전 비용표
+3. 장시간·다사용자 RMBG 큐 표본
+4. 스토리보드 gutter fallback 품질 보강
+5. 필요성이 확인된 작업 취소·휴지통 또는 MCP Apps UI
 
 영구 삭제와 관리자 정책 변경은 MCP에 공개하지 않습니다.

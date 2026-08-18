@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}AI 도구 연결 | LC AI Canvas{% endblock %}
+{% block title %}MCP | LC AI Canvas{% endblock %}
 
 {% block head_extra %}
-    <link href="/static/css/mcp_connect.css?v=20260817_03" rel="stylesheet">
+    <link href="/static/css/mcp_connect.css?v=20260818_01" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
@@ -14,10 +14,10 @@
         <main class="mcp-connect-main">
             <section class="mcp-connect-hero" aria-labelledby="mcp-connect-title">
                 <div class="mcp-connect-heading">
-                    <span class="mcp-connect-kicker">설정 / AI 도구 연결</span>
-                    <h1 id="mcp-connect-title">LC AI Canvas 연결</h1>
+                    <span class="mcp-connect-kicker">설정 / MCP</span>
+                    <h1 id="mcp-connect-title">LC AI Canvas MCP</h1>
                     <p class="mcp-connect-lead">
-                        Codex 또는 Claude Code에서 사내 이미지 제작 기능을 사용하기 위한 설정 안내입니다.
+                        Codex 또는 Claude Code에서 사내 이미지 제작 기능을 사용하는 방법입니다.
                     </p>
                 </div>
                 <div class="mcp-connect-status" id="mcp-health-badge" data-state="checking" aria-label="서버 상태">
@@ -74,7 +74,7 @@
                             </span>
                             <span>Claude Code</span>
                         </span>
-                        <span class="mcp-beta-label">확인 예정</span>
+                        <span class="mcp-verified-label">확인 완료</span>
                     </button>
                 </div>
 
@@ -151,12 +151,6 @@
                     data-client-panel="claude-code"
                     hidden
                 >
-                    <div class="mcp-validation-notice">
-                        <div>
-                            <strong>Claude Code 실기기 확인 전 안내</strong>
-                            <span>공식 HTTP 연결 형식을 사용했으며, 사내 계정으로 최종 확인할 예정입니다.</span>
-                        </div>
-                    </div>
                     <div class="mcp-step-grid">
                         <article class="mcp-step-card">
                             <span class="mcp-step-number">1</span>
@@ -203,6 +197,7 @@
                         </article>
                     </div>
                 </div>
+
             </section>
 
             <section class="mcp-connect-support" aria-label="사용 전 안내">
@@ -246,5 +241,5 @@
 {% endblock %}
 
 {% block scripts %}
-    <script src="/static/js/mcp_connect.js?v=20260817_01"></script>
+    <script src="/static/js/mcp_connect.js?v=20260818_01"></script>
 {% endblock %}
