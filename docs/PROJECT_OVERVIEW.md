@@ -1,6 +1,6 @@
 # 프로젝트 구조와 설계 기준
 
-> 최종 업데이트: 2026-08-18
+> 최종 업데이트: 2026-08-19
 
 ## 서비스 정의
 
@@ -82,6 +82,9 @@ MCP 자산 목록과 조회는 MCP owner의 active image/input만 반환합니�
 자동으로 합치지 않습니다. Base64 입력 도구는 없으며 직접 업로드 endpoint와 MCP 요청이
 동일한 source IP를 관찰하므로 같은 MCP owner에 저장됩니다.
 
+이름 기반 캐릭터 registry와 `@이름` 자동 레퍼런스 주입은 사용 등록 0건을 확인한 뒤
+폐기했습니다. 일반 생성·편집은 사용자가 명시적으로 첨부하거나 선택한 참고 이미지만 사용합니다.
+
 ## 신원과 접근 제어
 
 | 경계 | 식별 | 용도 |
@@ -147,7 +150,6 @@ SQLite `db/app_data.db`의 주요 운영 데이터는 다음과 같습니다.
 - `jobs`
 - `generation_control_*`
 - `feed_posts`, `feed_likes`, `feed_reactions`
-- `character_registry`
 - `principal_links`, `principal_link_events`
 
 JSON sidecar는 호환·복구 자료이며 갤러리 목록과 소유권의 기준은 SQLite입니다. 파일과

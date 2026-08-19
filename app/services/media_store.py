@@ -685,8 +685,6 @@ def _save_image_and_meta(
         "image_quality": getattr(req, "image_quality", None),
         "seed": getattr(req, "seed", None),
         "prompt": getattr(req, "user_prompt", None),
-        # Optional: NanoBanana character mentions (@Name)
-        "character_mentions": getattr(req, "character_mentions", None),
         # RMBG2 parameters (if any)
         "rmbg_mask_blur": getattr(req, "rmbg_mask_blur", None),
         "rmbg_mask_offset": getattr(req, "rmbg_mask_offset", None),

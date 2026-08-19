@@ -74,8 +74,6 @@ WORKFLOW_CONFIGS: Dict[str, Dict[str, Any]] = {
             "icon": "magic",
             # Separate category for NanoBanana family
             "templateMode": "nanobanana",
-            # Enable @Name character mentions UI/logic ONLY for this base txt2img workflow.
-            "characterMentions": True,
             "showLora": False,
             "showPromptTranslate": True,
             "userPromptPlaceholder": "무엇을 만들고 싶으신가요? 간단히 적어주세요.. (예: 한복을 입은 소녀, 비 오는 밤의 네온 거리)",

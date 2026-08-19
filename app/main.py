@@ -60,8 +60,6 @@ from .routers.jobs import router as jobs_router
 from .routers.feed import router as feed_router
 from .routers.audio import router as audio_router
 from .routers.admin_feed import router as admin_feed_router
-from .routers.characters import router as characters_router
-from .routers.global_characters import router as global_characters_router
 from .routers.assets import router as assets_router
 from .routers.principal_links import router as principal_links_router
 from .ws.manager import manager
@@ -103,8 +101,6 @@ app.include_router(jobs_router)
 app.include_router(feed_router)
 app.include_router(audio_router)
 app.include_router(admin_feed_router)
-app.include_router(characters_router)
-app.include_router(global_characters_router)
 app.include_router(assets_router)
 app.include_router(principal_links_router)
 

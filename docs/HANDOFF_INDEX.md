@@ -1,6 +1,6 @@
 # 문서 인덱스와 현재 체크포인트
 
-> 최종 업데이트: 2026-08-18
+> 최종 업데이트: 2026-08-19
 
 이 파일은 다음 작업자가 가장 먼저 읽는 현재 상태 요약입니다. 상세 설계와 절차는 아래의
 역할별 문서가 기준이며, 완료된 일회성 작업 일지는 Git 이력에서 확인합니다.
@@ -10,10 +10,11 @@
 - 코드 기준: `36d2952` 이후 현재 작업 트리
 - MCP: 0.8.0, Streamable HTTP `/mcp/`, 도구 13개, 공개 생성 capability 5개
 - 자동 회귀: 전체 `unittest` 성공 여부를 기준으로 관리
-- 운영 자산 audit: catalog row 1,298개, active Game UI 그룹 5개 (2026-08-18)
+- 운영 자산 audit: catalog row 1,375개, active Game UI 그룹 5개 (2026-08-19)
 - 정합성: `missing_files=0`, `missing_metadata=0`, `missing_group_files=0`
 - 실제 클라이언트: Codex 앱·IDE, Claude Code 직접 업로드·연속 편집 검증 완료
 - 지원 보류: Claude Desktop은 DNS·HTTPS 프록시 정책 재협의 전까지 미지원
+- 기능 폐기: 사용 등록 0건이었던 `@이름` 캐릭터 registry·공용 번들은 제거; 명시적 참고 이미지 사용
 - 온보딩: Codex·Claude Code 탭, Edge E2E와 390px 반응형 검증
 
 자산 개수는 운영 중 계속 바뀝니다. 고정 숫자가 아니라 전체 테스트 성공, audit 누락 0,

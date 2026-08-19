@@ -1,6 +1,6 @@
 # 운영 런북
 
-> 최종 업데이트: 2026-08-18
+> 최종 업데이트: 2026-08-19
 
 ## 배포 전 확인
 
@@ -15,7 +15,7 @@ git status --short
 - 테스트 성공
 - `missing_files`, `missing_metadata`, `missing_group_files`가 모두 0
 - 기능 커밋에 `db/app_data.db`, 런타임 `outputs/users`·`outputs/feed`, `backups`,
-  `*.secret`이 없음. 검토된 `outputs/global/characters` 번들만 예외
+  `*.secret`이 없음
 - `.env`에 관리자 인증이 있고, 직접 연결 또는 신뢰 프록시 중 실제 배포 경계와
   `TRUSTED_PROXY_CIDRS` 설정이 일치함
 - 인프라팀이 MCP 사용자 PC별 원본 IP 고유성·재할당 이력, 프록시/VPN의 원본 IP 보존,

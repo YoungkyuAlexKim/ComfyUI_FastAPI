@@ -5,7 +5,7 @@ from typing import Callable, List, Optional
 
 from ..logging_utils import setup_logging
 from ..comfy_client import ComfyUIClient
-from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, COMFY_INPUT_DIR, COMFY_OUTPUT_DIR, JOB_DB_PATH, get_workflow_default_prompt
+from ..config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, COMFY_INPUT_DIR, COMFY_OUTPUT_DIR, get_workflow_default_prompt
 from .media_store import (
     _locate_input_png_path,
     _save_image_and_meta,
@@ -390,19 +390,6 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             except Exception:
                 raise RuntimeError(f"{ordinal}번째 입력 이미지를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
 
-        def _load_local_file_bytes(abs_path: str, ordinal: int) -> bytes:
-            try:
-                p = str(abs_path or "").strip()
-            except Exception:
-                p = ""
-            if not p or not os.path.exists(p):
-                raise RuntimeError(f"{ordinal}번째 레퍼런스 파일을 찾지 못했습니다. 공용 캐릭터 폴더 구성을 확인해 주세요.")
-            try:
-                with open(p, "rb") as f:
-                    return f.read()
-            except Exception:
-                raise RuntimeError(f"{ordinal}번째 레퍼런스 파일을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
-
         def _load_image_file_as_png_bytes(path_like: str, ordinal: int) -> bytes:
             """
             Load an image from disk and return PNG bytes.
@@ -464,130 +451,6 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             except Exception:
                 raise RuntimeError(f"{ordinal}번째 숨김 레퍼런스 이미지를 읽지 못했습니다. 파일 형식을 확인해 주세요.")
 
-        # --- Character mentions (@Name) => attach reference sheets (txt2img only) ---
-        ref_sheet_bytes_list: list[bytes] | None = None
-        mention_names: list[str] = []
-        try:
-            raw_user_prompt = str(getattr(request, "user_prompt", "") or "")
-        except Exception:
-            raw_user_prompt = ""
-
-        # Gate: mentions are a feature only for the base NanoBanana txt2img workflow.
-        mentions_enabled = False
-        try:
-            ui_cfg = wf_cfg.get("ui") if isinstance(wf_cfg, dict) else None
-            mentions_enabled = bool(isinstance(ui_cfg, dict) and ui_cfg.get("characterMentions") is True)
-        except Exception:
-            mentions_enabled = False
-
-        if mentions_enabled and is_txt2img and "@" in raw_user_prompt:
-            import re
-
-            seen = set()
-            for m in re.finditer(r"@([A-Za-z0-9가-힣_-]{1,32})", raw_user_prompt):
-                nm = (m.group(1) or "").strip()
-                if not nm or nm in seen:
-                    continue
-                seen.add(nm)
-                mention_names.append(nm)
-
-            if mention_names:
-                # Safety: avoid too many reference sheets (cost + token/image limit)
-                if len(mention_names) > 4:
-                    raise RuntimeError("캐릭터는 한 번에 최대 4명(@이름 4개)까지 사용할 수 있어요.")
-
-                from ..character_store import CharacterStore
-                from .character_refs import build_character_reference_sheet
-                from .global_character_store import get_global_character
-
-                store = CharacterStore(JOB_DB_PATH)
-                out_sheets: list[bytes] = []
-                for i, nm in enumerate(mention_names):
-                    source = "personal"
-                    refs: list[str] = []
-                    ref_paths: list[str] = []
-
-                    ch = None
-                    try:
-                        ch = store.get_by_name(job.owner_id, nm)
-                    except Exception:
-                        ch = None
-                    if ch and (ch.get("status") in (None, "", "active")):
-                        refs = ch.get("reference_image_ids") if isinstance(ch, dict) else None
-                        refs = refs if isinstance(refs, list) else []
-                    else:
-                        ch = None
-
-                    if not ch:
-                        gch = None
-                        try:
-                            gch = get_global_character(nm)
-                        except Exception:
-                            gch = None
-                        if gch and isinstance(gch.get("reference_image_paths"), list):
-                            source = "global"
-                            ref_paths = [str(x or "").strip() for x in (gch.get("reference_image_paths") or [])]
-                            ref_paths = [x for x in ref_paths if x]
-
-                    # Validate reference count
-                    if source == "personal":
-                        if len(refs) != 6:
-                            if ch:
-                                raise RuntimeError(f"@{nm} 캐릭터 레퍼런스가 올바르지 않습니다. (레퍼런스 6장 필요)")
-                            raise RuntimeError(
-                                f"@{nm} 캐릭터가 등록되어 있지 않습니다. 먼저 '캐릭터 등록/관리'에서 추가해 주세요."
-                            )
-                    else:
-                        if len(ref_paths) != 6:
-                            raise RuntimeError(
-                                f"@{nm} 공용 캐릭터 레퍼런스가 올바르지 않습니다. (공용 폴더에 이미지 6장 필요)"
-                            )
-
-                    ref_bytes_list: list[bytes] = []
-                    if source == "personal":
-                        for j, rid in enumerate(refs):
-                            if cancel_event.is_set():
-                                raise RuntimeError("생성이 취소되었습니다.")
-                            ref_bytes_list.append(_load_input_png_bytes(job.owner_id, str(rid), (i * 6) + j + 1))
-                    else:
-                        for j, p in enumerate(ref_paths):
-                            if cancel_event.is_set():
-                                raise RuntimeError("생성이 취소되었습니다.")
-                            ref_bytes_list.append(_load_local_file_bytes(p, (i * 6) + j + 1))
-
-                    sheet = build_character_reference_sheet(ref_bytes_list, cols=3, rows=2, tile_size=512)
-                    if not sheet:
-                        raise RuntimeError(f"@{nm} 캐릭터 레퍼런스 시트를 만들지 못했습니다. 다른 레퍼런스 이미지로 다시 등록해 주세요.")
-                    out_sheets.append(sheet)
-
-                ref_sheet_bytes_list = out_sheets
-
-                # Replace '@Name' tokens so the model sees clean text, and add explicit mapping.
-                prompt_for_model = raw_user_prompt
-                for nm in mention_names:
-                    try:
-                        prompt_for_model = prompt_for_model.replace(f"@{nm}", nm)
-                    except Exception:
-                        pass
-                ref_lines = "\n".join([f"{idx+1}) {nm}" for idx, nm in enumerate(mention_names)])
-                augmented = (
-                    "REFERENCE_SHEETS_ORDER:\n"
-                    f"{ref_lines}\n\n"
-                    "USER_PROMPT:\n"
-                    f"{prompt_for_model}\n\n"
-                    "RULES_CHECKLIST:\n"
-                    "- Maintain the art style and key features of each character from its reference sheet.\n"
-                    "- Keep identity consistent (face, hair, outfit, colors).\n"
-                )
-                try:
-                    request.user_prompt = augmented
-                except Exception:
-                    pass
-                try:
-                    request.character_mentions = mention_names
-                except Exception:
-                    pass
-
         # --- Hidden reference images (tool workflows): auto-switch to image-edit even on txt2img ---
         hidden_ref_bytes_list: list[bytes] | None = None
         try:
@@ -595,7 +458,7 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
         except Exception:
             hidden_paths = None
         try:
-            if is_txt2img and (not ref_sheet_bytes_list) and isinstance(hidden_paths, list) and hidden_paths:
+            if is_txt2img and isinstance(hidden_paths, list) and hidden_paths:
                 out_hidden: list[bytes] = []
                 for i, p in enumerate(hidden_paths[:4]):  # safety cap
                     if cancel_event.is_set():
@@ -722,12 +585,9 @@ def run_generation_processor(job, progress_cb: Callable[[float], None], set_canc
             else:
                 output_aspect = "1:1"
 
-            if ref_sheet_bytes_list or hidden_ref_bytes_list or game_ui_reference_bytes_list:
+            if hidden_ref_bytes_list or game_ui_reference_bytes_list:
                 # Auto-switch to image-edit when we have any attached reference images.
-                # IMPORTANT: do not mix "hidden refs" with character mention sheets; it would break sheet ordering.
-                if ref_sheet_bytes_list:
-                    images_for_edit = ref_sheet_bytes_list
-                elif hidden_ref_bytes_list:
+                if hidden_ref_bytes_list:
                     images_for_edit = hidden_ref_bytes_list
                 else:
                     images_for_edit = game_ui_reference_bytes_list

@@ -59,6 +59,8 @@ class ApplicationStartupTests(unittest.TestCase):
                 retired_desktop_release = client.get(
                     "/api/v1/mcp/desktop-extension/release"
                 )
+                retired_characters = client.get("/api/v1/characters")
+                retired_global_characters = client.get("/api/v1/global-characters")
                 banner_config = client.get("/static/js/app_config.js")
                 game_ui_banner = client.get(
                     "/static/img/banner/img_banner_GameUI_Elements.png"
@@ -83,6 +85,9 @@ class ApplicationStartupTests(unittest.TestCase):
                 assert mcp_connect_js.status_code == 200, mcp_connect_js.text
                 assert retired_desktop_package.status_code == 404
                 assert retired_desktop_release.status_code == 404
+                assert retired_characters.status_code == 404
+                assert retired_global_characters.status_code == 404
+                assert 'id="character-mentions-wrap"' not in create_page.text
                 assert 'id="panel-codex"' in mcp_connect_page.text
                 assert 'id="panel-claude-code"' in mcp_connect_page.text
                 assert "Claude Desktop" not in mcp_connect_page.text
@@ -116,6 +121,8 @@ class ApplicationStartupTests(unittest.TestCase):
                 assert 'name="game-ui-grid" value="4x4"' in create_page.text
                 assert "preserve_groups', 'true'" in create_page.text
                 game_ui = next(item for item in workflows.json()["workflows"] if item["id"] == "GameUI_Elements")
+                basic_image = next(item for item in workflows.json()["workflows"] if item["id"] == "NanoBanana")
+                assert "characterMentions" not in basic_image["ui"]
                 assert [item["id"] for item in game_ui["ui"]["gameUiTool"]["supportedGrids"]] == [
                     "2x2", "3x3", "4x4"
                 ]

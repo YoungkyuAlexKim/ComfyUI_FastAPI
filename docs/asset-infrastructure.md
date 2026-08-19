@@ -1,6 +1,6 @@
 # 자산 인프라
 
-> 최종 업데이트: 2026-08-18
+> 최종 업데이트: 2026-08-19
 >
 > 상태: 운영 데이터 백필 완료, 호환 전환 중
 
@@ -44,7 +44,7 @@
 .\venv\Scripts\python.exe -m app.asset_admin audit
 ```
 
-가장 최근인 2026-08-18 read-only 재감사 스냅샷은 catalog row 1,298개, active Game UI
+가장 최근인 2026-08-19 read-only 재감사 스냅샷은 catalog row 1,375개, active Game UI
 그룹 5개이며 `missing_files`, `missing_metadata`, `missing_group_files`가 모두 0입니다.
 개수는 운영 중 생성·삭제·복구에 따라 달라지므로 누락 0과 카탈로그 무결성을 성공 기준으로
 사용합니다.

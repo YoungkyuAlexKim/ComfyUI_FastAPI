@@ -123,7 +123,7 @@ DB만 백업하려면 다음 명령을 사용합니다.
 ## 운영 원칙
 
 - `db/app_data.db`, 런타임 `outputs/users`·`outputs/feed`, 백업과 secret을 기능 커밋에
-  넣지 않습니다. 검토된 `outputs/global/characters` 번들만 예외입니다.
+  넣지 않습니다.
 - MCP는 서버가 관찰한 사내 클라이언트 IP를 principal과 비용 감사 기준으로 사용합니다.
   인터넷에 직접 공개하지 않습니다.
 - 사용자 PC별 원본 IP 고유성, 재할당 이력, 프록시·VPN의 원본 IP 보존과 8000 포트의
