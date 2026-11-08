@@ -6,8 +6,13 @@ from app.workflow_configs import WORKFLOW_CONFIGS
 
 
 class HostedWorkflowPromptTests(unittest.TestCase):
-    def test_non_prompt_utility_keeps_empty_style_prompt(self):
-        self.assertEqual(WORKFLOW_CONFIGS["RMBG2"]["style_prompt"], "")
+    def test_retired_local_comfyui_workflows_are_removed(self):
+        for workflow_id in ("RMBG2", "seethrough-basic", "AceStep15XL"):
+            self.assertNotIn(workflow_id, WORKFLOW_CONFIGS)
+        self.assertEqual(
+            {config.get("provider") for config in WORKFLOW_CONFIGS.values()},
+            {"openrouter"},
+        )
 
     def test_basic_generation_and_editing_have_distinct_roles(self):
         generate = WORKFLOW_CONFIGS["NanoBanana"]

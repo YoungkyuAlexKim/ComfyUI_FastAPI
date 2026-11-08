@@ -16,17 +16,16 @@
 | `create_character_sheet/turnaround` | 구현 | 구현 | 공개·실검증 |
 | `create_character_sheet/expressions` | 구현 | 구현 | 공개·실검증 |
 | `create_storyboard/default` | 구현 | 구현 | 공개·실검증 |
-| `remove_background/default` | 구현 | 구현 | `remove_background`로 공개·실검증 |
-| `separate_layers/default` | 구현 | 구현 | 미공개 |
-| `generate_music/default` | 구현 | 구현 | 미공개 |
+
+`remove_background`, `separate_layers`, `generate_music`은 로컬 ComfyUI workflow(RMBG2,
+seethrough-basic, AceStep15XL)였으며 2026-11-08에 웹·MCP·내부 요청 모델에서 모두 제거했습니다.
 
 `app/schemas/capability_requests.py`의 모델 존재가 MCP 공개를 뜻하지 않습니다. MCP에는
 도구 구현, 소유권 검증, 결과 변환, 클라이언트 호환 테스트가 완료된 항목만 노출합니다.
 
 현재 공개 계약은 자동 프로토콜·소유권·결과 변환 테스트와 Codex·Claude Code
 실클라이언트 검증을 통과했습니다. 기능 조회, 직접 첨부·생성·편집, Game UI ZIP, 캐릭터
-시트, 스토리보드와 RMBG를 실제 호출했습니다. RMBG는 반복 생성, 투명 PNG, 멱등성, 로컬 단일 큐와
-`comfyui/RMBG-2.0/0.0` 감사 기록을 확인했습니다. 웹 연결도 지속성·takeover 차단 자동
+시트, 스토리보드를 실제 호출했습니다. 웹 연결도 지속성·takeover 차단 자동
 테스트와 실제 사내 주소 브라우저에서 과거·신규 MCP 자산이 함께 보이는 것까지 확인했습니다.
 MCP 0.8.0의 모든 공개 생성 쓰기는 공통 `plan_generation`을 먼저 요구합니다.
 계획 계약은 capability별 결정 필드와 고정 필드를 분리하고 다음을 보장합니다.
@@ -35,8 +34,7 @@ MCP 0.8.0의 모든 공개 생성 쓰기는 공통 `plan_generation`을 먼저 �
 - `recommend`: 사용자가 선택을 명시적으로 위임한 경우에만 권장값을 채움
 - 준비된 계획: 호출자 principal, 프롬프트, 참고 자산, 옵션에 묶인 30분 plan ID 발급
 - 쓰기 제출: plan ID 누락·만료·다른 소유자·인자 변경을 provider 호출 전에 거절
-- 계획 자체: provider나 로컬 workflow를 실행하지 않음. hosted 가격표가 없으면 예상 비용은
-  `null`, 외부 provider가 없는 ComfyUI 로컬 workflow는 알려진 provider 비용 `0.0`
+- 계획 자체: provider를 호출하지 않음. hosted 가격표가 없으면 예상 비용은 `null`
 
 실제 Streamable HTTP 클라이언트에서 모호 요청의 plan 미발급, 명시·위임 계획 발급, 계획
 없는 쓰기 거절을 확인했습니다. 클라이언트의 LLM이 대화에서 사용자가 실제로 선택을
@@ -67,9 +65,6 @@ create_game_ui_assets + default        → GameUI_Elements
 create_character_sheet + turnaround    → NanoBanana_TurnaroundSheet
 create_character_sheet + expressions   → NanoBanana_ExpressionPortraitSheet
 create_storyboard + default             → NanoBanana_StoryboardCutboard
-remove_background + default             → RMBG2
-separate_layers + default               → seethrough-basic
-generate_music + default                → AceStep15XL
 ```
 
 왼쪽 계약은 안정적으로 유지하고 오른쪽 workflow, provider, model은 서버 내부에서
@@ -117,15 +112,11 @@ principal이 됩니다. 운영에서는 웹과 MCP 모두 `MCP_PUBLIC_BASE_URL`�
   위해 현재 `2x2`, 참고 이미지 최대 3장, 2K로 고정합니다.
 - 턴어라운드는 3·5·8뷰, 표정 시트는 4·9개 계약을 사용합니다.
 - 스토리보드는 참고 이미지 한 장과 6·9컷을 사용합니다.
-- 배경 제거는 호출자 소유 active image/input 한 장, 고정 `RMBG2` workflow와 `RMBG-2.0`
-  모델을 사용합니다. `mask_blur` 0~64와 `mask_offset` -64~64는 선택 항목이고 기본값은 0입니다.
-  외부 provider API 비용은 알려진 `0.0`으로 기록하지만 로컬 GPU 자원은 소비합니다.
 - MCP의 두 hosted 특화 도구인 캐릭터 시트와 스토리보드는 현재 서버가 선택한 GPT Image 2를 사용하며 1K·2K와
   low·medium·high를 공개합니다. 모호한 값은 계획에서 질문하고 선택 위임 시에만
   2K/medium 권장값을 적용합니다.
-- 현재 일반 배경 제거 웹·MCP 구현은 RMBG입니다. Game UI의 크로마→알파 후처리와는
-  별개의 경로이며 See-Through와 ACE-Step은 MCP에 공개하지 않습니다.
-- See-Through는 PSD 레이어 분리라는 특수 결과 형식을 유지합니다.
+- 일반 배경 제거 기능은 없습니다. Game UI의 투명 배경은 생성 결과의 크로마→알파 후처리로
+  서버 안에서 처리하며 GPU를 사용하지 않습니다.
 
 ## 운영 통제
 
@@ -141,8 +132,9 @@ principal이 됩니다. 운영에서는 웹과 MCP 모두 `MCP_PUBLIC_BASE_URL`�
 
 가격표가 없는 사전 비용은 0이 아니라 `null/unknown`으로 반환합니다. 실제 비용 통계는
 관리자 화면과 `GET /api/v1/admin/generation-controls/cost-report`에서 IP·기능·모델별로
-확인하며, 완료 후 비용 미수집 건을 별도 집계합니다. 예외적으로 `resolved_provider=comfyui`인
-로컬 workflow는 외부 provider API 비용이 없으므로 알려진 `0.0`으로 기록합니다.
+확인하며, 완료 후 비용 미수집 건을 별도 집계합니다. 2026-11-08 이전에 실행된
+`resolved_provider=comfyui` 로컬 작업 기록은 외부 provider API 비용이 없으므로 계속 알려진
+`0.0`으로 집계합니다.
 
 `GENERATION_ENABLED=false`, `MCP_GENERATION_ENABLED=false`는 환경 수준의 hard stop이며
 DB의 관리자 설정으로 다시 켤 수 없습니다. 가격은 코드에 고정하지 않고 운영 설정의

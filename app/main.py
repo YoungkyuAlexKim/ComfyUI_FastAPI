@@ -22,12 +22,10 @@ try:
 except Exception:
     Image = None
 
-from .comfy_client import ComfyUIClient
-from .config import SERVER_CONFIG, WORKFLOW_CONFIGS, get_prompt_overrides, get_default_values, get_workflow_default_prompt
+from .config import SERVER_CONFIG, get_default_values
 from .config import QUEUE_CONFIG, JOB_DB_PATH
 from .config import HEALTHZ_CONFIG
-from .config import COMFY_INPUT_DIR
-from .job_manager import JobManager, RoutingJobManager, Job
+from .job_manager import JobManager, Job
 from .job_store import JobStore
 from .asset_store import AssetStore
 from .logging_utils import setup_logging
@@ -215,35 +213,19 @@ class GenerateRequest(BaseModel):
     image_model: Optional[str] = None
     # Model-specific quality option (currently GPT Image 2: low/medium/high).
     image_quality: Optional[str] = None
-    # RMBG2 (Background Removal) params - only used when workflow supports it
-    rmbg_mask_blur: Optional[int] = None
-    rmbg_mask_offset: Optional[int] = None
     # Direct image-to-image input
     input_image_id: Optional[str] = None  # 기존에 저장된 이미지 id
     # Optional multi-image input (used by specific providers/workflows; backward-compatible)
     # 규칙: input_image_ids가 비어있지 않으면 우선 사용, 아니면 input_image_id 사용
     input_image_ids: Optional[List[str]] = None
-    input_image_filename: Optional[str] = None  # 이미 Comfy input에 업로드된 파일명(있으면 재업로드 생략)
     # Optional LoRA strengths (per-slot) – forward-compatible
     # Example: [{"slot":"character","unet":1.0,"clip":1.0},{"slot":"style","unet":0.8,"clip":0.8}]
     loras: Optional[List[dict]] = None
-    # --- ACE-Step (music/audio) params ---
-    lyrics: Optional[str] = None
-    bpm: Optional[int] = None
-    duration: Optional[int] = None
-    steps: Optional[int] = None
-    keyscale: Optional[str] = None
-    timesignature: Optional[str] = None
-    language: Optional[str] = None
-    # --- SeeThrough (layer separation) params ---
-    seethrough_resolution: Optional[int] = None
     # --- Game UI element maker params ---
     game_ui_background_mode: Optional[str] = None
     game_ui_grid: Literal["2x2", "3x3", "4x4"] = "2x2"
 
-WORKFLOW_DIR = "./workflows/"
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
-SERVER_ADDRESS = SERVER_CONFIG["server_address"]
 
 
 
@@ -252,9 +234,8 @@ Filesystem helpers were extracted to app/services/media_store.py.
 Imports above wire them in; local duplicates removed to reduce main.py size.
 """
 
-_comfy_job_manager = JobManager(worker_count=1)
-_external_job_manager = JobManager(worker_count=4)  # env에서 startup 시 재설정
-job_manager = RoutingJobManager(_comfy_job_manager, _external_job_manager, WORKFLOW_CONFIGS)
+# All remaining workflows run on hosted providers (OpenRouter); workers are tuned at startup.
+job_manager = JobManager(worker_count=4)
 job_store = JobStore(JOB_DB_PATH)
 generation_controls = GenerationControlService(JOB_DB_PATH)
 generation_submissions = GenerationSubmissionService(job_manager, generation_controls)
@@ -397,23 +378,6 @@ async def private_sidecar_middleware(request: Request, call_next):
     return await call_next(request)
 
 # --- Helpers ---
-def _wait_for_input_visibility(filename: str, timeout_sec: float = 1.5, poll_ms: int = 50) -> bool:
-    try:
-        if not isinstance(COMFY_INPUT_DIR, str) or not COMFY_INPUT_DIR or not isinstance(filename, str) or not filename:
-            return True
-        import time as _t
-        import os as _os
-        target = _os.path.join(COMFY_INPUT_DIR, filename)
-        deadline = _t.time() + max(0.05, timeout_sec)
-        while _t.time() < deadline:
-            if _os.path.exists(target):
-                return True
-            _t.sleep(max(0.01, poll_ms / 1000.0))
-        return _os.path.exists(target)
-    except Exception as e:
-        logger.debug({"event": "wait_input_visibility_failed", "file": filename, "error": str(e)})
-        return True
-
 def _paginate(items: list, page: int, size: int):
     try:
         size_val = int(size)
@@ -674,7 +638,7 @@ async def cancel_active_for_user(request: Request):
     return {"message": "Cancel request sent.", "job_id": j.id}
 
 @app.post("/api/v1/translate-prompt", tags=["Prompt Translation"], response_model=TranslateResponse)
-async def translate_prompt_endpoint(text: str = Form(...), mode: str = Form("image"), language: str = Form("ko"), context: str = Form("")):
+async def translate_prompt_endpoint(text: str = Form(...), mode: str = Form("image")):
     if not openrouter_is_configured():
         raise HTTPException(status_code=503, detail="번역 기능(API)이 설정되지 않았습니다. 서버 .env에 OPENROUTER_API_KEY를 설정해 주세요.")
     model = os.getenv("OPENROUTER_TEXT_MODEL") or "google/gemini-3.1-flash-lite"
@@ -684,90 +648,27 @@ async def translate_prompt_endpoint(text: str = Form(...), mode: str = Form("ima
 
     mode = (mode or "image").strip().lower()
 
-    if mode == "music_tags":
-        # Music description enhancement: convert user input to ACE-Step natural language description
-        instruction = (
-            "You are a music production prompt writer for ACE-Step AI.\n"
-            "Convert the user's request into a music production description.\n\n"
-            "STRICT RULES:\n"
-            "- Focus on SPECIFIC instruments, playing techniques, arrangement, and sound texture\n"
-            "- Do NOT use abstract scene descriptions (no 'sense of wonder', 'enchanting world')\n"
-            "- Do NOT include genre labels as keywords (no 'RPG theme', 'village music')\n"
-            "- Every sentence must describe something the AI can actually produce as SOUND\n"
-            "- Output ONLY the description paragraph, no explanations or labels\n\n"
-            "Example 1:\n"
-            "User: fantasy RPG village background music\n"
-            "Fingerpicked nylon-string acoustic guitar playing a lilting waltz-time melody, "
-            "accompanied by a wooden transverse flute weaving gentle counter-melodies. "
-            "A celtic harp provides arpeggiated chords underneath while light frame-drum "
-            "taps keep a relaxed pulse. Warm string pads swell softly in the background.\n\n"
-            "Example 2:\n"
-            "User: intense boss battle music\n"
-            "Aggressive staccato string ostinatos over pounding double-kick drums and "
-            "thunderous taiko hits. Brass section delivers sharp, dissonant power chords "
-            "while a choir sings fortissimo Latin phrases. Rapid tempo with relentless "
-            "sixteenth-note percussion patterns driving forward momentum.\n\n"
-            "Example 3:\n"
-            "User: rainy day cafe jazz\n"
-            "Brushed snare drum with a lazy swing pattern and warm upright bass playing "
-            "chromatic walking lines. A breathy tenor saxophone improvises behind-the-beat "
-            "over lush extended piano voicings with ninth and thirteenth chords. Subtle "
-            "vinyl crackle and room reverb add intimate warmth.\n\n"
-            "Example 4:\n"
-            "User: retro 8-bit game music\n"
-            "Square-wave lead melody with rapid arpeggiated triangle-wave bass. Pulse-wave "
-            "harmony channel playing staccato chords. Noise-channel percussion with snappy "
-            "hi-hats and punchy kick patterns. Bright, energetic chiptune arrangement with "
-            "frequent pitch bends and echo effects.\n\n"
-            f"User: {raw}\n"
-        )
-    elif mode == "music_lyrics":
-        # Lyrics generation: user can provide either tags-based or free-text request
-        lang_name = {"ko": "한국어", "en": "English", "ja": "日本語", "zh": "中文",
-                     "es": "Español", "fr": "Français", "de": "Deutsch",
-                     "it": "Italiano", "pt": "Português", "ru": "Русский"}.get(language, language)
-        # context = tags from the tags input field (음악 설명)
-        # raw = user's free-text request in the lyrics textarea
-        tags_info = (context or "").strip()
-        context_block = f"\n음악 설명(tags): {tags_info}" if tags_info else ""
-        instruction = (
-            "사용자가 음악 생성 AI(ACE-Step)에 넣을 가사를 작성하려 합니다.\n"
-            f"아래 사용자의 요청을 바탕으로 어울리는 {lang_name} 가사를 작성해주세요.\n\n"
-            "아래 구조 패턴 중 장르와 분위기에 가장 어울리는 것을 하나 골라 사용하세요:\n"
-            "A) [verse] [verse] [chorus] [verse] [chorus] — 포크/컨트리/어쿠스틱\n"
-            "B) [verse] [pre-chorus] [chorus] [verse] [pre-chorus] [chorus] [bridge] [chorus] — 팝/댄스\n"
-            "C) [intro] [verse] [chorus] [verse] [chorus] [bridge] [chorus] [outro] — 록/메탈\n"
-            "D) [verse] [chorus] [verse] [chorus] [bridge] [verse] [chorus] — 발라드/R&B\n"
-            "E) [verse] [verse] [chorus] [verse] [verse] [chorus] [bridge] [chorus] — 랩/힙합\n"
-            "F) [intro] [verse] [chorus] [interlude] [verse] [chorus] [outro] — 일렉트로닉/앰비언트\n"
-            "G) [verse] [chorus] [verse] [chorus] — 심플/동요/짧은 곡\n\n"
-            "조건:\n"
-            "- 사용자가 원하는 분위기, 주제, 감정을 가사에 반영\n"
-            "- 각 줄은 짧고 리듬감 있게 (노래로 부를 수 있도록)\n"
-            "- 설명/해설 없이, 가사 텍스트만 출력\n"
-            f"{context_block}\n\n"
-            f"사용자 요청:\n{raw}\n"
-        )
-    else:
-        # Default: image prompt translation
-        instruction = (
-            "아래 한국어 설명을 이미지 생성 AI가 이해하기 좋은 영어 프롬프트로 변환해줘.\n"
-            "조건:\n"
-            "- 사용자의 의도를 최대한 그대로 유지\n"
-            "- 영어로만 작성\n"
-            "- 결과는 가장 베스트 1개만\n"
-            "- 설명/해설/옵션/번호/따옴표/마크다운 없이, 프롬프트 문장만 한 줄로 출력\n"
-            "- Danbooru 태그 나열이 아니라 자연스러운 영어 프롬프트 문장으로 작성\n\n"
-            f"한국어 원문:\n{raw}\n"
-        )
+    # Image prompt translation (music modes were retired with the ACE-Step workflow)
+    if mode != "image":
+        raise HTTPException(status_code=400, detail="지원하지 않는 번역 모드입니다.")
+    instruction = (
+        "아래 한국어 설명을 이미지 생성 AI가 이해하기 좋은 영어 프롬프트로 변환해줘.\n"
+        "조건:\n"
+        "- 사용자의 의도를 최대한 그대로 유지\n"
+        "- 영어로만 작성\n"
+        "- 결과는 가장 베스트 1개만\n"
+        "- 설명/해설/옵션/번호/따옴표/마크다운 없이, 프롬프트 문장만 한 줄로 출력\n"
+        "- Danbooru 태그 나열이 아니라 자연스러운 영어 프롬프트 문장으로 작성\n\n"
+        f"한국어 원문:\n{raw}\n"
+    )
 
     try:
         out = generate_text(
             prompt=instruction,
             model=model,
-            temperature=0.7 if mode.startswith("music") else 0.2,
+            temperature=0.2,
             top_p=0.95,
-            max_tokens=1024 if mode == "music_lyrics" else 256,
+            max_tokens=256,
             timeout=(5.0, 30.0),
         )
     except OpenRouterUpstreamError as e:
@@ -783,44 +684,10 @@ async def translate_prompt_endpoint(text: str = Form(...), mode: str = Form("ima
             status = 502
         raise HTTPException(status_code=status, detail=getattr(e, "public_message", str(e)))
 
-    if mode in ("music_lyrics", "music_tags"):
-        # Music modes: keep multi-line, clean up LLM thinking artifacts
-        out = out.strip()
-        raw_model_out = out
-        # Some hosted models may prepend reasoning/meta lines; strip them defensively.
-        cleaned_lines = []
-        for line in out.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                cleaned_lines.append(line)
-                continue
-            # Skip thinking/meta/analysis lines
-            if stripped.startswith(("*", "#", "- ", "•")):
-                continue
-            if stripped.lower().startswith(("here is", "here's", "output:", "result:", "source text", "translation", "note:", "let me", "i will", "the user")):
-                continue
-            # Skip lines that look like labels (e.g., "Genre:", "Instruments:")
-            if len(stripped) < 60 and stripped.endswith(":"):
-                continue
-            cleaned_lines.append(line)
-        out = "\n".join(cleaned_lines).strip()
-        # Remove wrapping quotes if present
-        if len(out) >= 2 and out[0] == '"' and out[-1] == '"':
-            out = out[1:-1].strip()
-        # For music_tags: if still empty after filtering, fall back to full output
-        if not out and mode == "music_tags":
-            # Try to find the last substantial paragraph (likely the actual description)
-            paragraphs = [p.strip() for p in raw_model_out.split("\n\n") if p.strip()]
-            if not paragraphs:
-                # Re-parse from original
-                paragraphs = [p.strip() for p in raw_model_out.split("\n\n") if p.strip() and not p.strip().startswith("*")]
-            if paragraphs:
-                out = paragraphs[-1].strip()
-    else:
-        # Ensure single-line response (best-effort) for image prompts
-        out = out.splitlines()[0].strip()
-        # Remove accidental quotes
-        out = out.strip().strip('"').strip("'").strip()
+    # Ensure single-line response (best-effort) for image prompts
+    out = (out.splitlines() or [""])[0].strip()
+    # Remove accidental quotes
+    out = out.strip().strip('"').strip("'").strip()
 
     return {"translated_text": out}
 
@@ -869,7 +736,7 @@ async def on_startup():
                     # Detect artifact availability on completion (best-effort)
                     artifact_available = False
                     try:
-                        p = (j.result.get("image_path") or j.result.get("audio_path")) if isinstance(j.result, dict) else None
+                        p = j.result.get("image_path") if isinstance(j.result, dict) else None
                         if isinstance(p, str) and p:
                             if p.startswith('/outputs/'):
                                 rel = p[len('/outputs/') : ]
@@ -912,25 +779,20 @@ async def on_startup():
     job_manager.set_notifier(notifier)
     # Apply queue/timeouts from env
     try:
-        # ComfyUI lane: 기존 설정 유지
-        _comfy_job_manager.max_per_user_queue = int(QUEUE_CONFIG.get("max_per_user_queue", 5))
-        _comfy_job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
-        _comfy_job_manager.job_timeout_seconds = float(QUEUE_CONFIG.get("job_timeout_seconds", 180))
-
-        # OpenRouter lane: 동시 실행(풀) + 사용자 대기열 길이만 별도 env로 제어
+        # OpenRouter: 동시 실행(풀) + 사용자 대기열 길이를 env로 제어
         try:
             external_workers = int(os.getenv("OPENROUTER_MAX_CONCURRENT", "4") or "4")
         except Exception:
             external_workers = 4
         external_workers = max(1, min(32, int(external_workers)))
-        _external_job_manager.worker_count = external_workers
+        job_manager.worker_count = external_workers
         try:
             external_q = int(os.getenv("OPENROUTER_MAX_PER_USER_QUEUE", "5") or "5")
         except Exception:
             external_q = 5
-        _external_job_manager.max_per_user_queue = max(0, min(50, int(external_q)))
+        job_manager.max_per_user_queue = max(0, min(50, int(external_q)))
         # Per-user concurrent stays aligned with existing policy (default 1)
-        _external_job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
+        job_manager.max_per_user_concurrent = int(QUEUE_CONFIG.get("max_per_user_concurrent", 1))
         try:
             external_timeout = float(os.getenv("OPENROUTER_JOB_TIMEOUT_SECONDS", "330") or "330")
         except Exception:
@@ -944,86 +806,10 @@ async def on_startup():
                 "minimum_seconds": minimum_external_timeout,
             })
             external_timeout = minimum_external_timeout
-        _external_job_manager.job_timeout_seconds = external_timeout
+        job_manager.job_timeout_seconds = external_timeout
     except Exception as e:
         logger.debug({"event": "job_manager_env_apply_failed", "error": str(e)})
     job_manager.start()
-
-    # --- ComfyUI 헬스체크 워치독 ---
-    # ComfyUI가 크래시하면 실행 중인 작업이 영원히 대기하는 문제를 방지
-    async def _comfyui_health_watchdog():
-        """15초마다 ComfyUI 상태를 확인. 연결 불가 시 실행 중인 ComfyUI 작업을 자동 실패 처리."""
-        consecutive_failures = 0
-        FAIL_THRESHOLD = 2  # 연속 2회 실패 시 (30초간 응답 없음)
-        while True:
-            await asyncio.sleep(15)
-            try:
-                import requests as _req
-                r = _req.get(f"http://{SERVER_ADDRESS}/system_stats", timeout=5)
-                if r.status_code == 200:
-                    consecutive_failures = 0
-                    continue
-            except Exception:
-                pass
-            consecutive_failures += 1
-            if consecutive_failures >= FAIL_THRESHOLD:
-                # ComfyUI 응답 없음 — 실행 중인 ComfyUI 작업 강제 실패
-                try:
-                    for jm in [_comfy_job_manager]:
-                        with jm._lock:
-                            for job in list(jm._jobs.values()):
-                                if job.status == "running":
-                                    jm._cancel_requests.add(job.id)
-                                    cancel = jm._cancel_handles.get(job.id)
-                                    if cancel:
-                                        try:
-                                            cancel()
-                                        except Exception:
-                                            pass
-                    logger.warning({
-                        "event": "comfyui_watchdog_triggered",
-                        "consecutive_failures": consecutive_failures,
-                        "action": "cancel_running_comfy_jobs",
-                    })
-                except Exception:
-                    pass
-
-    asyncio.create_task(_comfyui_health_watchdog())
-
-    # --- SeeThrough 임시 파일 자동 정리 (24시간 경과 시 삭제) ---
-    async def _seethrough_cleanup_loop():
-        """30분마다 실행: 24시간 지난 SeeThrough PSD + 파츠 파일 삭제"""
-        import glob as _glob
-        SEETHROUGH_TTL_HOURS = 24
-        while True:
-            await asyncio.sleep(30 * 60)  # 30분 간격
-            try:
-                now = time.time()
-                ttl_sec = SEETHROUGH_TTL_HOURS * 3600
-                output_base = SERVER_CONFIG.get("output_dir", "./outputs/")
-                if not os.path.isdir(output_base):
-                    continue
-                removed_files = 0
-                for root, dirs, files in os.walk(output_base):
-                    for fname in files:
-                        if not fname.lower().endswith(".psd"):
-                            continue
-                        fpath = os.path.join(root, fname)
-                        try:
-                            if now - os.path.getmtime(fpath) > ttl_sec:
-                                os.remove(fpath)
-                                removed_files += 1
-                        except Exception:
-                            pass
-                if removed_files:
-                    logger.info({
-                        "event": "seethrough_cleanup",
-                        "removed_psd_files": removed_files,
-                    })
-            except Exception:
-                pass
-
-    asyncio.create_task(_seethrough_cleanup_loop())
 
 
 @app.on_event("shutdown")

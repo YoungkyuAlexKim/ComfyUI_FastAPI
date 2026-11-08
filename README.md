@@ -1,7 +1,8 @@
 # LC AI Canvas
 
-LC AI Canvas는 사내 이미지·게임 UI 자산·캐릭터 시트·스토리보드와 일부 로컬
-ComfyUI 도구를 웹과 MCP에서 함께 사용하는 FastAPI 서비스입니다. 두 진입점은 같은
+LC AI Canvas는 사내 이미지·게임 UI 자산·캐릭터 시트·스토리보드 생성을 웹과 MCP에서
+함께 사용하는 FastAPI 서비스입니다. 모든 생성은 OpenRouter 호스티드 API로 실행하며 로컬
+GPU나 ComfyUI를 사용하지 않습니다. 두 진입점은 같은
 생성 명령, 작업 큐, 비용 통제, 감사 로그와 자산 저장 계층을 사용합니다.
 
 ## 현재 제공 범위
@@ -12,8 +13,10 @@ ComfyUI 도구를 웹과 MCP에서 함께 사용하는 FastAPI 서비스입니�
 | Game UI | 2×2·3×3·4×4 후보, 개별 PNG·ZIP·묶음 관리 | 검증된 2×2 그룹 생성 |
 | 캐릭터 시트 | 턴어라운드·표정 시트 | 턴어라운드·표정 시트 |
 | 스토리보드 | 6·9컷 | 6·9컷 |
-| 배경 제거 | 로컬 RMBG-2.0 | 로컬 RMBG-2.0 |
-| 레이어·음악 | See-Through, ACE-Step | 장시간 로컬 작업이라 비공개 |
+
+2026-11-08에 로컬 ComfyUI workflow 세 개(배경 제거 RMBG-2.0, 레이어 분리 See-Through, 음악
+생성 ACE-Step)를 서비스에서 제거했습니다. 이미 만들어진 결과물(갤러리 이미지, 음악 목록)은
+그대로 조회·다운로드·삭제할 수 있지만 새로 생성할 수는 없습니다.
 
 호스티드 이미지 모델은 OpenRouter를 통해 호출합니다. 내부 workflow ID에 남아 있는
 `NanoBanana`는 기존 요청과 결과의 호환용 이름이며 Google API 직접 연결을 뜻하지 않습니다.
@@ -29,8 +32,7 @@ Copy-Item .env.example .env
 ```
 
 `.env`에는 최소한 `OPENROUTER_API_KEY`, `ADMIN_USER`, `ADMIN_PASSWORD`를 설정합니다.
-일반 사내 웹 화면에는 공용 비밀번호가 없고 관리자 화면만 별도 인증합니다. 로컬 기능을
-사용하려면 ComfyUI 경로와 주소도 설정합니다.
+일반 사내 웹 화면에는 공용 비밀번호가 없고 관리자 화면만 별도 인증합니다.
 
 개발 실행:
 
@@ -78,17 +80,12 @@ Copy-Item .env.example .env
 .\scripts\smoke_server_launcher.ps1
 ```
 
-실제 로컬 GPU를 사용하는 RMBG 큐 검사는 ComfyUI가 유휴 상태일 때 실행합니다.
-
-```powershell
-.\venv\Scripts\python.exe -m scripts.smoke_rmbg_queue
-```
-
 2026-08-18 기준 자동 회귀와 운영 audit에서 누락 파일·메타데이터·그룹 파일 0을 성공
 기준으로 사용합니다. 운영 자산 수는 계속 바뀌므로 고정 개수보다 DB·파일 정합성을 봅니다.
 
-MCP 0.8.0은 13개 도구와 공개 생성 capability 5개를 제공합니다. Codex 실클라이언트에서
-기능 조회, 생성·편집, Game UI, 캐릭터 시트, 스토리보드, RMBG, 작업 polling과 결과 조회를
+MCP 0.8.0은 12개 도구와 공개 생성 capability 4개를 제공합니다(`remove_background`는
+2026-11-08 제거). Codex 실클라이언트에서
+기능 조회, 생성·편집, Game UI, 캐릭터 시트, 스토리보드, 작업 polling과 결과 조회를
 확인했고 Claude Code 사내 계정에서도 직접 파일 업로드와 연속 이미지 편집이 완료됐습니다.
 클라이언트 이미지는 Base64 도구 인자로 보내지 않고 IP 소유권 기반 multipart endpoint로
 직접 업로드합니다. 현재 지원 클라이언트는 Codex 앱·IDE와 Claude Code입니다. Claude Desktop

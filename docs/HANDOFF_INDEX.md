@@ -8,13 +8,14 @@
 ## 현재 기준선
 
 - 코드 기준: `36d2952` 이후 현재 작업 트리
-- MCP: 0.8.0, Streamable HTTP `/mcp/`, 도구 13개, 공개 생성 capability 5개
+- MCP: 0.8.0, Streamable HTTP `/mcp/`, 도구 12개, 공개 생성 capability 4개
 - 자동 회귀: 전체 `unittest` 성공 여부를 기준으로 관리
 - 운영 자산 audit: catalog row 1,375개, active Game UI 그룹 5개 (2026-08-19)
 - 정합성: `missing_files=0`, `missing_metadata=0`, `missing_group_files=0`
 - 실제 클라이언트: Codex 앱·IDE, Claude Code 직접 업로드·연속 편집 검증 완료
 - 지원 보류: Claude Desktop은 DNS·HTTPS 프록시 정책 재협의 전까지 미지원
 - 기능 폐기: 사용 등록 0건이었던 `@이름` 캐릭터 registry·공용 번들은 제거; 명시적 참고 이미지 사용
+- 기능 폐기(2026-11-08): 로컬 ComfyUI workflow 제거(마지막 사용: RMBG 2026-09-01, See-Through 2026-08-19, ACE-Step 2026-07-22; 서비스 전체 마지막 작업 2026-09-09). GPU·ComfyUI는 다른 용도로 전환하고 기존 결과물은 조회·다운로드·삭제만 유지
 - 온보딩: Codex·Claude Code 탭, Edge E2E와 390px 반응형 검증
 
 자산 개수는 운영 중 계속 바뀝니다. 고정 숫자가 아니라 전체 테스트 성공, audit 누락 0,
@@ -29,7 +30,6 @@ DB·파일 정합성을 회귀 기준으로 사용합니다.
 | Game UI | 완료 | 웹 2×2·3×3·4×4, MCP 2×2, 그룹 ZIP·수명주기 |
 | 캐릭터 시트 | 완료 | 턴어라운드 3뷰, 표정 4개 실호출 |
 | 스토리보드 | 완료 | 6컷 실호출; gutter fallback 품질 관찰 필요 |
-| RMBG | 완료 | 반복·연속 큐, 투명 PNG, 외부 provider cost 0.0 |
 | 비용·감사 | 완료 | IP·기능·모델별 actual cost와 미수집 구분 |
 | 웹↔MCP 갤러리 연결 | 완료 | 영구 연결, takeover 차단, 원본 owner 유지, 선택·휴지통 관리 |
 | 결과 미리보기 | 서버 계약 완료 | 경량 ImageContent, 원본 링크, 로컬 다운로드·열기 지침 |
@@ -99,10 +99,10 @@ Codex에서 로컬 PNG 다운로드와 이미지 보기로 썸네일을 표시�
 1. 인프라팀에 IP 고유성, DHCP 예약, 퇴사·PC 교체 뒤 재할당 정책과 이력 보존을 확인
 2. 완전 백업 목적지를 별도 볼륨 또는 NAS로 확정하고 예약 작업·복구 훈련 수행
 3. actual cost 표본을 모아 모델·크기·품질별 보수적 사전 비용표 결정
-4. 여러 사용자·장시간 운영에서 외부 API 동시성과 로컬 RMBG 단일 큐 관찰
+4. 여러 사용자·장시간 운영에서 외부 API 동시성 관찰
 5. 필요성이 확인되면 IP workspace retirement와 owner generation 기능 설계
 
-See-Through와 ACE-Step의 MCP 공개, 일반 ChatGPT Chat 모드용 앱·플러그인, MCP 삭제·취소
+일반 ChatGPT Chat 모드용 앱·플러그인, MCP 삭제·취소
 도구와 MCP Apps UI는 현재 필수 범위가 아닙니다.
 
 ## 문서 역할

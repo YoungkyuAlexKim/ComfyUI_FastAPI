@@ -12,7 +12,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from scripts.smoke_game_ui_browser import (
     _Cdp,
@@ -21,19 +20,6 @@ from scripts.smoke_game_ui_browser import (
     _stop_process,
     _wait_for_json,
 )
-
-
-class _HealthHandler(BaseHTTPRequestHandler):
-    def log_message(self, _format: str, *_args) -> None:
-        return
-
-    def do_GET(self) -> None:
-        payload = b'{"ok":true}'
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
 
 
 def _drive_browser(debug_port: int, screenshot_path: Path | None) -> dict:
@@ -154,10 +140,6 @@ def run_smoke(*, screenshot_path: Path | None = None) -> dict:
         root = Path(temporary_directory)
         output_root = root / "outputs"
         output_root.mkdir(parents=True)
-        fake_server = ThreadingHTTPServer(("127.0.0.1", 0), _HealthHandler)
-        fake_thread = threading.Thread(target=fake_server.serve_forever, daemon=True)
-        fake_thread.start()
-        fake_port = int(fake_server.server_address[1])
         os.environ.update(
             {
                 "OUTPUT_DIR": str(output_root),
@@ -165,7 +147,6 @@ def run_smoke(*, screenshot_path: Path | None = None) -> dict:
                 "PRINCIPAL_COOKIE_SECRET": "s" * 64,
                 "PRINCIPAL_COOKIE_SECRET_FILE": "",
                 "MCP_PUBLIC_BASE_URL": "https://canvas.internal.example",
-                "COMFYUI_SERVER": f"127.0.0.1:{fake_port}",
                 "ASSET_CATALOG_FALLBACK_ENABLED": "false",
                 "LOG_LEVEL": "WARNING",
                 "LOG_TO_FILE": "false",
@@ -255,9 +236,6 @@ def run_smoke(*, screenshot_path: Path | None = None) -> dict:
             _stop_process(edge)
             app_server.should_exit = True
             app_thread.join(timeout=10)
-            fake_server.shutdown()
-            fake_server.server_close()
-            fake_thread.join(timeout=5)
 
 
 def main() -> int:

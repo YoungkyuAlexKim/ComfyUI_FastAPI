@@ -12,7 +12,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-from http.server import ThreadingHTTPServer
 
 from PIL import Image
 
@@ -24,7 +23,6 @@ from scripts.smoke_game_ui_browser import (
     _stop_process,
     _wait_for_json,
 )
-from scripts.smoke_mcp_connect_browser import _HealthHandler
 
 
 def _seed_linkable_image(app, output_root: Path) -> tuple[str, str]:
@@ -158,10 +156,6 @@ def run_smoke(*, screenshot_path: Path | None = None) -> dict:
         root = Path(temporary_directory)
         output_root = root / "outputs"
         output_root.mkdir(parents=True)
-        fake_server = ThreadingHTTPServer(("127.0.0.1", 0), _HealthHandler)
-        fake_thread = threading.Thread(target=fake_server.serve_forever, daemon=True)
-        fake_thread.start()
-        fake_port = int(fake_server.server_address[1])
         os.environ.update(
             {
                 "OUTPUT_DIR": str(output_root),
@@ -171,7 +165,6 @@ def run_smoke(*, screenshot_path: Path | None = None) -> dict:
                 "MCP_WEB_LINK_ENABLED": "true",
                 "MCP_ALLOWED_CLIENT_CIDRS": "127.0.0.0/8",
                 "MCP_PUBLIC_BASE_URL": "http://127.0.0.1",
-                "COMFYUI_SERVER": f"127.0.0.1:{fake_port}",
                 "ASSET_CATALOG_FALLBACK_ENABLED": "false",
                 "LOG_LEVEL": "WARNING",
                 "LOG_TO_FILE": "false",
@@ -241,9 +234,6 @@ def run_smoke(*, screenshot_path: Path | None = None) -> dict:
             _stop_process(edge)
             app_server.should_exit = True
             app_thread.join(timeout=10)
-            fake_server.shutdown()
-            fake_server.server_close()
-            fake_thread.join(timeout=5)
 
 
 def main() -> int:

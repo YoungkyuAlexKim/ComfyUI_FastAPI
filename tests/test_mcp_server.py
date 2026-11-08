@@ -232,45 +232,6 @@ class McpServerTests(unittest.TestCase):
         self.assertEqual(result["missing_decisions"], ["reference_image_id"])
         self.assertIsNone(result["plan_id"])
 
-    def test_remove_background_requires_owned_image_and_queues_fixed_local_workflow(self):
-        missing = self.service.plan_generation(
-            self.caller,
-            capability="remove_background",
-            prompt="",
-            options={},
-            selection_mode="clarify",
-        )
-        self.assertFalse(missing["ready_to_generate"])
-        self.assertEqual(missing["missing_decisions"], ["reference_image_id"])
-
-        self._register_asset(self.caller.principal_id, "rmbg-input", kind="input")
-        plan = self._plan(
-            "remove_background",
-            prompt="",
-            options={"mask_blur": 2, "mask_offset": -1},
-            reference_image_ids=["rmbg-input"],
-        )
-        self.assertEqual(plan["estimated_cost_usd"], 0.0)
-        self.assertFalse(plan["provider_cost"])
-        response = self.service.remove_background(
-            self.caller,
-            plan_id=plan["plan_id"],
-            image_id="rmbg-input",
-            mask_blur=2,
-            mask_offset=-1,
-            idempotency_key=plan["suggested_idempotency_key"],
-        )
-        self.assertEqual(response["estimated_cost_usd"], 0.0)
-        job = self.manager.get(response["job_id"])
-        self.assertEqual(job.payload["capability"], "remove_background")
-        self.assertEqual(job.payload["workflow_id"], "RMBG2")
-        self.assertEqual(job.payload["resolved_provider"], "comfyui")
-        self.assertEqual(job.payload["resolved_model"], "RMBG-2.0")
-        self.assertEqual(job.payload["image_model"], "RMBG-2.0")
-        self.assertEqual(job.payload["input_image_id"], "rmbg-input")
-        self.assertEqual(job.payload["rmbg_mask_blur"], 2)
-        self.assertEqual(job.payload["rmbg_mask_offset"], -1)
-
     def test_create_image_with_owned_reference_uses_edit_capability(self):
         self._register_asset(self.caller.principal_id, "reference123", kind="input")
         plan = self._plan(
@@ -653,9 +614,9 @@ class McpServerTests(unittest.TestCase):
             "create_game_ui_assets",
             "create_character_sheet",
             "create_storyboard",
-            "remove_background",
         })
         self.assertNotIn("create_image", by_name)
+        self.assertNotIn("remove_background", by_name)
         self.assertFalse(by_name["create_managed_image_asset"].annotations.read_only_hint)
         self.assertTrue(by_name["create_managed_image_asset"].annotations.open_world_hint)
         self.assertTrue(by_name["get_generation_job"].annotations.read_only_hint)
@@ -670,9 +631,6 @@ class McpServerTests(unittest.TestCase):
         self.assertFalse(by_name["create_game_ui_assets"].annotations.read_only_hint)
         self.assertFalse(by_name["create_character_sheet"].annotations.read_only_hint)
         self.assertFalse(by_name["create_storyboard"].annotations.read_only_hint)
-        self.assertFalse(by_name["remove_background"].annotations.read_only_hint)
-        self.assertFalse(by_name["remove_background"].annotations.open_world_hint)
-        self.assertIn("image_id", by_name["remove_background"].input_schema["required"])
         self.assertIn("reference_image_id", by_name["create_character_sheet"].input_schema["required"])
         self.assertIn("reference_image_id", by_name["create_storyboard"].input_schema["required"])
         create_schema = by_name["create_managed_image_asset"].input_schema
@@ -724,7 +682,7 @@ class McpServerTests(unittest.TestCase):
             self.assertIn("create_game_ui_assets", names)
             self.assertIn("create_character_sheet", names)
             self.assertIn("create_storyboard", names)
-            self.assertIn("remove_background", names)
+            self.assertNotIn("remove_background", names)
             self.assertIn("plan_generation", names)
             self.assertNotIn("create_image", names)
 
@@ -746,7 +704,6 @@ class McpServerTests(unittest.TestCase):
                     "create_game_ui_assets",
                     "create_character_sheet",
                     "create_storyboard",
-                    "remove_background",
                 },
             )
 

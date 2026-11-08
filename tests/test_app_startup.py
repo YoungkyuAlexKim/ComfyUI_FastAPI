@@ -139,8 +139,11 @@ class ApplicationStartupTests(unittest.TestCase):
                     "create_game_ui_assets",
                     "create_character_sheet",
                     "create_storyboard",
-                    "remove_background",
                 } <= names
+                assert not {"remove_background", "separate_layers", "generate_music"} & names
+                workflow_ids = {item["id"] for item in workflows.json()["workflows"]}
+                assert not {"RMBG2", "seethrough-basic", "AceStep15XL"} & workflow_ids
+                assert "comfyui" not in health.json()["components"]
                 assert "create_input_image_asset" not in names
 
                 image = Image.new("RGB", (8, 6), (20, 40, 60))

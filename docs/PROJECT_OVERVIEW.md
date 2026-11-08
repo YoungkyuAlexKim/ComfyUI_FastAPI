@@ -12,11 +12,9 @@ LC AI Canvas는 사내 이미지 제작 요청을 웹 UI와 MCP에서 받아 같
 웹 생성 ─┐
          ├─ GenerationCommand ─ CapabilityDispatcher ─ GenerationControl ─ JobManager
 MCP 생성 ┘                                                               │
-                                                       ┌──────────────────┴──────────────┐
-                                                       │                                 │
-                                                  OpenRouter                         ComfyUI
-                                                       │                                 │
-웹·MCP 자산 API ──────────────────────── AssetService ─┴──────── 파일 + SQLite ─────────┘
+                                                                    OpenRouter
+                                                                         │
+웹·MCP 자산 API ──────────────────────── AssetService ──────── 파일 + SQLite
 ```
 
 ## 제품 기능
@@ -27,9 +25,10 @@ MCP 생성 ┘                                                               │
 | `create_game_ui_assets` | 2×2·3×3·4×4, ZIP·묶음 관리 | GPT Image 2/OpenRouter | 검증된 2×2 공개 |
 | `create_character_sheet` | 턴어라운드·표정 시트 | OpenRouter | 공개·실검증 |
 | `create_storyboard` | 6·9컷 | OpenRouter | 공개·실검증 |
-| `remove_background` | RMBG-2.0 | ComfyUI | 공개·실검증 |
-| `separate_layers` | See-Through PSD | ComfyUI | 장시간 작업이라 비공개 |
-| `generate_music` | ACE-Step | ComfyUI | 장시간 작업이라 비공개 |
+
+로컬 ComfyUI capability(`remove_background` RMBG-2.0, `separate_layers` See-Through PSD,
+`generate_music` ACE-Step)는 2026-09 이후 사용이 없어 2026-11-08에 제거했고, GPU·ComfyUI는 다른
+용도로 전환했습니다. 기존 결과물과 음악 목록(`/api/v1/audio`)은 조회·다운로드·삭제만 지원합니다.
 
 `NanoBanana*` workflow ID는 기존 웹 요청과 결과 메타데이터 호환을 위해 유지합니다. 현재
 호스티드 공급자는 OpenRouter이며 Google API 직접 호출은 사용하지 않습니다. 조명 변경은
@@ -44,8 +43,8 @@ MCP 생성 ┘                                                               │
 - `app/services/generation_planning.py`: MCP 선택지·모호성·단기 plan ID
 - `app/services/generation_submission.py`: 통제 승인 뒤 큐 등록
 - `app/services/generation_controls.py`: 한도·비용·멱등성·감사 이벤트
-- `app/services/generation.py`: OpenRouter·ComfyUI 실행
-- `app/job_manager.py`, `app/job_store.py`: 외부 API lane, 로컬 단일 lane과 영속 작업
+- `app/services/generation.py`: OpenRouter 실행
+- `app/job_manager.py`, `app/job_store.py`: 외부 API 동시성 큐와 영속 작업
 - `app/services/asset_service.py`, `app/asset_store.py`: 자산 소유권·수명주기·카탈로그
 - `app/services/input_assets.py`: 직접 업로드 이미지 검증·정규화·등록
 - `app/routers/inputs.py`: 웹 업로드와 MCP IP 소유 multipart 업로드
@@ -158,13 +157,12 @@ SQLite를 하나의 ACID 트랜잭션으로 묶을 수 없으므로 보상 로�
 
 ## 실행·비용·결과 표시
 
-외부 API 작업은 별도 동시성 lane, ComfyUI 작업은 GPU 보호를 위한 단일 실행 lane을
-사용합니다. 모든 생성 쓰기는 source·principal·idempotency key 범위에서 중복을 막고
+모든 작업은 OpenRouter 동시성 큐(`OPENROUTER_MAX_CONCURRENT`)에서 실행합니다. 모든 생성 쓰기는 source·principal·idempotency key 범위에서 중복을 막고
 provider가 보고한 actual cost를 기록합니다.
 
 가격표가 요청 모델·크기·품질과 일치하지 않으면 사전 비용은 `0`이 아니라
-`null/unknown`입니다. 완료된 ComfyUI 작업은 외부 provider API 비용만 알려진 `0.0`으로
-기록하며 GPU·전력 원가가 무료라는 뜻은 아닙니다.
+`null/unknown`입니다. 2026-11-08 이전에 완료된 ComfyUI 작업 기록은 외부 provider API 비용이
+알려진 `0.0`으로 집계됩니다.
 
 `get_generation_result`는 최대 768px WebP user-preview를 첫 `ImageContent`로 두고
 `presentation.required=true`와 원본 링크를 함께 반환합니다. 로컬 Codex·Claude Code에는
@@ -184,16 +182,16 @@ provider가 보고한 actual cost를 기록합니다.
 
 ## 현재 경계
 
-1차 기반에는 생성·편집, Game UI, 캐릭터 시트, 스토리보드, RMBG, 계획·비용·큐·멱등성,
+1차 기반에는 생성·편집, Game UI, 캐릭터 시트, 스토리보드, 계획·비용·큐·멱등성,
 자산·감사와 웹↔MCP 연결이 포함됩니다. 다음은 배포·운영 또는 선택 기능입니다.
 
 - Claude Desktop은 현재 지원하지 않으며, 인프라가 DNS·HTTPS 프록시 기반 원격 MCP를 제공할 때 재검토
 - 인프라팀의 IP 재할당 정책 확인과 필요 시 owner generation 기능
 - 외부 백업 위치의 예약 작업과 복구 훈련
 - actual cost 표본 기반 사전 비용 가격표
-- 장시간·다사용자 부하와 RMBG 단일 큐 표본 확대
+- 장시간·다사용자 부하 표본 확대
 - 스토리보드 gutter fallback 품질 보강
 - 필요성이 확인된 MCP 취소·휴지통 또는 MCP Apps UI
 
-See-Through·ACE-Step MCP 공개, 일반 ChatGPT Chat 모드용 앱과 영구 삭제 도구는 현재
+일반 ChatGPT Chat 모드용 앱과 영구 삭제 도구는 현재
 필수 범위가 아닙니다.

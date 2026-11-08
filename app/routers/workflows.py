@@ -1,5 +1,3 @@
-import os
-import json
 from typing import Optional
 from fastapi import APIRouter, Query
 from ..logging_utils import setup_logging
@@ -10,8 +8,6 @@ from ..services.openrouter_client import public_image_model_options
 
 logger = setup_logging()
 router = APIRouter(tags=["Workflows"])
-
-WORKFLOW_DIR = "./workflows/"
 
 
 @router.get("/api/v1/workflows", response_model=WorkflowsResponse)
@@ -30,18 +26,10 @@ async def get_workflows(
         include_openrouter = bool(include_google)
     workflows = []
     for workflow_id, config in WORKFLOW_CONFIGS.items():
-        provider = str(config.get("provider", "comfyui") or "comfyui").strip().lower()
+        provider = str(config.get("provider", "") or "").strip().lower()
         # 필요하면 비용이 드는 외부 API 워크플로우를 목록에서 숨깁니다.
         if provider == "openrouter" and not include_openrouter:
             continue
-        json_path = os.path.join(WORKFLOW_DIR, f"{workflow_id}.json")
-        node_count = 0
-        if os.path.exists(json_path):
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    node_count = len(json.load(f))
-            except Exception as e:
-                logger.warning({"event": "workflow_list_error", "workflow": json_path, "error": str(e)})
         ui_schema = dict(config.get("ui", {}) or {})
         if provider == "openrouter":
             openrouter_cfg = config.get("openrouter", {}) or {}
@@ -76,7 +64,8 @@ async def get_workflows(
             "id": workflow_id,
             "name": config.get("display_name", workflow_id.replace("_", " ").title()),
             "description": config.get("description", "워크플로우 설명이 없습니다."),
-            "node_count": node_count,
+            # Hosted workflows have no local node graph; kept for API compatibility.
+            "node_count": 0,
             "hidden": bool(config.get("hidden", False)),
             "provider": provider,
             "category": config.get("category", "other"),

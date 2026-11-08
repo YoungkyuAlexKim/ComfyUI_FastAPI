@@ -475,7 +475,6 @@ class McpGenerationService:
             "create_game_ui_assets": 3,
             "create_character_sheet": 1,
             "create_storyboard": 1,
-            "remove_background": 1,
         }[capability]
         reference_ids = self._reference_image_ids(
             caller,
@@ -489,7 +488,7 @@ class McpGenerationService:
             selection_mode=selection_mode,
             has_reference_images=bool(reference_ids),
         )
-        if capability in {"create_character_sheet", "create_storyboard", "remove_background"} and len(reference_ids) != 1:
+        if capability in {"create_character_sheet", "create_storyboard"} and len(reference_ids) != 1:
             plan["missing_decisions"] = ["reference_image_id", *plan["missing_decisions"]]
             plan["questions"] = [
                 {
@@ -557,12 +556,7 @@ class McpGenerationService:
             }
             internal_capability = capability
         else:
-            tool_arguments = {
-                "image_id": reference_ids[0],
-                "mask_blur": resolved["mask_blur"],
-                "mask_offset": resolved["mask_offset"],
-            }
-            internal_capability = capability
+            raise ValueError(f"Unsupported generation capability: {capability}")
 
         estimate_payload = {
             "capability": internal_capability,
@@ -583,74 +577,6 @@ class McpGenerationService:
             "tool_arguments, plan_id, suggested_idempotency_key, and cost_confirmed when required."
         )
         return plan
-
-    def remove_background(
-        self,
-        caller: McpCaller,
-        *,
-        plan_id: str,
-        image_id: str,
-        mask_blur: int,
-        mask_offset: int,
-        idempotency_key: str,
-    ) -> dict[str, Any]:
-        if isinstance(mask_blur, bool) or not isinstance(mask_blur, int) or not 0 <= mask_blur <= 64:
-            raise ValueError("mask_blur must be an integer between 0 and 64")
-        if isinstance(mask_offset, bool) or not isinstance(mask_offset, int) or not -64 <= mask_offset <= 64:
-            raise ValueError("mask_offset must be an integer between -64 and 64")
-        reference_ids = self._reference_image_ids(caller, [image_id], max_count=1)
-        if len(reference_ids) != 1:
-            raise ValueError("image_id is required")
-        self._validate_plan(
-            caller,
-            plan_id=plan_id,
-            capability="remove_background",
-            arguments={
-                "image_id": reference_ids[0],
-                "mask_blur": mask_blur,
-                "mask_offset": mask_offset,
-            },
-        )
-        context = GenerationContext(
-            principal_id=caller.principal_id,
-            source="mcp",
-            client_ip=caller.client_ip,
-            client_ip_source=caller.client_ip_source,
-            request_id=uuid.uuid4().hex,
-            idempotency_key=idempotency_key,
-        )
-        command = GenerationCommand(
-            capability="remove_background",
-            variant="default",
-            parameters={
-                "user_prompt": "",
-                "aspect_ratio": "square",
-                "image_model": "RMBG-2.0",
-                "input_image_ids": reference_ids,
-                "input_image_id": reference_ids[0],
-                "rmbg_mask_blur": mask_blur,
-                "rmbg_mask_offset": mask_offset,
-            },
-            context=context,
-        )
-        resolved = DEFAULT_CAPABILITY_DISPATCHER.resolve(command)
-        submission = self.submissions.submit(resolved, cost_confirmed=False)
-        return {
-            "job_id": submission.job_id,
-            "status": submission.status,
-            "queue_position": submission.position,
-            "estimated_cost_usd": submission.estimated_cost_usd,
-            "cost_estimate_available": submission.estimated_cost_usd is not None,
-            "duplicate": submission.duplicate,
-            "plan_id": plan_id,
-            "output_contract": {
-                "format": "PNG",
-                "background": "transparent",
-                "model": "RMBG-2.0",
-                "provider_api_cost_usd": 0.0,
-            },
-            "next_action": "Poll get_generation_job until status is complete or error.",
-        }
 
     def _validate_plan(
         self,
@@ -1097,9 +1023,7 @@ def create_mcp_integration(job_manager, job_store, controls, asset_service: Asse
             "decision ambiguous, use selection_mode=clarify, ask one concise bundled question containing "
             "the returned missing decisions, and plan again. Use selection_mode=recommend only when the "
             "user explicitly delegates those choices. Never silently choose model, size, aspect, count, "
-            "background, or quality. The local remove_background capability is fixed to RMBG-2.0, incurs "
-            "no provider API charge, and requires one caller-owned image plus a ready plan. Copy the ready "
-            "plan's tool_arguments without changing them. Reuse the "
+            "background, or quality. Copy the ready plan's tool_arguments without changing them. Reuse the "
             "same idempotency_key when retrying one intent. If cost confirmation is required, ask the user and "
             "retry with cost_confirmed=true. Poll get_generation_job, then call get_generation_result. "
             "Use list_image_assets and get_image_asset to discover only this caller's managed images. "
@@ -1156,7 +1080,6 @@ def create_mcp_integration(job_manager, job_store, controls, asset_service: Asse
             "create_game_ui_assets",
             "create_character_sheet",
             "create_storyboard",
-            "remove_background",
         ],
     ) -> dict[str, Any]:
         return generation_capability_contract(capability)
@@ -1164,7 +1087,7 @@ def create_mcp_integration(job_manager, job_store, controls, asset_service: Asse
     @server.tool(
         title="Plan generation",
         description=(
-            "Plan one public LC AI Canvas generation without calling an AI provider or running a local workflow. "
+            "Plan one public LC AI Canvas generation without calling an AI provider. "
             "Call this before every generation write. Pass only choices the user explicitly stated or "
             "clearly implied. Use selection_mode=clarify when any workflow option is ambiguous; ask one concise "
             "bundled question from missing_decisions and plan again. Use selection_mode=recommend only when the "
@@ -1180,7 +1103,6 @@ def create_mcp_integration(job_manager, job_store, controls, asset_service: Asse
             "create_game_ui_assets",
             "create_character_sheet",
             "create_storyboard",
-            "remove_background",
         ],
         prompt: Annotated[str, Field(max_length=8000)] = "",
         options: Annotated[
@@ -1331,44 +1253,6 @@ def create_mcp_integration(job_manager, job_store, controls, asset_service: Asse
                 idempotency_key=idempotency_key,
                 cost_confirmed=cost_confirmed,
                 reference_image_ids=reference_image_ids,
-            )
-        except GenerationPolicyError as exc:
-            raise RuntimeError(f"{exc.code}: {exc.message}") from exc
-
-    @server.tool(
-        title="Remove image background",
-        description=(
-            "Queue the fixed local RMBG-2.0 workflow for exactly one active image owned by this caller. "
-            "The result is registered as a managed transparent PNG. This uses the internal ComfyUI GPU queue "
-            "and incurs no external provider API charge, although local GPU and infrastructure resources are "
-            "consumed. A ready plan_generation result is required; copy its arguments exactly."
-        ),
-        annotations=ToolAnnotations(
-            readOnlyHint=False,
-            destructiveHint=False,
-            idempotentHint=True,
-            openWorldHint=False,
-        ),
-        structured_output=True,
-    )
-    async def remove_background(
-        image_id: Annotated[
-            str,
-            Field(min_length=1, max_length=128, description="Caller-owned active image or input asset ID"),
-        ],
-        plan_id: Annotated[str, Field(min_length=37, max_length=64)],
-        idempotency_key: Annotated[str, Field(min_length=8, max_length=128)],
-        mask_blur: Annotated[int, Field(ge=0, le=64)] = 0,
-        mask_offset: Annotated[int, Field(ge=-64, le=64)] = 0,
-    ) -> dict[str, Any]:
-        try:
-            return service.remove_background(
-                _current_caller(),
-                plan_id=plan_id,
-                image_id=image_id,
-                mask_blur=mask_blur,
-                mask_offset=mask_offset,
-                idempotency_key=idempotency_key,
             )
         except GenerationPolicyError as exc:
             raise RuntimeError(f"{exc.code}: {exc.message}") from exc

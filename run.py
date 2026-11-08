@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ComfyUI FastAPI 서버 실행 스크립트
+LC Canvas 서버 실행 스크립트
 """
 
 import uvicorn
@@ -19,7 +19,7 @@ def main():
 
     # NOTE: Windows 콘솔(기본 cp1252/CP949 등)에서는 이모지/특수문자 출력이
     # UnicodeEncodeError를 유발할 수 있어, 시작 로그는 ASCII로 유지합니다.
-    print("Starting ComfyUI FastAPI server...")
+    print("Starting LC Canvas server...")
     print("Server: http://127.0.0.1:8000")
     print("Docs:   http://127.0.0.1:8000/docs")
     print("Press Ctrl+C to stop")

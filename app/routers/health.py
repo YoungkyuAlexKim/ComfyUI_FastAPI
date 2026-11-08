@@ -1,7 +1,6 @@
 import time
 import shutil
 import sqlite3
-import requests
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from ..logging_utils import setup_logging
@@ -13,27 +12,16 @@ logger = setup_logging()
 router = APIRouter(tags=["Health"])
 
 OUTPUT_DIR = SERVER_CONFIG["output_dir"]
-SERVER_ADDRESS = SERVER_CONFIG["server_address"]
 
 
 @router.get("/healthz")
 def healthz():
     results = {
-        "comfyui": {"ok": False, "reason": None},
         "db": {"ok": False, "reason": None},
         "disk": {"ok": False, "reason": None},
         "llm": {"ok": False, "reason": None},
     }
     status_code = 200
-    try:
-        url = f"http://{SERVER_ADDRESS}/"
-        resp = requests.get(url, timeout=(3.0, 5.0))
-        results["comfyui"]["ok"] = (resp.status_code >= 200 and resp.status_code < 500)
-        if not results["comfyui"]["ok"]:
-            results["comfyui"]["reason"] = f"HTTP {resp.status_code}"
-    except Exception as e:
-        results["comfyui"]["reason"] = str(e)
-        status_code = 503
     try:
         conn = sqlite3.connect(JOB_DB_PATH)
         conn.execute("CREATE TABLE IF NOT EXISTS __healthz (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER)")
@@ -63,7 +51,7 @@ def healthz():
             results["llm"]["reason"] = "OPENROUTER_API_KEY not set"
     except Exception as e:
         results["llm"]["reason"] = str(e)
-    overall_ok = results["comfyui"]["ok"] and results["db"]["ok"] and results["disk"]["ok"]
+    overall_ok = results["db"]["ok"] and results["disk"]["ok"]
     payload = {"ok": overall_ok, "components": results}
     if not overall_ok and status_code == 200:
         status_code = 503

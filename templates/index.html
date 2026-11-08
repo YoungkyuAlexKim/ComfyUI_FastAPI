@@ -82,7 +82,6 @@
             }
         })();
 
-        let rmbgUiBound = false;
 
         const anonId = document.querySelector('.app-container')?.getAttribute('data-anon-id') || '';
         // Attach anon id to API requests to survive environments where cookies are blocked.
@@ -207,8 +206,6 @@
                 const workflowName = meta.workflow_name || meta.workflowName || meta.workflow_id || meta.workflowId || '';
                 const prompt = meta.prompt || '';
                 const seed = (meta.seed ?? meta.seed === 0) ? meta.seed : null;
-                const rmbgMaskBlur = (meta.rmbg_mask_blur ?? null);
-                const rmbgMaskOffset = (meta.rmbg_mask_offset ?? null);
                 const workflowId = meta.workflow_id || meta.workflowId || null;
                 return {
                     id,
@@ -223,9 +220,7 @@
                         workflow_name: workflowName,
                         prompt,
                         seed,
-                        workflow_id: workflowId,
-                        rmbg_mask_blur: rmbgMaskBlur,
-                        rmbg_mask_offset: rmbgMaskOffset
+                        workflow_id: workflowId
                     },
                     source: 'generated'
                 };
@@ -258,13 +253,12 @@
         let currentJobId = null;
         // Provider hint for the current job (used to customize queue messages)
         // - 'hosted-image': hosted image workflows routed through OpenRouter
-        // - 'comfyui': ComfyUI(local) workflows
         let currentJobQueueKind = null;
         let queueTimer = null;
         function inferQueueKindFromWorkflow(wf){
             try {
                 const provider = String((wf && wf.provider) ? wf.provider : '').trim().toLowerCase();
-                return provider === 'openrouter' ? 'hosted-image' : 'comfyui';
+                return provider === 'openrouter' ? 'hosted-image' : null;
             } catch (_) {
                 return null;
             }
@@ -342,7 +336,6 @@
             const groups = {
                 image_generation: [],
                 image_tools: [],
-                music_generation: [],
                 other: [],
             };
             workflows.forEach((wf) => {
@@ -352,7 +345,6 @@
                 // Backward-compatible fallback for older workflow responses.
                 if (!groups[category]) {
                     if (mode === 'utility') category = 'image_tools';
-                    else if (mode === 'music') category = 'music_generation';
                     else if (mode === 'nanobanana' || mode === 'gameui') category = 'image_generation';
                     else category = 'other';
                 }
@@ -415,13 +407,6 @@
                 <div class="workflow-group">
                     <div class="workflow-group-label">이미지 도구</div>
                     ${groups.image_tools.map(renderItem).join('')}
-                </div>`;
-            }
-            if (groups.music_generation.length > 0) {
-                html += `
-                <div class="workflow-group">
-                    <div class="workflow-group-label">🎵 음악 생성</div>
-                    ${groups.music_generation.map(renderItem).join('')}
                 </div>`;
             }
             if (groups.other.length > 0) {
@@ -596,13 +581,10 @@
                 try { applyPromptVisibilityForWorkflow(); } catch(_) {}
                 try { applySeedVisibilityForWorkflow(); } catch(_) {}
                 try { applyLoraUiForMode(); } catch(_) {}
-                try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
-                try { applySeeThroughParamsUi(); } catch(_) {}
                 try { applyTurnaroundToolUiForWorkflow(); } catch(_) {}
                 try { applyExpressionToolUiForWorkflow(); } catch(_) {}
                 try { applyStoryboardToolUiForWorkflow(); } catch(_) {}
                 try { applyGameUiToolUiForWorkflow(); } catch(_) {}
-                try { applyMusicModeUi(); } catch(_) {}
                 try { applyInputImageUiForWorkflow(); } catch(_) {}
                 try { updateInputImagePreview(); } catch(_) {}
                 // Update default prompt when switching modes
@@ -802,8 +784,6 @@
                     if (ui.aspectRatioGroup) ui.aspectRatioGroup.classList.toggle('aspect-ratio-group--4', !!isFour);
                 } catch(_) {}
                 document.querySelectorAll('.aspect-ratio-btn').forEach(btn => {
-                    // Skip duration buttons (music mode) — they use data-duration, not data-ratio
-                    if (btn.dataset.duration) return;
                     const ok = allowed.includes(btn.dataset.ratio);
                     btn.style.display = ok ? '' : 'none';
                     if (!ok && btn.classList.contains('selected')) {
@@ -1419,133 +1399,6 @@
             } catch(_) {}
         }
 
-        function bindRmbgUiOnce() {
-            if (rmbgUiBound) return;
-            rmbgUiBound = true;
-            try {
-                const wrap = document.getElementById('rmbg-params-wrap');
-                const mb = document.getElementById('rmbg-mask-blur');
-                const mbNum = document.getElementById('rmbg-mask-blur-num');
-                const mo = document.getElementById('rmbg-mask-offset');
-                const moNum = document.getElementById('rmbg-mask-offset-num');
-                if (!wrap || !mb || !mbNum || !mo || !moNum) return;
-
-                const clamp = (v, min, max) => {
-                    const x = parseInt(v, 10);
-                    if (!Number.isFinite(x)) return null;
-                    return Math.max(min, Math.min(max, x));
-                };
-                const getWfId = () => {
-                    try { return (getTargetWorkflowForMode() && getTargetWorkflowForMode().id) || (currentWorkflow && currentWorkflow.id) || ''; } catch(_) { return ''; }
-                };
-                const storageKey = (wfId, name) => `rmbg:${wfId}:${name}`;
-
-                const syncPair = (rangeEl, numEl, name) => {
-                    const syncFrom = (fromRange) => {
-                        const min = parseInt(rangeEl.min || numEl.min || '0', 10);
-                        const max = parseInt(rangeEl.max || numEl.max || '0', 10);
-                        const raw = fromRange ? rangeEl.value : numEl.value;
-                        const v = clamp(raw, min, max);
-                        if (v === null) return;
-                        rangeEl.value = String(v);
-                        numEl.value = String(v);
-                        const wfId = getWfId();
-                        if (wfId) {
-                            try { localStorage.setItem(storageKey(wfId, name), String(v)); } catch(_) {}
-                        }
-                    };
-                    rangeEl.addEventListener('input', () => syncFrom(true));
-                    numEl.addEventListener('change', () => syncFrom(false));
-                };
-                syncPair(mb, mbNum, 'mask_blur');
-                syncPair(mo, moNum, 'mask_offset');
-            } catch(_) {}
-        }
-
-        function applyRmbgParamsUiForWorkflow() {
-            try {
-                bindRmbgUiOnce();
-                const targetWf = getTargetWorkflowForMode();
-                const uiSchema = (targetWf && targetWf.ui) || {};
-                const cfg = uiSchema.rmbgParams || null;
-                const wrap = document.getElementById('rmbg-params-wrap');
-                if (!wrap) return;
-                const enabled = !!cfg;
-                wrap.style.display = enabled ? '' : 'none';
-                if (!enabled) return;
-
-                const wfId = targetWf.id || (currentWorkflow && currentWorkflow.id) || '';
-                const mb = document.getElementById('rmbg-mask-blur');
-                const mbNum = document.getElementById('rmbg-mask-blur-num');
-                const mo = document.getElementById('rmbg-mask-offset');
-                const moNum = document.getElementById('rmbg-mask-offset-num');
-                if (!mb || !mbNum || !mo || !moNum) return;
-
-                const mbCfg = cfg.mask_blur || { min: 0, max: 64, step: 1, default: 0 };
-                const moCfg = cfg.mask_offset || { min: -64, max: 64, step: 1, default: 0 };
-                [mb, mbNum].forEach(el => { el.min = String(mbCfg.min); el.max = String(mbCfg.max); el.step = String(mbCfg.step); });
-                [mo, moNum].forEach(el => { el.min = String(moCfg.min); el.max = String(moCfg.max); el.step = String(moCfg.step); });
-
-                const getStored = (name, fallback) => {
-                    try {
-                        const raw = localStorage.getItem(`rmbg:${wfId}:${name}`);
-                        if (raw === null) return fallback;
-                        const v = parseInt(raw, 10);
-                        return Number.isFinite(v) ? v : fallback;
-                    } catch(_) {
-                        return fallback;
-                    }
-                };
-                const mbVal = getStored('mask_blur', mbCfg.default);
-                const moVal = getStored('mask_offset', moCfg.default);
-                mb.value = String(mbVal);
-                mbNum.value = String(mbVal);
-                mo.value = String(moVal);
-                moNum.value = String(moVal);
-            } catch(_) {}
-        }
-
-        let seeThroughUiBound = false;
-        function bindSeeThroughUiOnce() {
-            if (seeThroughUiBound) return;
-            seeThroughUiBound = true;
-            try {
-                const res = document.getElementById('seethrough-resolution');
-                const resNum = document.getElementById('seethrough-resolution-num');
-                if (!res || !resNum) return;
-                res.addEventListener('input', () => { resNum.value = res.value; });
-                resNum.addEventListener('change', () => {
-                    let v = parseInt(resNum.value || '1472', 10);
-                    v = Math.max(768, Math.min(1472, v));
-                    v = Math.round(v / 64) * 64;
-                    res.value = String(v);
-                    resNum.value = String(v);
-                });
-            } catch(_) {}
-        }
-
-        function applySeeThroughParamsUi() {
-            try {
-                bindSeeThroughUiOnce();
-                const targetWf = getTargetWorkflowForMode();
-                const uiSchema = (targetWf && targetWf.ui) || {};
-                const cfg = uiSchema.seeThroughParams || null;
-                const wrap = document.getElementById('seethrough-params-wrap');
-                if (!wrap) return;
-                wrap.style.display = cfg ? '' : 'none';
-                if (!cfg) return;
-
-                const resCfg = cfg.resolution || { min: 768, max: 1472, step: 64, default: 1472 };
-                const res = document.getElementById('seethrough-resolution');
-                const resNum = document.getElementById('seethrough-resolution-num');
-                if (res && resNum) {
-                    [res, resNum].forEach(el => { el.min = String(resCfg.min); el.max = String(resCfg.max); el.step = String(resCfg.step); });
-                    res.value = String(resCfg.default);
-                    resNum.value = String(resCfg.default);
-                }
-            } catch(_) {}
-        }
-
         function applyPromptTranslateUiForMode() {
             try {
                 const targetWf = getTargetWorkflowForMode();
@@ -1559,265 +1412,12 @@
             } catch(_) {}
         }
 
-        // ---- Music mode (ACE-Step) UI ----
-        let _musicModeBound = false;
-        let _musicInstrumentalMode = false;
-        let _selectedDuration = 60;
-
-        function applyMusicModeUi() {
-            try {
-                const targetWf = getTargetWorkflowForMode();
-                const uiSchema = (targetWf && targetWf.ui) || {};
-                const isMusicMode = !!uiSchema.musicMode;
-                const wrap = document.getElementById('music-params-wrap');
-                const aspectWrap = document.getElementById('aspect-ratio-group');
-                const aspectLabel = aspectWrap ? aspectWrap.closest('.form-group') : null;
-
-                if (wrap) wrap.style.display = isMusicMode ? '' : 'none';
-                // Hide aspect ratio for music workflows
-                if (aspectLabel) aspectLabel.style.display = isMusicMode ? 'none' : '';
-
-                // Switch generate button label
-                try {
-                    const genLabel = isMusicMode ? (uiSchema.generateLabel || '음악 생성하기') : '이미지 생성하기';
-                    const genIcon = isMusicMode ? 'fa-music' : 'fa-sparkles';
-                    if (!ui.generateBtn.disabled) {
-                        ui.generateBtn.innerHTML = `<i class="fas ${genIcon}"></i><span>${genLabel}</span>`;
-                    }
-                } catch(_) {}
-
-                // Switch placeholder text
-                try {
-                    const ph = document.getElementById('placeholder-section');
-                    if (ph) {
-                        const icon = ph.querySelector('.placeholder-icon i');
-                        const txt = ph.querySelector('.placeholder-text');
-                        if (isMusicMode) {
-                            if (icon) icon.className = 'fas fa-music';
-                            if (txt) txt.innerHTML = '만들고 싶은 음악의 분위기를 설명하고<br>"음악 생성하기" 버튼을 눌러보세요!';
-                        } else {
-                            if (icon) icon.className = 'fas fa-image';
-                            if (txt) txt.innerHTML = '그리고 싶은 내용을 프롬프트에 입력하고<br>"이미지 생성하기" 버튼을 눌러보세요!';
-                        }
-                    }
-                } catch(_) {}
-
-                // Hide result hint for music mode
-                try {
-                    const hint = document.getElementById('result-hint');
-                    if (hint) hint.style.display = isMusicMode ? 'none' : '';
-                } catch(_) {}
-
-                if (!isMusicMode || _musicModeBound) return;
-                _musicModeBound = true;
-
-                // BPM slider <-> number sync
-                const bpmSlider = document.getElementById('music-bpm');
-                const bpmNum = document.getElementById('music-bpm-num');
-                if (bpmSlider && bpmNum) {
-                    bpmSlider.addEventListener('input', () => { bpmNum.value = bpmSlider.value; });
-                    bpmNum.addEventListener('input', () => { bpmSlider.value = bpmNum.value; });
-                }
-
-                // Steps slider <-> number sync
-                const stepsSlider = document.getElementById('music-steps');
-                const stepsNum = document.getElementById('music-steps-num');
-                if (stepsSlider && stepsNum) {
-                    stepsSlider.addEventListener('input', () => { stepsNum.value = stepsSlider.value; });
-                    stepsNum.addEventListener('input', () => { stepsSlider.value = stepsNum.value; });
-                }
-
-                // Duration preset buttons
-                document.querySelectorAll('#music-duration-group .music-duration-btn').forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        document.querySelectorAll('#music-duration-group .music-duration-btn').forEach(b => b.classList.remove('selected'));
-                        btn.classList.add('selected');
-                        _selectedDuration = parseInt(btn.dataset.duration, 10) || 60;
-                    });
-                });
-
-                // Instrumental toggle
-                const instrBtn = document.getElementById('music-instrumental-toggle');
-                const lyricsTA = document.getElementById('music_lyrics');
-                if (instrBtn && lyricsTA) {
-                    instrBtn.addEventListener('click', () => {
-                        _musicInstrumentalMode = !_musicInstrumentalMode;
-                        if (_musicInstrumentalMode) {
-                            instrBtn.classList.add('selected');
-                            instrBtn.innerHTML = '<i class="fas fa-guitar"></i> 인스트루멘탈 모드 (ON)';
-                            lyricsTA.disabled = true;
-                            lyricsTA.style.opacity = '0.4';
-                            lyricsTA.placeholder = '인스트루멘탈 모드 — 가사 없이 생성됩니다';
-                        } else {
-                            instrBtn.classList.remove('selected');
-                            instrBtn.innerHTML = '<i class="fas fa-guitar"></i> 인스트루멘탈 (가사 없음)';
-                            lyricsTA.disabled = false;
-                            lyricsTA.style.opacity = '1';
-                            lyricsTA.placeholder = '직접 가사를 적거나, 원하는 방향을 적고 \'가사 생성\' 버튼을 눌러보세요\n\n사용 가능한 구조 태그:\n[intro] [verse] [pre-chorus] [chorus] [bridge] [outro] [interlude]';
-                        }
-                    });
-                }
-
-                // Lyrics enhance button
-                const lyricsEnhBtn = document.getElementById('music-lyrics-enhance-btn');
-                if (lyricsEnhBtn) {
-                    lyricsEnhBtn.addEventListener('click', async () => {
-                        if (lyricsEnhBtn.disabled) return;
-                        const tags = String(ui.userPromptInput.value || '').trim();
-                        const lyricsInput = String(lyricsTA?.value || '').trim();
-                        if (!tags && !lyricsInput) {
-                            showStatus('음악 설명(Tags)이나 원하는 가사 방향을 적어주세요.', 'warning');
-                            return;
-                        }
-                        lyricsEnhBtn.disabled = true;
-                        const origHTML = lyricsEnhBtn.innerHTML;
-                        lyricsEnhBtn.innerHTML = '<div class="loading-spinner-small"></div> 생성 중...';
-                        try {
-                            const lang = document.getElementById('music-language')?.value || 'ko';
-                            const fd = new FormData();
-                            // text: 사용자의 자유 요청 (가사 textarea), 없으면 tags
-                            fd.append('text', lyricsInput || tags);
-                            fd.append('mode', 'music_lyrics');
-                            fd.append('language', lang);
-                            // context: 음악 설명(tags) — 분위기 참고용
-                            fd.append('context', tags);
-                            const resp = await fetch('/api/v1/translate-prompt', { method: 'POST', body: fd });
-                            if (!resp.ok) throw new Error('API error');
-                            const data = await resp.json();
-                            if (data.translated_text && lyricsTA) {
-                                lyricsTA.value = data.translated_text;
-                                lyricsTA.dispatchEvent(new Event('input'));
-                                // Turn off instrumental mode if it was on
-                                if (_musicInstrumentalMode && instrBtn) instrBtn.click();
-                            }
-                        } catch(e) {
-                            showStatus('가사 생성에 실패했습니다. 다시 시도해주세요.', 'error');
-                        } finally {
-                            lyricsEnhBtn.disabled = false;
-                            lyricsEnhBtn.innerHTML = origHTML;
-                        }
-                    });
-                }
-            } catch(_) {}
-        }
-
-        // Exposed globally so prompt_translate.js can detect music mode
-        window.isMusicWorkflow = function isMusicWorkflow() {
-            try {
-                const targetWf = getTargetWorkflowForMode();
-                return !!(targetWf && targetWf.ui && targetWf.ui.musicMode);
-            } catch(_) { return false; }
-        }
-
-        function displayAudio(audioPath) {
-            const imgContainer = document.getElementById('result-image-container');
-            const gameUiContainer = document.getElementById('result-game-ui-group');
-            const audioContainer = document.getElementById('result-audio-container');
-            const audioEl = document.getElementById('result-audio');
-            const downloadBtn = document.getElementById('audio-download-btn');
-            const spinIcon = document.getElementById('audio-spinning-icon');
-
-            if (imgContainer) imgContainer.style.display = 'none';
-            if (gameUiContainer) gameUiContainer.style.display = 'none';
-            if (audioContainer) audioContainer.style.display = '';
-
-            const cacheBusted = `${audioPath}?t=${new Date().getTime()}`;
-            if (audioEl) {
-                audioEl.src = cacheBusted;
-                audioEl.load();
-                // Spin icon while playing
-                audioEl.onplay = () => { if (spinIcon) spinIcon.style.animationPlayState = 'running'; };
-                audioEl.onpause = () => { if (spinIcon) spinIcon.style.animationPlayState = 'paused'; };
-                audioEl.onended = () => { if (spinIcon) spinIcon.style.animationPlayState = 'paused'; };
-            }
-            if (downloadBtn) {
-                downloadBtn.href = audioPath;
-                downloadBtn.download = audioPath.split('/').pop() || 'music.mp3';
-            }
-
-            ui.placeholderSection.style.display = 'none';
-            ui.resultSection.style.display = 'block';
-        }
-
-        function displaySeeThrough(data) {
-            const imgContainer = document.getElementById('result-image-container');
-            const gameUiContainer = document.getElementById('result-game-ui-group');
-            const audioContainer = document.getElementById('result-audio-container');
-            const stContainer = document.getElementById('result-seethrough-container');
-            const resultImg = document.getElementById('result-image');
-            const downloadBtn = document.getElementById('result-download-btn');
-
-            if (audioContainer) audioContainer.style.display = 'none';
-            if (gameUiContainer) gameUiContainer.style.display = 'none';
-            if (stContainer) stContainer.style.display = '';
-
-            // Show preview image (base64 data URL — 디스크에 저장되지 않음)
-            if (data.preview_data_url && imgContainer && resultImg) {
-                imgContainer.style.display = '';
-                if (downloadBtn) downloadBtn.style.display = 'none';
-                resultImg.src = data.preview_data_url;
-            } else if (imgContainer) {
-                imgContainer.style.display = 'none';
-            }
-
-            // PSD download
-            const psdLink = document.getElementById('seethrough-psd-download');
-            const psdSize = document.getElementById('seethrough-psd-size');
-            if (psdLink && data.psd_path) {
-                psdLink.href = data.psd_path;
-                psdLink.download = 'seethrough_output.psd';
-            }
-            if (psdSize && data.psd_size_bytes) {
-                const mb = (data.psd_size_bytes / 1024 / 1024).toFixed(1);
-                psdSize.textContent = mb + ' MB';
-            }
-
-            // Parts grid (base64 data URL — 디스크에 저장되지 않음)
-            const partsGrid = document.getElementById('seethrough-parts-grid');
-            const partsCount = document.getElementById('seethrough-parts-count');
-            const partsDetails = document.getElementById('seethrough-parts-details');
-            if (partsGrid && data.parts && data.parts.length > 0) {
-                partsGrid.innerHTML = '';
-                if (partsCount) partsCount.textContent = String(data.parts.length);
-                data.parts.forEach(function(part) {
-                    const cell = document.createElement('div');
-                    cell.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px; background:var(--bg-tertiary); border-radius:8px; overflow:hidden;';
-                    const img = document.createElement('img');
-                    img.src = part.data_url;
-                    img.alt = part.name;
-                    img.style.cssText = 'width:100%; aspect-ratio:1; object-fit:contain; background:repeating-conic-gradient(#808080 0% 25%, transparent 0% 50%) 50%/16px 16px;';
-                    const label = document.createElement('span');
-                    label.textContent = part.name;
-                    label.style.cssText = 'font-size:11px; color:var(--text-muted); text-align:center; word-break:break-all;';
-                    cell.appendChild(img);
-                    cell.appendChild(label);
-                    partsGrid.appendChild(cell);
-                });
-                if (partsDetails) partsDetails.style.display = '';
-            } else if (partsDetails) {
-                partsDetails.style.display = 'none';
-            }
-
-            ui.placeholderSection.style.display = 'none';
-            ui.resultSection.style.display = 'block';
-        }
-
         function resetOutputForMode() {
-            // When switching workflows, reset the output panel to the correct mode
+            // When switching workflows, reset the output panel to the image result view
             const imgContainer = document.getElementById('result-image-container');
-            const audioContainer = document.getElementById('result-audio-container');
-            const stContainer = document.getElementById('result-seethrough-container');
             const gameUiContainer = document.getElementById('result-game-ui-group');
             if (gameUiContainer) gameUiContainer.style.display = 'none';
-            if (isMusicWorkflow()) {
-                if (imgContainer) imgContainer.style.display = 'none';
-                if (audioContainer) audioContainer.style.display = 'none';
-                if (stContainer) stContainer.style.display = 'none';
-            } else {
-                if (imgContainer) imgContainer.style.display = '';
-                if (audioContainer) audioContainer.style.display = 'none';
-                if (stContainer) stContainer.style.display = 'none';
-            }
+            if (imgContainer) imgContainer.style.display = '';
         }
 
         function escapeHtml(s) {
@@ -1994,14 +1594,10 @@
             } catch(_) {}
             // Hide/show prompt input when workflow doesn't need it (e.g., background removal)
             applyPromptVisibilityForWorkflow();
-            // Hide/show seed row for workflows where it isn't meaningful (e.g., RMBG2)
+            // Hide/show seed row for workflows where it isn't meaningful
             applySeedVisibilityForWorkflow();
             // LoRA UI (target workflow 기준)
             try { applyLoraUiForMode(); } catch(_) {}
-            // RMBG2 params (mask blur / mask offset)
-            applyRmbgParamsUiForWorkflow();
-            // SeeThrough params (resolution)
-            applySeeThroughParamsUi();
             // 추천 프롬프트 템플릿 chips (사용자 입력란 아래)
             try {
                 const wrap = document.getElementById('prompt-templates');
@@ -2089,13 +1685,10 @@
             applyHostedImageOptionsUi();
             applyPromptTranslateUiForMode();
             try { applySeedVisibilityForWorkflow(); } catch(_) {}
-            try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
-            try { applySeeThroughParamsUi(); } catch(_) {}
             try { applyTurnaroundToolUiForWorkflow(); } catch(_) {}
             try { applyExpressionToolUiForWorkflow(); } catch(_) {}
             try { applyStoryboardToolUiForWorkflow(); } catch(_) {}
             try { applyGameUiToolUiForWorkflow(); } catch(_) {}
-            try { applyMusicModeUi(); } catch(_) {}
             try { resetOutputForMode(); } catch(_) {}
             // 입력 이미지 섹션 표시 여부
             try {
@@ -2117,8 +1710,6 @@
             try { applyHostedImageOptionsUi(); } catch(_) {}
             try { applyPromptVisibilityForWorkflow(); } catch(_) {}
             try { applySeedVisibilityForWorkflow(); } catch(_) {}
-            try { applyRmbgParamsUiForWorkflow(); } catch(_) {}
-            try { applySeeThroughParamsUi(); } catch(_) {}
             // Update main action button label (e.g., background removal)
             try { if (!ui.generateBtn.disabled) setGenerationState(false, '이미지 생성하기'); } catch(_) {}
         }
@@ -2939,20 +2530,10 @@
             // because some client environments block WebSocket connections.
             if (data.status === 'running') { setGenerationState(true, 'AI 생성 중...'); hideQueueInfo(); }
             if (data.status === 'complete') {
-                const _isAudio = !!data.is_audio || !!data.audio_path;
-                const _isSeeThrough = !!data.is_seethrough;
-                const _genLabel = _isAudio ? '음악 생성하기' : (_isSeeThrough ? '레이어 분리하기' : '이미지 생성하기');
-                showStatus(_isSeeThrough ? '레이어 분리 완료!' : (_isAudio ? '음악 생성 완료!' : '이미지 생성 완료!'), 'success');
+                const _genLabel = '이미지 생성하기';
+                showStatus('이미지 생성 완료!', 'success');
                 updateProgress(0);
-                if (_isSeeThrough) {
-                    displaySeeThrough(data);
-                    hidePreviewOverlay();
-                    setGenerationState(false, _genLabel);
-                } else if (_isAudio && data.audio_path) {
-                    displayAudio(data.audio_path);
-                    hidePreviewOverlay();
-                    setGenerationState(false, _genLabel);
-                } else if (data.asset_group) {
+                if (data.asset_group) {
                     displayGameUiGroup(data.asset_group);
                     hidePreviewOverlay();
                     setGenerationState(false, _genLabel);
@@ -3008,28 +2589,13 @@
             const ac = new AbortController();
             const timer = setTimeout(() => { try { ac.abort(); } catch(_) {} }, 1500);
             try {
-                const targetWf = (typeof getTargetWorkflowForMode === 'function') ? getTargetWorkflowForMode() : null;
-                const provider = String((targetWf && targetWf.provider) ? targetWf.provider : '').trim().toLowerCase();
-
                 const res = await fetch('/healthz', { cache: 'no-store', signal: ac.signal });
                 const data = await res.json().catch(() => null);
 
-                // Default: strict overall OK (ComfyUI + DB + Disk)
-                const strictOk = !!(data && data.ok === true);
-                if (strictOk) return true;
-
-                // OpenRouter workflows do NOT require ComfyUI to be running.
-                // For those workflows, accept health when DB/Disk are OK and an API key exists.
-                if (provider === 'openrouter') {
-                    const c = (data && data.components) ? data.components : {};
-                    const dbOk = !!(c && c.db && c.db.ok === true);
-                    const diskOk = !!(c && c.disk && c.disk.ok === true);
-                    const llmOk = !!(c && c.llm && c.llm.ok === true);
-                    if (dbOk && diskOk && llmOk) return true;
-                }
-
-                // If server returned a non-JSON or unexpected payload, fall back to HTTP OK.
-                return !!res.ok && strictOk;
+                // Server health (DB + Disk) plus the hosted image API key, which every workflow needs.
+                const c = (data && data.components) ? data.components : {};
+                const llmOk = !!(c && c.llm && c.llm.ok === true);
+                return !!res.ok && !!(data && data.ok === true) && llmOk;
             } catch (_) {
                 return false;
             } finally {
@@ -3263,29 +2829,6 @@
                     ].join('\n');
                 }
             } catch (_) {}
-            // RMBG2 params (mask blur / mask offset)
-            try {
-                const targetWf = getTargetWorkflowForMode();
-                const uiSchema = (targetWf && targetWf.ui) || {};
-                if (uiSchema && uiSchema.rmbgParams) {
-                    const mbEl = document.getElementById('rmbg-mask-blur-num') || document.getElementById('rmbg-mask-blur');
-                    const moEl = document.getElementById('rmbg-mask-offset-num') || document.getElementById('rmbg-mask-offset');
-                    const mb = mbEl ? parseInt(mbEl.value || '0', 10) : null;
-                    const mo = moEl ? parseInt(moEl.value || '0', 10) : null;
-                    if (Number.isFinite(mb)) requestData.rmbg_mask_blur = mb;
-                    if (Number.isFinite(mo)) requestData.rmbg_mask_offset = mo;
-                }
-            } catch (_) {}
-            // SeeThrough resolution param
-            try {
-                const targetWf = getTargetWorkflowForMode();
-                const uiSchema = (targetWf && targetWf.ui) || {};
-                if (uiSchema && uiSchema.seeThroughParams) {
-                    const resEl = document.getElementById('seethrough-resolution-num') || document.getElementById('seethrough-resolution');
-                    const resVal = resEl ? parseInt(resEl.value || '1472', 10) : null;
-                    if (Number.isFinite(resVal)) requestData.seethrough_resolution = resVal;
-                }
-            } catch (_) {}
             // LoRA strengths payload (single value per slot, if visible)
             try {
                 const wrap = document.getElementById('lora-strengths-wrap');
@@ -3300,21 +2843,6 @@
                         if (Number.isFinite(v2)) arr.push({ slot: 'character', value: v2 });
                     }
                     if (arr.length) requestData.loras = arr;
-                }
-            } catch(_) {}
-            // ACE-Step music parameters
-            try {
-                if (isMusicWorkflow()) {
-                    const lyricsTA = document.getElementById('music_lyrics');
-                    requestData.lyrics = lyricsTA ? (lyricsTA.value || '') : '';
-                    requestData.bpm = parseInt(document.getElementById('music-bpm-num')?.value || '120', 10);
-                    requestData.duration = _selectedDuration || 60;
-                    requestData.steps = parseInt(document.getElementById('music-steps-num')?.value || '8', 10);
-                    requestData.keyscale = document.getElementById('music-keyscale')?.value || 'C major';
-                    requestData.timesignature = document.getElementById('music-timesignature')?.value || '4';
-                    requestData.language = document.getElementById('music-language')?.value || 'ko';
-                    // Music doesn't use aspect ratio
-                    requestData.aspect_ratio = 'square';
                 }
             } catch(_) {}
             try {
@@ -3371,8 +2899,6 @@
                         workflow_id: requestData.workflow_id || '',
                         workflow_name: (currentWorkflow && currentWorkflow.name) ? currentWorkflow.name : (requestData.workflow_id || ''),
                         seed: requestData.seed,
-                        rmbg_mask_blur: (requestData && Number.isFinite(requestData.rmbg_mask_blur)) ? requestData.rmbg_mask_blur : null,
-                        rmbg_mask_offset: (requestData && Number.isFinite(requestData.rmbg_mask_offset)) ? requestData.rmbg_mask_offset : null,
                         aspect_ratio: requestData.aspect_ratio,
                         createdAt: Math.floor(Date.now() / 1000)
                     };
@@ -3473,23 +2999,12 @@
                     hideQueueInfo();
                     stopQueuePolling();
                     const _r = (data && data.result) || data || {};
-                    const _isAudio2 = !!_r.is_audio || !!_r.audio_path;
-                    const _isST2 = !!_r.is_seethrough;
-                    const _genLabel2 = _isAudio2 ? '음악 생성하기' : (_isST2 ? '레이어 분리하기' : '이미지 생성하기');
-                    showStatus(_isST2 ? '레이어 분리 완료!' : (_isAudio2 ? '음악 생성 완료!' : '이미지 생성 완료!'), 'success');
+                    const _genLabel2 = '이미지 생성하기';
+                    showStatus('이미지 생성 완료!', 'success');
                     updateProgress(0);
-                    const audioPath = _r.audio_path || null;
                     const imagePath = _r.image_path || (data && data.image_path) || null;
                     const assetGroup = _r.asset_group || (data && data.asset_group) || null;
-                    if (_isST2) {
-                        displaySeeThrough(_r);
-                        hidePreviewOverlay();
-                        setGenerationState(false, _genLabel2);
-                    } else if (_isAudio2 && audioPath) {
-                        displayAudio(audioPath);
-                        hidePreviewOverlay();
-                        setGenerationState(false, _genLabel2);
-                    } else if (assetGroup) {
+                    if (assetGroup) {
                         displayGameUiGroup(assetGroup);
                         hidePreviewOverlay();
                         setGenerationState(false, _genLabel2);
@@ -3600,13 +3115,9 @@
             const footer = document.getElementById('game-ui-result-footer');
             const download = document.getElementById('game-ui-group-download');
             const imgContainer = document.getElementById('result-image-container');
-            const audioContainer = document.getElementById('result-audio-container');
-            const stContainer = document.getElementById('result-seethrough-container');
             if (!groupContainer || !grid || !group || !Array.isArray(group.items)) return;
 
             if (imgContainer) imgContainer.style.display = 'none';
-            if (audioContainer) audioContainer.style.display = 'none';
-            if (stContainer) stContainer.style.display = 'none';
             groupContainer.style.display = '';
             grid.replaceChildren();
 
@@ -3693,12 +3204,8 @@
             // Prepare cross-fade with previous visual
             const container = document.getElementById('result-image-container');
             const groupContainer = document.getElementById('result-game-ui-group');
-            const audioContainer = document.getElementById('result-audio-container');
-            const stContainer = document.getElementById('result-seethrough-container');
             if (groupContainer) groupContainer.style.display = 'none';
             if (container) container.style.display = '';
-            if (audioContainer) audioContainer.style.display = 'none';
-            if (stContainer) stContainer.style.display = 'none';
             const currentSrc = ui.resultImage.src;
             let oldLayer = null;
             if ((ui.resultSection.style.display === 'block' && currentSrc)) {
@@ -3739,11 +3246,10 @@
                 // 이전 레이어의 블러는 페이드아웃과 함께 서서히 해제
                 if (oldLayer) requestAnimationFrame(() => oldLayer.classList.remove('is-blurred'));
                 ui.resultImage.classList.add('reveal');
-                // For alpha outputs (e.g., background removal), show checkerboard behind the result preview.
+                // No current single-image workflow produces alpha output; clear any stale checkerboard.
                 try {
-                    const isAlpha = (lastGenerationRequestMeta && (lastGenerationRequestMeta.workflow_id || lastGenerationRequestMeta.workflowId)) === 'RMBG2';
                     const container = document.getElementById('result-image-container');
-                    if (container) container.classList.toggle('is-alpha', !!isAlpha);
+                    if (container) container.classList.remove('is-alpha');
                 } catch (_) {}
                 // Clean up old layer after cross-fade completes
                 setTimeout(() => {
@@ -5137,6 +4643,6 @@
         </div>
     </div>
     {% if prompt_translate_enabled %}
-    <script src="/static/js/prompt_translate.js"></script>
+    <script src="/static/js/prompt_translate.js?v=20261108_01"></script>
     {% endif %}
 {% endblock %}

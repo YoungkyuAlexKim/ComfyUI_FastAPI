@@ -25,7 +25,7 @@ class WorkflowItem(BaseModel):
     description: str
     node_count: int
     hidden: Optional[bool] = None
-    # Workflow provider routing hint (e.g., "comfyui" or "openrouter")
+    # Workflow provider routing hint (currently always "openrouter")
     provider: Optional[str] = None
     # Stable product taxonomy shared by the web UI and MCP capability contracts.
     category: Optional[str] = None

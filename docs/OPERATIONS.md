@@ -141,9 +141,9 @@ listener의 PID만 종료합니다. 포트에 연결된 프로세스를 확인�
 6. 웹 multipart 입력 이미지 업로드와 MCP 직접 multipart 업로드 및 참고 이미지 편집
 7. Game UI 웹 2×2·3×3·4×4 생성, 선택 수와 개별 결과 수 일치, ZIP 다운로드
 8. 기존 2×2 Game UI 그룹이 갤러리에서 그대로 열리고 ZIP을 받을 수 있는지 확인
-9. MCP 13개 도구와 5개 공개 생성 capability 목록, 고정 2×2 Game UI 생성,
+9. MCP 12개 도구와 4개 공개 생성 capability 목록, 고정 2×2 Game UI 생성,
    job polling, 결과 조회
-10. 소유 input 한 장으로 RMBG 배경 제거, 투명 PNG와 `comfyui/RMBG-2.0/0.0` 감사 기록
+10. 기존 음악 목록(갤러리 `음악` 탭)이 재생·삭제되는지 확인(신규 음악 생성은 제거됨)
 11. 같은 PC에서 웹과 MCP를 동일한 canonical 사내 origin으로 열고 MCP 작업공간을 연결한
     뒤 과거·신규 이미지가 `MCP` 표시로 함께 조회되는지 확인
 12. 연결된 MCP 이미지와 Game UI 묶음을 선택해 휴지통으로 이동·복구하고, 관계없는 웹
@@ -394,7 +394,8 @@ IP 기반 운영의 책임 경계는 다음과 같습니다.
 않습니다. `MCP_ALLOWED_CLIENT_CIDRS`는 방화벽을 대체하지 않는 선택적 2차 방어입니다.
 
 2026-08-17 검증 호스트는 고정 사설 IPv4 `/24`, 직접 연결, Uvicorn
-`0.0.0.0:8000`, ComfyUI `127.0.0.1:8188` 구조입니다. 리버스 프록시/VPN 프로세스는 없고
+`0.0.0.0:8000` 구조입니다(당시 함께 돌던 ComfyUI `127.0.0.1:8188`은 2026-11-08 서비스에서
+분리). 리버스 프록시/VPN 프로세스는 없고
 로컬 MCP와 다른 PC의 웹 요청이 DB에서 서로 다른 원본 IP로 관찰됐습니다. 검증 호스트의
 `TRUSTED_PROXY_CIDRS`와 `MCP_ALLOWED_CLIENT_CIDRS`는 비어 있으므로 네트워크 구조가 바뀌면
 이 스냅샷과 신뢰 경계를 다시 확인합니다.
@@ -446,9 +447,8 @@ provider actual cost가 별도로 기록됩니다.
 비용 확인 임계값을 0보다 크게 켤 때 해당 요청의 추정값이 없으면 안전하게 제출을 거절하므로,
 먼저 실제 사용하는 모델·크기·품질 가격표를 채워야 합니다.
 
-예외적으로 `resolved_provider=comfyui`인 로컬 workflow는 외부 provider API 비용이 없으므로
-가격표와 무관하게 알려진 `0.0`을 반환합니다. 이는 로컬 GPU·전력·인프라 자원까지 무료라는
-뜻은 아닙니다.
+2026-11-08 이전의 `resolved_provider=comfyui` 로컬 작업 기록은 외부 provider API 비용이 없으므로
+가격표와 무관하게 알려진 `0.0`으로 집계합니다. 현재는 로컬 workflow를 실행하지 않습니다.
 
 ### IP별 비용 통계
 
@@ -466,8 +466,8 @@ IP에서 여러 웹 쿠키 principal이 사용돼도 IP 비용은 한 행으로 
 DHCP 변경 시 같은 사용자가 나뉠 수 있으므로 내부 비용 관찰과 이상 탐지용으로 사용합니다.
 같은 IP가 다른 사용자에게 재할당됐다면 전체 기간 합계를 한 사람의 비용으로 보지 말고
 인프라의 할당 시작·종료 시각에 맞춰 기간을 나눠 해석합니다.
-완료된 ComfyUI 로컬 작업은 외부 provider API actual cost가 알려진 `0.0`이므로 미수집으로
-분류하지 않습니다. 이는 GPU·전력·인프라 원가가 0이라는 뜻은 아닙니다.
+과거에 완료된 ComfyUI 로컬 작업 기록은 외부 provider API actual cost가 알려진 `0.0`이므로
+미수집으로 분류하지 않습니다.
 
 ### VS Code Codex 연결 점검
 
@@ -483,10 +483,10 @@ Invoke-RestMethod http://SERVER_IP:8000/healthz
 
 서버를 먼저 실행한 뒤 VS Code 명령 팔레트에서 `Developer: Reload Window`를 실행합니다.
 기존 대화가 MCP 도구를 새로 읽지 못하면 새 Codex 대화를 열고
-`list_generation_capabilities`부터 호출합니다. MCP 0.8.0은 RMBG 배경 제거를 포함해 13개 도구와
-5개 공개 생성 capability를 제공합니다. Codex에서는 읽기, 직접 첨부, 멱등성 재시도,
+`list_generation_capabilities`부터 호출합니다. MCP 0.8.0은 12개 도구와
+4개 공개 생성 capability를 제공합니다. Codex에서는 읽기, 직접 첨부, 멱등성 재시도,
 기본 생성·참고 편집, Game UI 2×2, 캐릭터 턴어라운드 3뷰, 표정 4개, 스토리보드 6컷,
-RMBG 반복 생성, job/result polling, MCP image content와 소유 그룹 ZIP 다운로드를
+job/result polling, MCP image content와 소유 그룹 ZIP 다운로드를
 실클라이언트로 확인했습니다.
 
 Claude Code 사내 계정에서도 multipart 직접 업로드와 GPT Image 2 1K 연속 편집 두 건을
@@ -497,17 +497,8 @@ Claude Code 사내 계정에서도 multipart 직접 업로드와 GPT Image 2 1K 
 일치하지 않으면 큐 등록 전에 거절됩니다. 계획 호출과 이 거절 경로는 provider 비용을
 발생시키지 않습니다.
 
-`remove_background`는 소유한 active image/input 한 장만 받고 `RMBG2`/`RMBG-2.0`으로
-고정됩니다. provider API 비용은 `0.0`으로 기록되지만 로컬 단일 ComfyUI 큐와 GPU를
-사용합니다. See-Through와 ACE-Step은 무거운 로컬 workflow이므로 MCP에 노출하지 않습니다.
-
-실제 ComfyUI를 사용하되 DB와 outputs는 임시 경로로 격리해 단일 큐를 확인할 수 있습니다.
-두 RMBG 작업을 즉시 연속 제출하고, 둘째가 queued 상태였다가 첫째 종료 후 시작하는지,
-MCP image content 두 건과 provider API actual cost `0.0` 두 건이 기록되는지 검사합니다.
-
-```powershell
-.\venv\Scripts\python.exe -m scripts.smoke_rmbg_queue
-```
+로컬 ComfyUI 도구(`remove_background` 등)는 2026-11-08에 제거했습니다. 이전 MCP 클라이언트
+설정에 해당 도구가 남아 있어도 서버 도구 목록에는 더 이상 나타나지 않습니다.
 
 MCP는 IP principal, 웹은 서명 쿠키 principal을 사용하며 원본 소유권은 자동으로 합치지
 않습니다. 같은 PC의 웹 갤러리는 MCP 생성 이미지를 발견하면 한 번 클릭 연결을 제안합니다.

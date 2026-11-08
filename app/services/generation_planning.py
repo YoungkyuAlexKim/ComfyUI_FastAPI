@@ -19,8 +19,7 @@ PUBLIC_HOSTED_CAPABILITIES = (
     "create_character_sheet",
     "create_storyboard",
 )
-PUBLIC_LOCAL_CAPABILITIES = ("remove_background",)
-PUBLIC_GENERATION_CAPABILITIES = PUBLIC_HOSTED_CAPABILITIES + PUBLIC_LOCAL_CAPABILITIES
+PUBLIC_GENERATION_CAPABILITIES = PUBLIC_HOSTED_CAPABILITIES
 
 GENERAL_IMAGE_MODELS = tuple(option["id"] for option in public_image_model_options())
 GENERAL_IMAGE_RECOMMENDATION = "google/gemini-3.1-flash-image"
@@ -52,62 +51,6 @@ def generation_capability_contract(capability: str) -> dict[str, Any]:
     """Return one authoritative public option and clarification contract."""
     if capability not in PUBLIC_GENERATION_CAPABILITIES:
         raise ValueError(f"Unsupported generation capability: {capability}")
-
-    if capability == "remove_background":
-        return {
-            "name": capability,
-            "provider_cost": False,
-            "local_execution": True,
-            "execution_class": "fast",
-            "asynchronous": True,
-            "variants": ["default"],
-            "description": (
-                "Remove the background from one caller-owned image with the fixed local RMBG-2.0 workflow."
-            ),
-            "decision_fields": [],
-            "optional_processing_fields": ["mask_blur", "mask_offset"],
-            "fixed_options": {"provider": "comfyui", "model": "RMBG-2.0"},
-            "planning": {
-                "tool": "plan_generation",
-                "required_before_write": True,
-                "default_selection_mode": "clarify",
-                "policy": (
-                    "One caller-owned reference image is required. mask_blur and mask_offset are optional "
-                    "processing controls with safe zero defaults, so no model or cost choice is needed."
-                ),
-            },
-            "inputs": {
-                "reference_image_ids": {
-                    "type": "array",
-                    "min_items": 1,
-                    "max_items": 1,
-                    "required": True,
-                },
-                "mask_blur": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 64,
-                    "default": 0,
-                    "required": False,
-                },
-                "mask_offset": {
-                    "type": "integer",
-                    "minimum": -64,
-                    "maximum": 64,
-                    "default": 0,
-                    "required": False,
-                },
-            },
-            "output": {
-                "type": "single managed image",
-                "format": "PNG",
-                "background": "transparent",
-            },
-            "cost": {
-                "provider_api_cost_usd": 0.0,
-                "note": "Local GPU time and infrastructure usage still apply.",
-            },
-        }
 
     common = {
         "name": capability,
@@ -330,7 +273,7 @@ class HostedGenerationPlanner:
         if mode not in {"clarify", "recommend"}:
             raise ValueError("selection_mode must be clarify or recommend")
         clean_prompt = str(prompt or "").strip()
-        if capability not in {"create_character_sheet", "remove_background"} and not clean_prompt:
+        if capability != "create_character_sheet" and not clean_prompt:
             raise ValueError("prompt is required for this capability")
         maximum = 4000 if capability == "create_character_sheet" else 8000
         if len(clean_prompt) > maximum:
@@ -338,7 +281,6 @@ class HostedGenerationPlanner:
 
         supplied = dict(options or {})
         allowed_fields = set(contract["decision_fields"])
-        allowed_fields.update(contract.get("optional_processing_fields") or [])
         unknown = sorted(set(supplied) - allowed_fields)
         if unknown:
             raise ValueError(f"Unsupported options for {capability}: {', '.join(unknown)}")
@@ -360,19 +302,7 @@ class HostedGenerationPlanner:
             missing.append(field)
             return None
 
-        if capability == "remove_background":
-            for field, minimum, maximum in (
-                ("mask_blur", 0, 64),
-                ("mask_offset", -64, 64),
-            ):
-                value = supplied.get(field, 0)
-                if isinstance(value, bool) or not isinstance(value, int):
-                    raise ValueError(f"{field} must be an integer")
-                if value < minimum or value > maximum:
-                    raise ValueError(f"{field} must be between {minimum} and {maximum}")
-                resolved[field] = value
-
-        elif capability == "create_managed_image_asset":
+        if capability == "create_managed_image_asset":
             model = decide("image_model", GENERAL_IMAGE_MODELS, GENERAL_IMAGE_RECOMMENDATION)
             allowed_aspects = EDIT_ASPECT_RATIOS if has_reference_images else ASPECT_RATIOS
             decide("aspect_ratio", allowed_aspects, "auto" if has_reference_images else "square")

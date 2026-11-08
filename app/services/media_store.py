@@ -685,15 +685,10 @@ def _save_image_and_meta(
         "image_quality": getattr(req, "image_quality", None),
         "seed": getattr(req, "seed", None),
         "prompt": getattr(req, "user_prompt", None),
-        # RMBG2 parameters (if any)
-        "rmbg_mask_blur": getattr(req, "rmbg_mask_blur", None),
-        "rmbg_mask_offset": getattr(req, "rmbg_mask_offset", None),
         # Img2Img: 입력 이미지(보관함) id를 기록해두면, 이후 공유/재현에 도움이 됩니다.
         "input_image_id": getattr(req, "input_image_id", None),
         # Forward-compatible: optional multi-input image ids
         "input_image_ids": getattr(req, "input_image_ids", None),
-        # ComfyUI Img2Img: input downscale info (bytes are downscaled only for upload; original remains unchanged)
-        "comfy_img2img_input_downscale": getattr(req, "comfy_img2img_input_downscale", None),
         "original_filename": original_filename,
         "mime": "image/png",
         "bytes": len(image_bytes),
@@ -1199,92 +1194,10 @@ def _update_image_status(anon_id: str, image_id: str, status: str) -> bool:
         return False
 
 
-# ── Audio (ACE-Step) storage ──────────────────────────────────────────
+# ── Audio library (legacy ACE-Step results; read/manage only) ─────────
 
 def _audio_base_dir(anon_id: str) -> str:
     return os.path.join(_user_base_dir(anon_id), "audio")
-
-
-def _save_audio_and_meta(
-    anon_id: str,
-    audio_bytes: bytes,
-    req,
-    original_filename: str,
-    source_job_id: Optional[str] = None,
-) -> Tuple[str, str]:
-    """Save audio file + JSON sidecar, mirroring _save_image_and_meta structure."""
-    now = datetime.now(timezone.utc)
-    base = _audio_base_dir(anon_id)
-    dated_dir = _date_partition_path(base, now)
-    os.makedirs(dated_dir, exist_ok=True)
-
-    audio_id = uuid.uuid4().hex
-    # Determine extension from original filename
-    ext = ".mp3"
-    try:
-        _, fext = os.path.splitext(original_filename)
-        if fext:
-            ext = fext.lower()
-    except Exception:
-        pass
-    audio_filename = f"{audio_id}{ext}"
-    audio_path = os.path.join(dated_dir, audio_filename)
-
-    atomic_write_bytes(audio_path, audio_bytes)
-    # Master before hashing/catalog registration so metadata always describes
-    # the final artifact. A missing optional audio dependency is harmless.
-    try:
-        if _master_audio_file(audio_path):
-            with open(audio_path, "rb") as mastered_file:
-                audio_bytes = mastered_file.read()
-    except Exception:
-        pass
-
-    # Build metadata
-    import hashlib as _hl
-    sha = ""
-    try:
-        sha = _hl.sha256(audio_bytes).hexdigest()
-    except Exception:
-        pass
-
-    meta = {
-        "id": audio_id,
-        "owner": anon_id,
-        "kind": "audio",
-        "workflow_id": getattr(req, "workflow_id", None) if req else None,
-        "prompt": getattr(req, "user_prompt", "") if req else "",
-        "lyrics": getattr(req, "lyrics", "") if req else "",
-        "bpm": getattr(req, "bpm", None) if req else None,
-        "duration": getattr(req, "duration", None) if req else None,
-        "keyscale": getattr(req, "keyscale", None) if req else None,
-        "language": getattr(req, "language", None) if req else None,
-        "seed": getattr(req, "seed", None) if req else None,
-        "original_filename": original_filename,
-        "mime": "audio/mpeg" if ext == ".mp3" else f"audio/{ext.lstrip('.')}",
-        "bytes": len(audio_bytes),
-        "sha256": sha,
-        "created_at": now.isoformat(),
-        "status": "active",
-        "source_job_id": source_job_id,
-        "tags": [],
-    }
-
-    meta_path = os.path.join(dated_dir, f"{audio_id}.json")
-    atomic_write_json(meta_path, meta)
-
-    asset_service = _catalog_service("save_audio")
-    if asset_service is not None:
-        asset_service.register(
-            owner_id=anon_id,
-            kind="audio",
-            media_path=audio_path,
-            metadata_path=meta_path,
-            metadata=meta,
-            source_job_id=source_job_id,
-        )
-
-    return audio_path, meta_path
 
 
 def _gather_user_audio(anon_id: str, include_trash: bool = False) -> List[dict]:
@@ -1346,50 +1259,6 @@ def _locate_audio_meta_path(anon_id: str, audio_id: str) -> Optional[str]:
         if cand in files:
             return os.path.join(root, cand)
     return None
-
-
-def _master_audio_file(audio_path: str) -> bool:
-    """Apply mastering chain (EQ + Compressor + Limiter) to an audio file in-place."""
-    try:
-        from pedalboard import Pedalboard, Compressor, HighShelfFilter, LowShelfFilter, Limiter, Gain
-        from pedalboard.io import AudioFile
-    except ImportError:
-        return False
-    try:
-        # Read
-        with AudioFile(audio_path) as f:
-            audio = f.read(f.frames)
-            sr = f.samplerate
-            channels = audio.shape[0]
-
-        # Mastering chain
-        board = Pedalboard([
-            HighShelfFilter(cutoff_frequency_hz=3500, gain_db=3.5, q=0.7),
-            LowShelfFilter(cutoff_frequency_hz=200, gain_db=1.5, q=0.7),
-            Compressor(threshold_db=-18, ratio=3.0, attack_ms=10, release_ms=150),
-            Gain(gain_db=2.0),
-            Limiter(threshold_db=-1.0, release_ms=100),
-        ])
-
-        result = board(audio, sr)
-
-        # Write to a sibling temporary file, then atomically replace the
-        # original so readers never observe a partially encoded artifact.
-        base, extension = os.path.splitext(audio_path)
-        temp_path = f"{base}.{uuid.uuid4().hex}.tmp{extension}"
-        try:
-            with AudioFile(temp_path, 'w', sr, channels, quality="V0") as f:
-                f.write(result)
-            os.replace(temp_path, audio_path)
-        finally:
-            try:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-            except OSError:
-                pass
-        return True
-    except Exception:
-        return False
 
 
 def _update_audio_status(anon_id: str, audio_id: str, status: str) -> bool:

@@ -26,8 +26,11 @@ class CapabilityRequestTests(unittest.TestCase):
         }
         self.assertEqual(public_contracts, set(PUBLIC_GENERATION_CAPABILITIES))
         self.assertTrue(public_capabilities <= set(MCP_CAPABILITY_REQUEST_MODELS))
-        self.assertFalse(WORKFLOW_CONFIGS["AceStep15XL"]["mcp_public"])
-        self.assertFalse(WORKFLOW_CONFIGS["seethrough-basic"]["mcp_public"])
+
+    def test_retired_local_comfyui_capabilities_are_not_accepted(self):
+        for capability in ("remove_background", "separate_layers", "generate_music"):
+            self.assertNotIn(capability, MCP_CAPABILITY_REQUEST_MODELS)
+            self.assertNotIn(capability, PUBLIC_GENERATION_CAPABILITIES)
 
     def test_game_ui_belongs_to_image_generation(self):
         config = WORKFLOW_CONFIGS["GameUI_Elements"]

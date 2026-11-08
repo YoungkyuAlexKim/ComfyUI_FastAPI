@@ -384,7 +384,6 @@ def run_smoke(*, keep_temp: bool = False) -> dict:
             "PRINCIPAL_IDENTITY_MODE": "compat",
             "OPENROUTER_API_KEY": "isolated-smoke-key",
             "OPENROUTER_BASE_URL": f"http://127.0.0.1:{fake_port}",
-            "COMFYUI_SERVER": f"127.0.0.1:{fake_port}",
             "ASSET_CATALOG_FALLBACK_ENABLED": "false",
             "ADMIN_USER": "",
             "ADMIN_PASSWORD": "",

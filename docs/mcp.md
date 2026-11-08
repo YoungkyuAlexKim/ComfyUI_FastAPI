@@ -30,14 +30,13 @@ LC AI Canvas MCP는 사내 데스크톱·IDE 에이전트가 회사의 이미지
 | `create_game_ui_assets` | 고정 2×2 Game UI 그룹 | 외부 API 비용 가능 |
 | `create_character_sheet` | 턴어라운드·표정 시트 | 외부 API 비용 가능 |
 | `create_storyboard` | 6·9컷 스토리보드 | 외부 API 비용 가능 |
-| `remove_background` | 고정 RMBG-2.0 배경 제거 | 로컬 GPU, 외부 provider 비용 없음 |
 | `get_generation_job` | 소유 작업 상태 조회 | 읽기 전용 |
 | `get_generation_result` | 완료 결과·미리보기·원본 링크 | 읽기 전용 |
 
 ## 계획과 사용자 확인
 
-모든 공개 생성 쓰기는 먼저 `plan_generation`을 통과합니다. 계획 단계는 provider나 로컬
-workflow를 실행하지 않으므로 이미지 생성 비용이 들지 않습니다.
+모든 공개 생성 쓰기는 먼저 `plan_generation`을 통과합니다. 계획 단계는 provider를
+호출하지 않으므로 이미지 생성 비용이 들지 않습니다.
 
 - `selection_mode=clarify`: 사용자가 밝히지 않은 결정과 선택지를 반환합니다.
   `missing_decisions`가 남으면 plan ID를 발급하지 않습니다.
@@ -53,8 +52,8 @@ LLM은 `missing_decisions`를 한 번의 짧은 질문으로 묶습니다. 사�
 
 사전 비용은 운영 가격표가 정확히 일치할 때만 숫자입니다. 가격표가 없으면
 `estimated_cost_usd=null`, `cost_estimate_available=false`이며 무료라는 뜻이 아닙니다.
-완료 뒤 provider actual cost는 관리자 화면에서 IP·기능·모델별로 집계됩니다. ComfyUI
-workflow의 `0.0`은 외부 provider API 비용만 뜻합니다.
+완료 뒤 provider actual cost는 관리자 화면에서 IP·기능·모델별로 집계됩니다. 과거
+ComfyUI 작업 기록의 `0.0`은 외부 provider API 비용만 뜻합니다.
 
 ## capability 계약
 
@@ -99,16 +98,12 @@ GPT Image 2를 사용합니다.
 스토리보드 표본의 자동 gutter 제거는 fallback되어 얇은 패널 구분선이 남은 적이 있으므로
 품질 관찰 항목으로 유지합니다.
 
-### 배경 제거
+### 배경 제거 (제거됨)
 
-`remove_background`는 호출자 소유 active image/input 한 장을 고정 `RMBG2` workflow와
-`RMBG-2.0` 모델로 처리합니다. `mask_blur`는 0~64, `mask_offset`은 -64~64이고 기본값은
-모두 0입니다. 원본을 덮어쓰지 않고 투명 PNG를 새 자산으로 저장합니다.
-
-“배경 지워줘”, “누끼 따줘”는 이 도구를 바로 선택할 수 있습니다. “배경 정리해줘”는
-제거·교체·흐림 중 의미를 묻습니다. 배경 교체·흐림은 현재 범용 managed 편집으로 처리하면
-외부 API 비용이 발생합니다. See-Through와 ACE-Step은 장시간 로컬 workflow라 MCP에
-노출하지 않습니다.
+로컬 RMBG-2.0 `remove_background` 도구는 2026-11-08에 제거했습니다. “배경 지워줘”, “누끼
+따줘” 같은 요청은 현재 전용 도구가 없으므로 사용자에게 지원하지 않는다고 알리거나, 사용자가
+동의하면 범용 managed 편집(외부 API 비용 발생)으로 배경 교체·정리를 시도합니다. See-Through
+레이어 분리와 ACE-Step 음악 생성도 같은 날 제거했습니다.
 
 ## 표준 호출 흐름
 
@@ -255,7 +250,7 @@ codex mcp list
 
 1. 인프라팀의 IP 재할당 정책 확인과 필요 시 owner generation 기능
 2. actual cost 표본 기반 모델·크기·품질별 사전 비용표
-3. 장시간·다사용자 RMBG 큐 표본
+3. 장시간·다사용자 부하 표본
 4. 스토리보드 gutter fallback 품질 보강
 5. 필요성이 확인된 작업 취소·휴지통 또는 MCP Apps UI
 

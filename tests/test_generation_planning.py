@@ -136,34 +136,9 @@ class HostedGenerationPlannerTests(unittest.TestCase):
         self.assertTrue(contract["planning"]["required_before_write"])
         self.assertTrue(any(model["value"] == "openai/gpt-image-2" for model in models))
 
-    def test_local_rmbg_plan_has_safe_defaults_and_no_provider_cost(self):
-        result = self.planner.plan(
-            "remove_background",
-            prompt="",
-            options={},
-            selection_mode="clarify",
-            has_reference_images=True,
-        )
-        self.assertTrue(result["ready_to_generate"])
-        self.assertEqual(result["resolved_options"]["model"], "RMBG-2.0")
-        self.assertEqual(result["resolved_options"]["mask_blur"], 0)
-        self.assertEqual(result["resolved_options"]["mask_offset"], 0)
-        self.assertFalse(result["provider_cost"])
-
-        contract = generation_capability_contract("remove_background")
-        self.assertTrue(contract["local_execution"])
-        self.assertEqual(contract["execution_class"], "fast")
-        self.assertEqual(contract["cost"]["provider_api_cost_usd"], 0.0)
-
-    def test_local_rmbg_processing_controls_are_validated(self):
-        with self.assertRaisesRegex(ValueError, "mask_blur must be between"):
-            self.planner.plan(
-                "remove_background",
-                prompt="",
-                options={"mask_blur": 65},
-                selection_mode="clarify",
-                has_reference_images=True,
-            )
+    def test_retired_remove_background_capability_is_not_plannable(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported generation capability"):
+            generation_capability_contract("remove_background")
 
 
 class EphemeralGenerationPlanStoreTests(unittest.TestCase):

@@ -1,9 +1,8 @@
 """
-ComfyUI FastAPI 애플리케이션 설정 파일 (리팩토링 v4.0 - 비율 기반 사이즈)
+LC Canvas 애플리케이션 설정 파일
 프롬프트 관련 설정들을 단순화하고 중앙에서 관리합니다.
 """
 from typing import Dict, Any
-import time
 import os
 try:
     from dotenv import load_dotenv
@@ -31,19 +30,12 @@ DEFAULT_VALUES = {
 # --- 3. 서버 설정 ---
 SERVER_CONFIG = {
     "output_dir": os.getenv("OUTPUT_DIR", "./outputs/"),
-    "server_address": os.getenv("COMFYUI_SERVER", "127.0.0.1:8188"),
 }
 
-# --- 3.0 ComfyUI local paths (optional) ---
-# Used for housekeeping, e.g., deleting uploaded control images after job completion
-COMFY_INPUT_DIR = os.getenv("COMFY_INPUT_DIR", None)
-COMFY_OUTPUT_DIR = os.getenv("COMFY_OUTPUT_DIR", None)
-
-# --- 3.1 큐/타임아웃 환경 설정 ---
+# --- 3.1 큐 환경 설정 ---
+# OpenRouter 동시성/대기열/타임아웃은 OPENROUTER_* env로 main.py startup에서 적용합니다.
 QUEUE_CONFIG = {
-    "max_per_user_queue": int(os.getenv("MAX_PER_USER_QUEUE", "5")),
     "max_per_user_concurrent": int(os.getenv("MAX_PER_USER_CONCURRENT", "1")),
-    "job_timeout_seconds": float(os.getenv("JOB_TIMEOUT_SECONDS", "180")),
 }
 
 # --- 3.2 작업 DB 경로 ---
@@ -63,18 +55,6 @@ HEALTHZ_CONFIG = {
     "disk_min_free_mb": int(os.getenv("HEALTHZ_DISK_MIN_FREE_MB", "512")),
 }
 
-HTTP_TIMEOUTS = {
-    # requests 타임아웃 (초): (connect, read)
-    "comfy_http_connect": float(os.getenv("COMFY_HTTP_CONNECT_TIMEOUT", "3")),
-    "comfy_http_read": float(os.getenv("COMFY_HTTP_READ_TIMEOUT", "10")),
-}
-
-# WebSocket 타임아웃 (초)
-WS_TIMEOUTS = {
-    "comfy_ws_connect": float(os.getenv("COMFY_WS_CONNECT_TIMEOUT", "5")),
-    "comfy_ws_idle": float(os.getenv("COMFY_WS_IDLE_TIMEOUT", "120")),
-}
-
 # Progress logging controls
 PROGRESS_LOG_CONFIG = {
     # Log every N percent (e.g., 10 => 0,10,20,...). Set to 0 to disable step gating.
@@ -92,127 +72,6 @@ UPLOAD_CONFIG = {
 }
 
 # --- 4. 관련 함수 ---
-def _clean_tags(tags_string: str) -> list[str]:
-    """콤마로 구분된 문자열을 태그 리스트로 변환하고 정리합니다."""
-    return [tag.strip() for tag in tags_string.split(',') if tag.strip()]
-
-def get_prompt_overrides(
-    user_prompt: str,
-    aspect_ratio: str,  # width, height 대신 aspect_ratio 사용
-    workflow_name: str = "NanoBanana",
-    seed: int | None = None,
-) -> Dict[str, Any]:
-    """
-    사용자 프롬프트와 시스템 스타일 프롬프트를 결합하여 최종 오버라이드를 생성합니다.
-    """
-    if workflow_name not in WORKFLOW_CONFIGS:
-        available = list(WORKFLOW_CONFIGS.keys())
-        raise ValueError(f"지원하지 않는 워크플로우입니다: {workflow_name}. 사용 가능: {available}")
-
-    config = WORKFLOW_CONFIGS[workflow_name]
-
-    # --- [선택] 비율 기반 사이즈 계산 (sizes 정의가 있는 워크플로우에서만) ---
-    width = None
-    height = None
-    try:
-        if isinstance(config.get("sizes"), dict):
-            if aspect_ratio not in config["sizes"]:
-                raise ValueError(
-                    f"지원하지 않는 비율입니다: {aspect_ratio}. 사용 가능: {list(config['sizes'].keys())}"
-                )
-            size = config["sizes"][aspect_ratio]
-            width = size.get("width")
-            height = size.get("height")
-    except Exception:
-        # sizes가 없거나 잘못돼도 이미지 변환형 워크플로우에선 무시 가능
-        width = None
-        height = None
-
-    # --- 프롬프트 결합 로직 (prompt_node가 있는 워크플로우에서만 적용) ---
-    final_positive_prompt = None
-    try:
-        user_tags = _clean_tags(user_prompt)
-        style_tags = _clean_tags(config.get("style_prompt", ""))
-        style_pos = ""
-        try:
-            style_pos = str(config.get("style_prompt_position") or "").strip().lower()
-        except Exception:
-            style_pos = ""
-
-        # 기본 동작: user_prompt 뒤에 style_prompt를 덧붙임 (기존 호환)
-        # 옵션: style_prompt_position == "prepend" => style_prompt를 앞에 둠 (스타일 토큰 우선)
-        if style_pos == "prepend":
-            final_positive_tags = style_tags + [tag for tag in user_tags if tag not in style_tags]
-        else:
-            final_positive_tags = user_tags + [tag for tag in style_tags if tag not in user_tags]
-        final_positive_prompt = ", ".join(final_positive_tags)
-    except Exception:
-        final_positive_prompt = user_prompt or ""
-
-    if seed is None:
-        seed = int(time.time() * 1000) % 1000000000000000
-
-    overrides: Dict[str, Any] = {}
-
-    # prompt / negative / seed 노드는 존재할 때만 반영
-    # NOTE: 같은 노드에 여러 필드가 있을 수 있으므로 (예: AceStep node 94에 tags + seed)
-    #       dict를 교체하지 않고 merge 합니다.
-    try:
-        pn = config.get("prompt_node")
-        prompt_key = (config.get("prompt_input_key") or "text") if isinstance(config, dict) else "text"
-        if pn:
-            overrides.setdefault(pn, {"inputs": {}})
-            overrides[pn]["inputs"][str(prompt_key)] = final_positive_prompt or ""
-    except Exception:
-        pass
-    try:
-        nn = config.get("negative_prompt_node")
-        negative_key = (config.get("negative_prompt_input_key") or "text") if isinstance(config, dict) else "text"
-        if nn:
-            overrides.setdefault(nn, {"inputs": {}})
-            overrides[nn]["inputs"][str(negative_key)] = config.get("negative_prompt", "")
-    except Exception:
-        pass
-    try:
-        sn = config.get("seed_node")
-        if sn is not None:
-            seed_key = (config.get("seed_input_key") or "seed") if isinstance(config, dict) else "seed"
-            overrides.setdefault(sn, {"inputs": {}})
-            overrides[sn]["inputs"][str(seed_key)] = seed
-    except Exception:
-        pass
-
-    # latent 이미지 사이즈 지정은 노드와 width/height 모두 있을 때만
-    try:
-        ln = config.get("latent_image_node")
-        if ln and width is not None and height is not None:
-            overrides.setdefault(ln, {"inputs": {}})
-            overrides[ln]["inputs"]["width"] = width
-            overrides[ln]["inputs"]["height"] = height
-    except Exception:
-        pass
-
-    # --- [선택] PrimitiveInt(또는 유사) 기반 width/height 노드 오버라이드 ---
-    # 일부 워크플로우는 width/height를 직접 받지 않고,
-    # PrimitiveInt 노드의 inputs.value를 참조하도록 구성합니다.
-    # 이 경우 latent_image_node를 건드리지 말고 width/height 노드 값을 바꾸는 것이 안전합니다.
-    try:
-        size_nodes = config.get("size_nodes") if isinstance(config, dict) else None
-        if isinstance(size_nodes, dict) and width is not None and height is not None:
-            w_node = size_nodes.get("width_node")
-            h_node = size_nodes.get("height_node")
-            value_key = size_nodes.get("value_key", "value")
-            if w_node:
-                overrides.setdefault(str(w_node), {"inputs": {}})
-                overrides[str(w_node)]["inputs"][str(value_key)] = int(width)
-            if h_node:
-                overrides.setdefault(str(h_node), {"inputs": {}})
-                overrides[str(h_node)]["inputs"][str(value_key)] = int(height)
-    except Exception:
-        pass
-    
-    return overrides
-
 def get_workflow_default_prompt(workflow_id: str) -> str:
     """특정 워크플로우의 기본 사용자 프롬프트를 반환합니다."""
     if workflow_id in WORKFLOW_CONFIGS:

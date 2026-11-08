@@ -82,7 +82,7 @@ class CapabilityDispatcher:
             )
 
         config = WORKFLOW_CONFIGS[workflow_id]
-        provider = str(config.get("provider") or "comfyui").strip().lower()
+        provider = str(config.get("provider") or "").strip().lower()
         provider_config = config.get("openrouter") if provider == "openrouter" else None
         default_model = (
             str(provider_config.get("model") or "").strip()
@@ -147,9 +147,6 @@ CAPABILITY_ROUTES: dict[tuple[str, str], str] = {
     ("create_character_sheet", "expressions"): "NanoBanana_ExpressionPortraitSheet",
     ("create_storyboard", "default"): "NanoBanana_StoryboardCutboard",
     ("internal_image_preset", "chainsaw_juice_king"): "NanoBanana_ChainsawJuiceKingCharacter",
-    ("remove_background", "default"): "RMBG2",
-    ("separate_layers", "default"): "seethrough-basic",
-    ("generate_music", "default"): "AceStep15XL",
 }
 
 
